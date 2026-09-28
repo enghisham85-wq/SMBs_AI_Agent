@@ -31,12 +31,13 @@ What sets it apart is the shared harness: every assistant thinks before acting, 
 - Q: Which user roles and logins are built in the MVP? → A: Full login with owner, manager and staff roles all enforced.
 - Q: Which invoice languages must be read in the MVP? → A: English, bilingual (Arabic plus English) and Arabic-only invoices are all required.
 - Q: What weekly owner-effort target should the demo show? → A: At most 15 minutes and 25 taps or replies per simulated week.
+- Q: Which country and currency does the product assume? → A: None is fixed. Country and currency are configurable per business; the default is Egypt (EGP, VAT 14%). Oman and other countries are available as alternative profiles.
 
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Get warned before stock runs out and approve a purchase order in one tap (Priority: P1)
 
-The owner receives a message such as "Milk will run out Thursday evening. Order 40 L from Al Noor Dairy (arrives Wednesday), OMR 36.000? [Approve] [Edit] [Reject]". The Stock Agent keeps stock levels current from sales and deliveries, forecasts demand per item, works out days of cover, and drafts purchase orders grouped by supplier early enough to beat the supplier's lead time. Suspicious orders (price spike, duplicate, unit mismatch) are held and the owner is asked.
+The owner receives a message such as "Milk will run out Thursday evening. Order 40 L from Al Noor Dairy (arrives Wednesday), EGP 1,800.00? [Approve] [Edit] [Reject]". The Stock Agent keeps stock levels current from sales and deliveries, forecasts demand per item, works out days of cover, and drafts purchase orders grouped by supplier early enough to beat the supplier's lead time. Suspicious orders (price spike, duplicate, unit mismatch) are held and the owner is asked.
 
 **Why this priority**: Stockouts and waste are the most visible daily losses for the target businesses, and this flow shows the full plan → check → approve → execute → verify loop.
 
@@ -55,7 +56,7 @@ The owner receives a message such as "Milk will run out Thursday evening. Order 
 
 ### User Story 2 - Capture supplier invoices and keep the books correct (Priority: P1)
 
-The owner forwards an invoice photo or PDF. The Accountant Agent reads the supplier, number, dates, lines, VAT and total, checks the arithmetic, checks for duplicates and date problems, matches it against the purchase order and delivery, and records it in the books with balanced entries. Anything uncertain becomes a specific one-tap question, e.g., "This receipt's total (OMR 52.500) does not equal its lines plus VAT (OMR 50.400). [Use 52.500] [Use 50.400] [Retake photo]".
+The owner forwards an invoice photo or PDF. The Accountant Agent reads the supplier, number, dates, lines, VAT and total, checks the arithmetic, checks for duplicates and date problems, matches it against the purchase order and delivery, and records it in the books with balanced entries. Anything uncertain becomes a specific one-tap question, e.g., "This receipt's total (EGP 1,150.00) does not equal its lines plus VAT (EGP 1,140.00). [Use 1,150.00] [Use 1,140.00] [Retake photo]".
 
 **Why this priority**: Correct books underpin every figure the other assistants use; without them the cash forecast and stock valuation are wrong.
 
@@ -277,7 +278,7 @@ Nice-to-have capabilities: VAT summary per period with supporting invoice list a
   - **Staff**: may only record deliveries and waste; sees no financial figures.
 - **FR-049a**: Any attempt to act beyond a role's permissions MUST be refused and logged in the audit log. Each Telegram chat MUST be linked to exactly one user, and requests sent there MUST follow that user's role.
 - **FR-050**: Each business's data MUST be isolated from every other business.
-- **FR-051**: Amounts MUST support 3 decimal places (OMR default) and be configurable for other GCC currencies; VAT rate and filing period MUST be configurable (Oman default 5%).
+- **FR-051**: Country and currency MUST be configurable per business and changeable by the owner; no country is built in. The default profile is Egypt: currency EGP (2 decimal places), VAT 14% filed monthly, Friday–Saturday weekend, Egyptian public holidays and Ramadan. Amounts MUST use the chosen currency's own number of decimal places (e.g. 2 for EGP, 3 for OMR). VAT rate, filing period, weekend days, public holidays and tax registration number format MUST come from the country profile and be editable. Changing the currency MUST be refused once any financial record exists, because the MVP does not convert between currencies.
 - **FR-052**: The system MUST ship with a sample cafe dataset: 3 months of sales, 20 items, 5 suppliers, matching bank transactions, and sample supplier invoices in English, bilingual and Arabic-only forms.
 
 **Nice to have (P3)**
@@ -333,10 +334,11 @@ Nice-to-have capabilities: VAT summary per period with supporting invoice list a
 - Owner approvals use a simulated in-dashboard chat panel plus a real Telegram bot (see Clarifications); WhatsApp, email to suppliers, and live bank feeds are not required for the MVP.
 - "Sending" a purchase order or payment reminder in the MVP means recording it as sent in the approval channel; no real supplier or customer is contacted.
 - Sales and bank data come from the seeded sample dataset or file upload; live connections to point-of-sale systems and banks are out of scope for the MVP.
-- Default thresholds are configurable: confidence high 0.90 / low 0.60, price change 15%, stock count variance 5%, approval timeout 4 hours, journal value limit OMR 200.000; forecast-error thresholds are set per item during tuning.
+- Default thresholds are configurable: confidence high 0.90 / low 0.60, price change 15%, stock count variance 5%, approval timeout 4 hours, journal value limit EGP 10,000.00 (in the business currency; scaled per country profile); forecast-error thresholds are set per item during tuning.
 - The manual bookkeeping comparison for SC-006 is a configurable estimate of 6 hours per week for a cafe of this size (owner-adjustable); it is a stated assumption, not a measured value.
 - Stale bank data means older than one business day.
 - Single business (tenant) for the demo, seeded with one owner, one manager and one staff user; multi-business onboarding is out of scope.
 - Default chart of accounts is a standard small-business template; customisation is not required for the MVP.
-- Local calendar defaults to Oman (Friday–Saturday weekend, Omani public holidays, Ramadan).
+- Local calendar comes from the country profile and defaults to Egypt (Friday–Saturday weekend, Egyptian public holidays, Ramadan). Other profiles (e.g. Oman, UAE, Saudi Arabia) can be selected in settings.
+- Egypt's electronic invoicing and e-receipt systems (Egyptian Tax Authority) are out of scope for the MVP; the suite prepares VAT figures but does not submit them.
 - English is the default language.

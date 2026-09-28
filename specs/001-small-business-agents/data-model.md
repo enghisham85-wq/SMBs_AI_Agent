@@ -6,7 +6,7 @@ Conventions (apply to every entity unless stated):
 
 - `id`: UUID primary key. `business_id`: FK → Business on every row (tenant isolation, FR-050).
 - `created_at`, `updated_at`: business-clock timestamps (FR-012a), not wall-clock.
-- **Money** = `amount_minor` (integer) + `currency` (ISO 4217). OMR exponent 3. Never floats (R3).
+- **Money** = `amount_minor` (integer) + `currency` (ISO 4217). The number of decimal places (exponent) comes from the ISO 4217 table, e.g. EGP 2 (piastres), OMR 3 (baisa). Default currency EGP. Never floats (R3).
 - **Quantity** = `Decimal(18,4)` + `unit` code from the item's unit set.
 - `confidence`: decimal 0–1. `source`: enum of where a value came from (`pos_import`, `csv_upload`, `manual`, `extraction`, `agent`, `seed`, `chaos`).
 - Written-by column shows which agent owns writes; other agents change it only via events (FR-044).
@@ -19,13 +19,17 @@ Conventions (apply to every entity unless stated):
 | Field | Type | Rules |
 |---|---|---|
 | name | text | required |
-| currency | text | default `OMR` |
-| country | text | default `OM` |
+| country | text | ISO 3166 code; default `EG`; selects a CountryProfile; owner can change at any time (new values apply from that date forward) |
+| currency | text | ISO 4217 code; default from the profile (`EGP`); owner can change **only while no financial record exists** (no currency conversion in the MVP), otherwise 409 `currency_locked` |
 | vat_registered | bool | |
-| vat_rate | decimal | default 0.05 (FR-051) |
-| vat_period | enum `monthly`/`quarterly` | |
-| weekend_days | int[] | default [5,6] (Fri, Sat) |
-| min_cash_buffer | Money | owner-only edit |
+| vat_rate | decimal | default from the profile (EG 0.14); editable; a change applies to invoices dated from then on |
+| vat_period | enum `monthly`/`quarterly` | default from the profile (EG `monthly`) |
+| weekend_days | int[] | ISO weekday numbers (Mon=1 … Sun=7); default from the profile (EG [5,6] = Fri, Sat) |
+| tax_id_pattern | text (regex) | default from the profile (EG 9-digit tax registration number); used by `supplier_vat_validity` |
+| min_cash_buffer | Money | owner-only edit; seed default EGP 50,000.00 |
+
+### CountryProfile (reference data, not per business)
+Stored as JSON files `backend/app/seed/countries/<code>.json`, loaded at startup. Fields: `code`, `name_en`, `name_ar`, `currency`, `vat_rate`, `vat_period`, `weekend_days`, `tax_id_pattern`, `default_date_format` (`DMY` for EG), `public_holidays` (fixed-date list plus Islamic holidays computed from the Hijri calendar, with an optional per-year override list for moon-sighting dates), `ramadan_source` (`computed` or override dates), `money_defaults` (`min_cash_buffer`, `journal_value_limit`, `po_auto_approve_limit` in that currency), `seed_price_factor` (multiplier from the EGP seed price list). MVP ships `EG` (default), `OM`, `AE`, `SA`. Choosing a profile copies its values into the Business row, where the owner can then edit each one.
 | demo_mode | bool | enables BusinessClock simulation |
 
 ### User
@@ -40,7 +44,7 @@ Conventions (apply to every entity unless stated):
 | active | bool | |
 
 ### Setting (key/value per business)
-Thresholds and limits with defaults: `price_change_pct=15`, `stock_variance_pct=5`, `approval_timeout_hours=4`, `journal_value_limit=OMR 200.000` (journal entries above it get the independent second check), `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off), `reminder_auto_approve` enum `off`/`polite_only` (default `off`; `polite_only` lets level-1 reminders send without approval, levels 2–3 always need it), `manual_bookkeeping_hours_per_week=6` (comparison figure for SC-006). Owner-only edit; changes audited.
+Thresholds and limits with defaults: `price_change_pct=15`, `stock_variance_pct=5`, `approval_timeout_hours=4`, `journal_value_limit` (default from the country profile, EG = EGP 10,000.00; journal entries above it get the independent second check), `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off), `reminder_auto_approve` enum `off`/`polite_only` (default `off`; `polite_only` lets level-1 reminders send without approval, levels 2–3 always need it), `manual_bookkeeping_hours_per_week=6` (comparison figure for SC-006). Owner-only edit; changes audited.
 
 ### BusinessClock
 | Field | Type | Rules |

@@ -4,7 +4,7 @@ Base path `/api/v1`. JSON over HTTPS. Session cookie auth (R14); state-changing 
 
 **Common rules**
 
-- Money in responses: `{ "amount_minor": 36000, "currency": "OMR", "display": "36.000" }`.
+- Money in responses: `{ "amount_minor": 180000, "currency": "EGP", "decimals": 2, "display": "EGP 1,800.00" }`. The currency is the business's configured currency (default EGP); clients must use `decimals`, never assume a fixed number.
 - Every figure-bearing response includes `data_as_of` (object of source → timestamp), satisfying FR-046.
 - Errors: `{ "error": { "code": "...", "message_en": "...", "message_ar": "..." } }`. `403 permission_denied` is always audit-logged (FR-049a).
 - Role column: minimum role allowed (`staff` < `manager` < `owner`). Staff never receive money fields.
@@ -26,6 +26,14 @@ Base path `/api/v1`. JSON over HTTPS. Session cookie auth (R14); state-changing 
 | GET | `/clock` | staff | `{mode, current_date, last_run_date, advancing}` |
 | POST | `/clock/advance` | owner | body `{days: 1}` or `{to_date}`; runs skipped days' jobs in order (FR-012a); 409 if already advancing |
 | POST | `/demo/reset` | owner | reload sample cafe seed (FR-052) |
+
+## Business and country
+
+| Method | Path | Role | Purpose |
+|---|---|---|---|
+| GET | `/business` | manager | country, currency and decimals, VAT rate and period, weekend days, tax id pattern, this year's holidays |
+| GET | `/countries` | manager | available country profiles (EG default, OM, AE, SA) |
+| PATCH | `/business` | owner | change country (re-applies profile values from today forward) or any single field; `currency` change → 409 `currency_locked` once financial records exist |
 
 ## Home
 

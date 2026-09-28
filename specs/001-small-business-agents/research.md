@@ -20,9 +20,9 @@ The repository is empty (greenfield), so every technical choice below was made i
 
 ## R3. Storage and money representation
 
-- **Decision**: SQLAlchemy 2.0 ORM + Alembic migrations. SQLite (WAL mode) for the demo; schema kept PostgreSQL-compatible. All money stored as integer **minor units** (baisa for OMR, 1/1000) with a currency code; quantities stored as `Decimal` with an explicit unit.
+- **Decision**: SQLAlchemy 2.0 ORM + Alembic migrations. SQLite (WAL mode) for the demo; schema kept PostgreSQL-compatible. All money stored as integer **minor units** (piastres for EGP, 1/100; baisa for OMR, 1/1000) with a currency code; the number of decimals per currency comes from an ISO 4217 table. Quantities stored as `Decimal` with an explicit unit.
 - **Concurrency**: API requests, Telegram callbacks, event handlers and the daily run share one process. Every SQLite connection sets `busy_timeout` (5 s), and all commits go through one process-wide `asyncio.Lock` (`write_session()`), so writes are serialised instead of failing with "database is locked". LangGraph checkpoints use a separate SQLite file. The lock is skipped on PostgreSQL.
-- **Rationale**: One file database makes the demo reset (`seed` → known state) instant and reliable; integer minor units remove floating-point rounding errors that would break balanced-entry and arithmetic checks (FR-033, FR-035). 3-decimal OMR and 2-decimal AED/SAR handled by per-currency exponent (FR-051).
+- **Rationale**: One file database makes the demo reset (`seed` → known state) instant and reliable; integer minor units remove floating-point rounding errors that would break balanced-entry and arithmetic checks (FR-033, FR-035). 2-decimal currencies (EGP default, AED, SAR) and 3-decimal ones (OMR, KWD) are handled by the per-currency exponent (FR-051).
 - **Alternatives considered**: PostgreSQL from day one (extra setup for judges); floats (unacceptable for accounting); `Decimal` columns for money (works, but integer minor units are simpler to sum and compare exactly).
 
 ## R4. LLM provider, models and call patterns
@@ -65,7 +65,7 @@ The repository is empty (greenfield), so every technical choice below was made i
   2. **Safe fallback**: average of the last 4 same weekdays (spec FR-020), range = min/max of those 4.
   Switch to fallback when rolling 7-day MAPE exceeds the item's threshold; restore gradually (FR-006).
 - **Rationale**: Explainable, fast on 20 items × 3 months, and the fallback is exactly the method named in the spec.
-- **Calendar**: Oman defaults — Friday–Saturday weekend, public-holiday table seeded for the demo year, Ramadan dates computed with `hijridate` (Umm al-Qura).
+- **Calendar**: from the business's country profile (research R18); default Egypt — Friday–Saturday weekend, Egyptian fixed-date holidays plus Hijri-based Islamic holidays, Ramadan dates computed with `hijridate` (Umm al-Qura) with per-year override dates for local moon sighting.
 - **Alternatives considered**: Prophet (heavy dependency), LLM-based forecasting (non-deterministic, untestable).
 
 ## R9. Cash forecasting
@@ -129,6 +129,13 @@ The repository is empty (greenfield), so every technical choice below was made i
 - **Testing**: graphs compiled with an in-memory checkpointer (`InMemorySaver`) in unit tests; interrupts tested by asserting the `__interrupt__` payload and resuming with `Command(resume=...)`. Optional LangSmith tracing only if an API key is configured (off by default; no business data leaves the tenant otherwise).
 - **Rationale**: The user requires LangGraph. It also fits the harness naturally: explicit nodes and conditional edges mirror the lifecycle, and checkpointed `interrupt()` is exactly the human-in-the-loop pause the spec needs.
 - **Alternatives considered**: hand-written pipeline classes (the original R12 design — superseded); LangChain `AgentExecutor`/ReAct agents (open-ended tool loops are harder to verify and would weaken the deterministic checks); Claude Managed Agents (hosted loop, but approval pauses and local data would be harder to control for this demo).
+
+## R18. Country and currency profiles (default Egypt)
+
+- **Decision**: No country is built into the code. A **CountryProfile** JSON file per country (`seed/countries/EG.json`, `OM.json`, `AE.json`, `SA.json`) holds currency, VAT rate and period, weekend days, public-holiday rules (fixed dates plus Hijri-calendar dates with per-year overrides), Ramadan source, tax registration number pattern, default date format and money defaults (cash buffer, journal limit). Choosing a profile copies its values into the Business row, where the owner can edit each one. The default profile is **Egypt**: EGP (2 decimals), VAT 14% filed monthly, Friday–Saturday weekend, DMY dates, 9-digit tax registration number.
+- **Changing it**: The owner can switch country or edit any value at any time; new values apply from the current business date and never rewrite posted records. The **currency** can only change before any financial record exists, because the MVP stores amounts in one currency and does not convert; afterwards the API returns `currency_locked`. The demo seed takes `--country` and scales its EGP price list by the profile's `seed_price_factor`.
+- **Out of scope**: Egypt's Tax Authority e-invoicing and e-receipt submission; the suite prepares VAT figures only.
+- **Alternatives considered**: hard-coded Oman defaults (the original design; rejected, it ties the product to one market); multi-currency ledger with FX conversion (correct long-term, too large for the MVP).
 
 ## R16. Performance and scale
 
