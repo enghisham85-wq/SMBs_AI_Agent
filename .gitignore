@@ -29,3 +29,5 @@ Thumbs.db
 frontend/test-results/
 frontend/playwright-report/
 .venv/
+
+backend/openapi.json.bak

@@ -10,6 +10,7 @@ MODULES: list[str] = [
     "app.graphs.daily_run",
     "app.seed.feed",
     "app.agents.stock.wiring",
+    "app.agents.accountant.wiring",
 ]
 
 
