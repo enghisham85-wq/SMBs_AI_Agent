@@ -102,7 +102,7 @@ purchase_order_id, received_on, received_by, lines (item_id, qty_received, unit_
 ## 3. Sales and cash
 
 ### Sale
-date, lines (sold_item_id, qty, amount), amount_total, payment_method enum (`cash`, `card`, `transfer`, `credit`), source. Daily import grouped by date; a business day with no sales for an open day → `sales_data_gap` incident.
+date, lines (sold_item_id, qty, amount), amount_total, payment_method enum (`cash`, `card`, `transfer`, `credit`), source, import_batch_id?, row_hash? (dedupe within a batch; a file whose sha256 was already imported is rejected). Sources: demo feed (`seed`), CSV upload (`csv_upload`) or daily manual entry (`manual`); the demo feed skips dates that already have uploaded or manual sales. Daily import grouped by date; a business day with no sales for an open day → `sales_data_gap` incident.
 
 ### BankAccount
 name, bank, currency, is_cash_on_hand.

@@ -51,6 +51,9 @@ Base path `/api/v1`. JSON over HTTPS. Session cookie auth (R14); state-changing 
 | PATCH | `/purchase-orders/{id}` | manager | edit draft lines (re-runs checks) |
 | POST | `/purchase-orders/{id}/deliveries` | staff | record delivery checklist/photo (multipart) |
 | GET | `/suppliers` / `/suppliers/{id}/scorecard` | manager | supplier list / P3 scorecard |
+| POST | `/sales/import` | manager | CSV upload (multipart, optional column mapping) → `{batch_id, imported, skipped_duplicates, errors[{row, reason}]}`; same file twice → 409 |
+| POST | `/sales/manual` | manager | daily manual entry `{date, lines:[{item_id, qty, amount}], payment_method}` |
+| GET | `/sales?date=` | manager | a day's sales with source (`seed`, `csv_upload`, `manual`) |
 
 ## Cash
 

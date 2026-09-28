@@ -88,7 +88,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - **BankAccount**: `name`, `bank`, `currency`, `is_cash_on_hand`.
   - **BankTransaction**: `account_id`, `date`, signed Money `amount`, `description`, `external_ref?`, `import_batch_id`, `match_status` enum `unmatched`/`suggested`/`auto_matched`/`confirmed`/`excluded`, `matched_type`/`matched_id?`, `match_confidence?`.
   - **BankBalanceSnapshot**: `account_id`, `as_of`, `balance`.
-  - **Sale**: `date`, `lines` (sold_item_id, qty, amount), `amount_total`, `payment_method` enum `cash`/`card`/`transfer`/`credit`, `source`.
+  - **Sale**: `date`, `lines` (sold_item_id, qty, amount), `amount_total`, `payment_method` enum `cash`/`card`/`transfer`/`credit`, `source`, `import_batch_id?`, `row_hash?`.
   - **Obligation**: `type` enum `rent`/`salary`/`loan`/`tax`/`utility`/`subscription`/`other`, `description`, `amount`, `next_due_date`, `recurrence` `monthly`/`quarterly`/`annual`/`once`, `is_confirmed`, `last_seen_transaction_id?`.
 - [ ] T015 [P] Create harness models in `backend/app/models/harness.py`:
   - **Action**: `agent` enum `stock`/`cashflow`/`accountant`/`harness`; `type`; `graph_name`; `graph_thread_id`; `plan` JSON; `risk_class` enum `read_only`/`reversible`/`irreversible_external`; `stage` enum `planned`/`prechecked`/`awaiting_approval`/`executing`/`verifying`/`completed`/`rolled_back`/`retrying`/`escalated`/`failed`; `dry_run`; `attempt` (1–2); `parent_action_id?`; `result`; `verifier_verdict?`; `incident_id?`.
@@ -218,7 +218,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - **Bank transactions**: card settlements (T+1), cash deposits (every 2–3 days), obligation payments on their due dates (rent, salaries, utilities), customer payments for open receivables following each customer's on-time profile, and payments for supplier invoices on their scheduled date. Ends with one `BankBalanceSnapshot` per account.
   - **Registration**: registers `feed_sales(date)` into the daily_run step `import_sales` and `feed_bank(date)` into `bank_import` (T036). No-op when `DEMO_MODE` is false.
   - **Idempotent per date**: skips if that date's feed rows already exist, so re-running an advance never duplicates data.
-  - **Overrides for Chaos**: `overrides` lets injectors change a day's feed, e.g. `{"sales_multiplier": {item_id: 3}}` for the demand spike (scenario 4), `{"skip_bank": true}` for the missing bank feed day (scenario 6), or `{"extra_outflow": Money}` for the cash crunch (scenario 8). They are stored per date in a `FeedOverride` row, and T112 uses them instead of mutating data directly.
+  - **Overrides for Chaos**: `overrides` lets injectors change a day's feed, e.g. `{"sales_multiplier": {item_id: 3}}` for the demand spike (scenario 4), `{"skip_bank": true}` for the missing bank feed day (scenario 6), or `{"extra_outflow": Money}` for the cash crunch (scenario 8). They are stored per date in a `FeedOverride` row, and T113 uses them instead of mutating data directly.
   - **Test** in `backend/tests/unit/test_feed.py`:
     - the same date twice gives identical output
     - advancing 7 days creates sales and bank transactions for every day, with no duplicates on a repeated advance
@@ -332,11 +332,38 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `POST /purchase-orders/{id}/deliveries` (staff, multipart photo saved under FILES_DIR by sha256)
   - `GET /suppliers`
 - [ ] T062 [US1] Add the Telegram `/delivery <po>` photo caption handler in `backend/app/approvals/telegram_bot.py`, which attaches the photo to the PO's delivery (staff role).
-- [ ] T063 [P] [US1] Build `frontend/src/pages/Stock.tsx` with components `frontend/src/components/StockTable.tsx` and `frontend/src/components/ForecastChart.tsx`:
+- [ ] T063 [US1] Implement sales import and manual entry, as the real-data alternative to the demo feed (T043):
+  - **Service** in `backend/app/agents/stock/sales_import.py`:
+    - `parse_csv(file, mapping)`: columns `date`, `item` (matched on `name_en`, `name_ar` via `normalize_arabic_name`, or item id), `qty`, `amount`, `payment_method` (enum `cash`/`card`/`transfer`/`credit`). Arabic-Indic digits are normalised.
+    - Row validation:
+      - the date is not after `BusinessClock.today()`
+      - `qty` > 0
+      - `amount` ≥ 0 in the business currency (integer minor units)
+      - the payment method is valid
+      - the item is known
+    - Invalid rows are returned with row number and reason, and are not imported.
+    - Deduplicates on `row_hash` (date + item + qty + amount + payment method) within the same `import_batch_id`, and rejects a file whose sha256 was already imported.
+  - **ActionSpec** `import_sales` (reversible) in `backend/app/agents/stock/action_specs.py`:
+    - `verify` checks that the imported row count and total amount equal the valid rows in the file
+    - `compensate` deletes the batch's Sale rows and their StockMovements
+    - if a date is already processed (≤ `last_run_date`), it then runs `stock_update_graph` for that date so stock is deducted and the `sales_data_gap` incident for that date is resolved
+  - **Endpoints** in `backend/app/api/v1/sales.py` (manager; staff never see amounts):
+    - `POST /sales/import` (multipart CSV + optional column mapping) returns `{batch_id, imported, skipped_duplicates, errors[]}`
+    - `POST /sales/manual` takes `{date, lines:[{item_id, qty, amount}], payment_method}` for daily entry (`source = manual`)
+    - `GET /sales?date=` lists a day's sales with source
+  - **Demo-feed interplay**: `feed_sales(date)` in `backend/app/seed/feed.py` skips a date that already has `csv_upload` or `manual` sales, so real and simulated data never double up.
+  - **Test** in `backend/tests/integration/test_sales_import.py`:
+    - a valid CSV (including Arabic item names and digits) imports and deducts stock
+    - bad rows are reported and not imported
+    - re-uploading the same file is rejected
+    - manual entry for a gap day resolves the `sales_data_gap` incident
+    - the demo feed does not add sales for an imported date
+- [ ] T064 [P] [US1] Build `frontend/src/pages/Stock.tsx` with components `frontend/src/components/StockTable.tsx` and `frontend/src/components/ForecastChart.tsx`:
   - items with days of cover, reorder status and expiry risk
   - per-item forecast vs actual chart with low/high band and method label
   - open POs and expected deliveries
   - a staff-friendly delivery checklist and waste form
+  - a "Sales" tab for managers with CSV upload (column mapping preview and per-row error list) and a manual daily entry form, calling the T063 endpoints
 
 **Checkpoint**: The Stock story works end to end on its own, with the dashboard chat and Telegram approvals.
 
@@ -350,7 +377,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Tests for User Story 2
 
-- [ ] T064 [P] [US2] Write acceptance tests in `backend/tests/integration/test_us2_books.py` (replay mode) for spec US2 scenarios 1–6:
+- [ ] T065 [P] [US2] Write acceptance tests in `backend/tests/integration/test_us2_books.py` (replay mode) for spec US2 scenarios 1–6:
   - fields with per-field confidence and the original file linked
   - arithmetic mismatch: one re-extract, then a question with the field highlighted
   - duplicate by (supplier, number) and by (supplier, amount, date)
@@ -359,32 +386,32 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - bank matches auto-applied above 0.90 and the rest listed
 
   Also cover Arabic digits normalised, the bilingual total disagreement conflict, and a supplier matched from its Arabic name.
-- [ ] T065 [P] [US2] Write the live accuracy eval in `backend/tests/eval/test_extraction_accuracy.py` (marker `llm_live`). It scores field accuracy separately for English, bilingual and Arabic-only groups against ground truth, and asserts each group is ≥ 90% (SC-008).
+- [ ] T066 [P] [US2] Write the live accuracy eval in `backend/tests/eval/test_extraction_accuracy.py` (marker `llm_live`). It scores field accuracy separately for English, bilingual and Arabic-only groups against ground truth, and asserts each group is ≥ 90% (SC-008).
 
 ### Implementation for User Story 2
 
-- [ ] T066 [P] [US2] Create books models in `backend/app/models/books.py`:
+- [ ] T067 [P] [US2] Create books models in `backend/app/models/books.py`:
   - **Document**: file path, mime, `sha256`; `channel` enum `dashboard`/`telegram`; `uploaded_by`; `language_detected` enum `en`/`ar`/`bilingual`; `status` enum `received`/`extracting`/`extracted`/`needs_review`/`posted`/`rejected`/`duplicate`.
   - **Extraction**: `attempt` 1 or 2; `fields` JSON; `document_confidence`; `checks`; `verifier_verdict?`.
   - **PayableInvoice**: lines; `status` enum `draft`/`held`/`posted`/`paid`/`void`; `hold_reason?`; `match_result`; guard on (supplier_id, normalised invoice_number).
   - **ReceivableInvoice**: `status` enum `open`/`partially_paid`/`paid`/`void`; `late_payment_history_score`.
   - **JournalEntry**: `status` enum `posted`/`quarantined`/`reversed`; "never edited in place"; reversal creates an opposite entry.
   - **JournalLine**: `debit_minor`, `credit_minor`.
-- [ ] T067 [US2] Add the Alembic migration `backend/alembic/versions/0003_books.py`.
-- [ ] T068 [P] [US2] Build the sample invoice generator in `backend/app/seed/invoices/generate.py`:
+- [ ] T068 [US2] Add the Alembic migration `backend/alembic/versions/0003_books.py`.
+- [ ] T069 [P] [US2] Build the sample invoice generator in `backend/app/seed/invoices/generate.py`:
   - Renders PDFs and photo-style JPEGs with reportlab, arabic-reshaper and python-bidi.
   - Three groups: English, bilingual and Arabic-only (Arabic-Indic digits).
   - Faulty variants: wrong total, duplicate number, DD/MM ambiguous date, bilingual total mismatch, missing VAT number, and full-quantity invoice vs short delivery.
   - Writes ground-truth JSON next to each file in `backend/app/seed/invoices/out/`.
   - Hooks into the sample-cafe seed.
-- [ ] T069 [P] [US2] Write the extraction prompt in `backend/app/llm/prompts/invoice_extraction.md`. It asks for canonical values (ISO dates, Western digits, decimal point) plus `raw_text` as printed, per-field confidence, `date_format_observed`, and both language versions of supplier name and total on bilingual invoices. It includes the supplier hint list and active `parsing_hint` rules.
-- [ ] T070 [US2] Implement extraction in `backend/app/agents/accountant/extraction.py`:
+- [ ] T070 [P] [US2] Write the extraction prompt in `backend/app/llm/prompts/invoice_extraction.md`. It asks for canonical values (ISO dates, Western digits, decimal point) plus `raw_text` as printed, per-field confidence, `date_format_observed`, and both language versions of supplier name and total on bilingual invoices. It includes the supplier hint list and active `parsing_hint` rules.
+- [ ] T071 [US2] Implement extraction in `backend/app/agents/accountant/extraction.py`:
   - `extract(document, attempt)` sends a PDF `document` block or an image block with the prompt to `LLMClient.parse(role="extraction", output_model=InvoiceExtraction)`.
   - Post-processing: `normalize_digits` on raw_text vs value; bilingual name and total agreement (a disagreement becomes a conflict check); apply the supplier `date_format_hint`.
   - Confidence = model confidence × penalties (arithmetic, date sanity, unknown supplier, bilingual disagreement). Document confidence = minimum over required fields.
   - `LLMRefusal` is handled as low confidence plus an owner question.
-- [ ] T071 [P] [US2] Implement supplier matching in `backend/app/agents/accountant/supplier_match.py`: VAT number first, then exact normalised alias (Arabic or English), then fuzzy ratio ≥ 0.9, otherwise unknown. Creates a SupplierAlias on owner confirmation.
-- [ ] T072 [P] [US2] Implement books checks in `backend/app/agents/accountant/checks.py`:
+- [ ] T072 [P] [US2] Implement supplier matching in `backend/app/agents/accountant/supplier_match.py`: VAT number first, then exact normalised alias (Arabic or English), then fuzzy ratio ≥ 0.9, otherwise unknown. Creates a SupplierAlias on owner confirmation.
+- [ ] T073 [P] [US2] Implement books checks in `backend/app/agents/accountant/checks.py`:
   - `extraction_arithmetic`: lines sum to subtotal; subtotal + VAT = total; VAT = rate × base, within 1 minor unit.
   - `duplicate_invoice`: same supplier + number, or same supplier + total + date; also a sha256 duplicate file.
   - `date_sanity`: future, more than 1 year old, or DMY/MDY ambiguous.
@@ -392,29 +419,29 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `three_way_match`: invoice vs PO vs delivery quantities and prices.
   - `supplier_vat_validity`: VAT charged without a valid number.
   - `missing_po_or_delivery`.
-- [ ] T073 [P] [US2] Implement posting in `backend/app/agents/accountant/posting.py`:
+- [ ] T074 [P] [US2] Implement posting in `backend/app/agents/accountant/posting.py`:
   - journal builders for a payable invoice (expense or inventory + VAT input / payable)
   - daily sales summary (bank or cash / sales + VAT output)
   - stock purchases (inventory account)
   - supplier payment
   - Every builder asserts Σdebit = Σcredit before returning.
   - `reverse(entry)`.
-- [ ] T074 [P] [US2] Implement bank reconciliation in `backend/app/agents/accountant/matching.py`:
+- [ ] T075 [P] [US2] Implement bank reconciliation in `backend/app/agents/accountant/matching.py`:
   - `score(txn, candidate)` from amount equality, date proximity, and reference or name similarity (after Arabic normalisation), giving 0–1.
   - Auto-match at or above the high threshold, suggest between the thresholds, leave unmatched below.
   - `reconciliation_status()` returns % matched and the unmatched list.
-- [ ] T075 [P] [US2] Implement expense classification in `backend/app/agents/accountant/classification.py`: first active `classification` rules, then supplier history, then `LLMClient.parse(role="classification", output_model=ExpenseClassification)`. It validates that `account_code` exists and routes by confidence band. Prompt in `backend/app/llm/prompts/classification.md`.
-- [ ] T076 [US2] Implement accountant ActionSpecs in `backend/app/agents/accountant/action_specs.py`:
+- [ ] T076 [P] [US2] Implement expense classification in `backend/app/agents/accountant/classification.py`: first active `classification` rules, then supplier history, then `LLMClient.parse(role="classification", output_model=ExpenseClassification)`. It validates that `account_code` exists and routes by confidence band. Prompt in `backend/app/llm/prompts/classification.md`.
+- [ ] T077 [US2] Implement accountant ActionSpecs in `backend/app/agents/accountant/action_specs.py`:
   - **`post_invoice`** (reversible): preconditions are the checks; verify that the entry is balanced, the invoice is `posted` and there is no duplicate; compensate by reversal. `verifier_packet` applies when total > `journal_value_limit`.
   - **`post_sales_summary`**.
   - **`apply_bank_match`** (reversible).
   - **`quarantine_entry`**.
-- [ ] T077 [US2] Build the accountant graphs in `backend/app/agents/accountant/graphs.py`:
+- [ ] T078 [US2] Build the accountant graphs in `backend/app/agents/accountant/graphs.py`:
   - **`document_graph`**: extract (attempt 1) → normalise and checks → if the arithmetic fails, re-extract (attempt 2) → if still failing or the band is `ask`, `interrupt()` with a question, e.g. "This receipt's total (OMR 52.500) does not equal its lines plus VAT (OMR 50.400). [Use 52.500] [Use 50.400] [Retake photo]" → classify → `post_invoice` harness run. It publishes `invoice.posted` or `invoice.held`.
   - **`reconciliation_graph`**.
   - **`trial_balance_graph`**: a daily check that quarantines the entry causing an imbalance.
   - Register into the daily_run slot `trial_balance` and a new `reconcile` step after `bank_import`.
-- [ ] T078 [US2] Implement books endpoints in `backend/app/api/v1/books.py`:
+- [ ] T079 [US2] Implement books endpoints in `backend/app/api/v1/books.py`:
   - `POST /documents` (manager, multipart, returns 202 and starts `document_graph`)
   - `GET /documents?status=`
   - `GET /documents/{id}` (fields, raw text, confidence, checks, file URL)
@@ -422,8 +449,8 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `GET /reconciliation`
   - `POST /reconciliation/{bank_txn_id}/match`
   - `GET /reports/pnl?from&to` and `GET /reports/balance-sheet?as_of`, built from journal lines in `backend/app/agents/accountant/reports.py`
-- [ ] T079 [US2] Add the Telegram photo/PDF upload handler in `backend/app/approvals/telegram_bot.py`. For managers and above it creates a Document with channel `telegram` and starts `document_graph`, replying "Received, reading…" and then the result.
-- [ ] T080 [P] [US2] Build `frontend/src/pages/Books.tsx` with `frontend/src/components/DocumentDetail.tsx`:
+- [ ] T080 [US2] Add the Telegram photo/PDF upload handler in `backend/app/approvals/telegram_bot.py`. For managers and above it creates a Document with channel `telegram` and starts `document_graph`, replying "Received, reading…" and then the result.
+- [ ] T081 [P] [US2] Build `frontend/src/pages/Books.tsx` with `frontend/src/components/DocumentDetail.tsx`:
   - document inbox with extraction confidence
   - original file side by side with fields (low-confidence fields highlighted)
   - review queue
@@ -442,7 +469,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Tests for User Story 3
 
-- [ ] T081 [P] [US3] Write acceptance tests in `backend/tests/integration/test_us3_cash.py` for spec US3 scenarios 1–6:
+- [ ] T082 [P] [US3] Write acceptance tests in `backend/tests/integration/test_us3_cash.py` for spec US3 scenarios 1–6:
   - 30-day projection with lowest point and date
   - gap size, date and days-to-act
   - ranked actions with impact, risk and simulated forecast
@@ -454,51 +481,51 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Implementation for User Story 3
 
-- [ ] T082 [P] [US3] Create cash models in `backend/app/models/cash.py`:
+- [ ] T083 [P] [US3] Create cash models in `backend/app/models/cash.py`:
   - **CashForecastRun**: `generated_on`, `bank_data_as_of`, `low_confidence_reason?`, `lowest_balance`, `lowest_date`.
   - **CashForecast**: `scenario` enum `expected`/`pessimistic`/`optimistic`; `below_buffer`.
   - **ShortfallPlan** and **PlanAction**: `type` enum `chase_receivable`/`delay_payable`/`defer_po`/`move_expense`/`financing`; `rank`; `simulated_lowest_balance`.
   - **PurchasingBudget**: `week_start`, `amount`, `reason`, `tightened`.
   - **PaymentReminder**: `level` 1–3; `status` enum `scheduled`/`pending_approval`/`sent`/`cancelled_paid`/`cancelled_owner`.
   - **PaymentPromise**.
-- [ ] T083 [US3] Add the Alembic migration `backend/alembic/versions/0004_cash.py`.
-- [ ] T084 [P] [US3] Implement bank statement import in `backend/app/agents/accountant/bank_import.py`: CSV parser (date, description, amount or debit/credit, balance) with column mapping and currency check. It creates BankTransactions and a BankBalanceSnapshot, dedupes by (account, date, amount, description, external_ref), and publishes `customer_payment.received` when a matched receivable is paid.
-- [ ] T085 [P] [US3] Implement cash position in `backend/app/agents/cashflow/position.py`: per-account balances plus cash on hand, 7-day committed outflows, and freshness from the latest snapshot.
-- [ ] T086 [P] [US3] Implement projection in `backend/app/agents/cashflow/projection.py`:
+- [ ] T084 [US3] Add the Alembic migration `backend/alembic/versions/0004_cash.py`.
+- [ ] T085 [P] [US3] Implement bank statement import in `backend/app/agents/accountant/bank_import.py`: CSV parser (date, description, amount or debit/credit, balance) with column mapping and currency check. It creates BankTransactions and a BankBalanceSnapshot, dedupes by (account, date, amount, description, external_ref), and publishes `customer_payment.received` when a matched receivable is paid.
+- [ ] T086 [P] [US3] Implement cash position in `backend/app/agents/cashflow/position.py`: per-account balances plus cash on hand, 7-day committed outflows, and freshness from the latest snapshot.
+- [ ] T087 [P] [US3] Implement projection in `backend/app/agents/cashflow/projection.py`:
   - daily 30-day projection: opening + inflows − outflows
   - **Inflows**: Stock sales forecast × settlement lag per payment method; receivables by due date × on-time probability.
   - **Outflows**: payables per the recommended schedule; open and planned POs, deduplicated against invoices by `po_id`; obligations by recurrence.
   - Scenarios use P10/P50/P90 sales and pessimistic/expected receivable delays.
   - Outputs lowest balance and date, and below-buffer days.
-- [ ] T087 [P] [US3] Implement cash checks in `backend/app/agents/cashflow/checks.py`:
+- [ ] T088 [P] [US3] Implement cash checks in `backend/app/agents/cashflow/checks.py`:
   - `forecast_vs_actual` (identifies the wrong inflow or outflow line)
   - `bank_freshness`
   - `missing_recurring_obligation` (expected but not in the forecast or not seen in the bank)
   - `double_counting`
   - `unrealistic_inflow` (above the historical P95, which makes pessimistic the primary scenario)
-- [ ] T088 [P] [US3] Implement the shortfall plan in `backend/app/agents/cashflow/plan.py`: `detect_shortfall(run)` returns gap, date and days_to_act. `build_plan(run)` produces candidate actions, re-simulates the projection with each one, and ranks by gap closed ÷ risk. Financing is always ranked last.
-- [ ] T089 [P] [US3] Implement payables, reminders and budget:
+- [ ] T089 [P] [US3] Implement the shortfall plan in `backend/app/agents/cashflow/plan.py`: `detect_shortfall(run)` returns gap, date and days_to_act. `build_plan(run)` produces candidate actions, re-simulates the projection with each one, and ranks by gap closed ÷ risk. Financing is always ranked last.
+- [ ] T090 [P] [US3] Implement payables, reminders and budget:
   - `backend/app/agents/cashflow/payables.py`: early for a discount, on time, or end of terms when tight. It never goes beyond terms without owner instruction.
   - `backend/app/agents/cashflow/reminders.py`: escalating levels 1–3, with earlier starts for customers with late history, and promise tracking.
   - `backend/app/agents/cashflow/budget.py`: weekly purchasing budget, tightened when the pessimistic scenario breaches the buffer.
-- [ ] T090 [US3] Implement cash-flow ActionSpecs in `backend/app/agents/cashflow/action_specs.py`:
+- [ ] T091 [US3] Implement cash-flow ActionSpecs in `backend/app/agents/cashflow/action_specs.py`:
   - **`send_reminder`** (irreversible_external): the precondition re-checks the latest bank transactions and Accountant records. If paid, it cancels with `cancelled_paid` and informs the owner ("Customer Al Mazaya paid invoice INV-104 today, so I cancelled the reminder…"). Has a `verifier_packet`.
   - **`publish_budget`** (reversible): publishes `budget.updated`.
   - **`save_forecast_run`** (reversible).
-- [ ] T091 [US3] Build the cash graphs in `backend/app/agents/cashflow/graphs.py`:
+- [ ] T092 [US3] Build the cash graphs in `backend/app/agents/cashflow/graphs.py`:
   - **`cash_forecast_graph`**: freshness check → project → checks → save.
   - **`shortfall_plan_graph`**: detect → plan → owner message via `interrupt()`, e.g. "Heads up: cash drops to OMR 450 on 28 Oct…" with option buttons → publish `shortfall.predicted`.
   - **`balance_compare_graph`**.
   - **`reminders_graph`**.
   - Register into the daily_run slots `balance_compare`, `cash_forecast` and `reminders`.
-- [ ] T092 [US3] Implement cash endpoints in `backend/app/api/v1/cash.py`:
+- [ ] T093 [US3] Implement cash endpoints in `backend/app/api/v1/cash.py`:
   - `GET /cash/position`
   - `GET /cash/forecast?horizon=30d&scenario=`, with the buffer line, lowest point and confidence
   - `GET /cash/shortfall-plan` and `POST /cash/shortfall-plan/actions/{id}/simulate`
   - `GET /cash/receivables` and `GET /cash/payables` (ageing and schedule)
   - `POST /bank/statements` (manager, multipart CSV)
   - `GET/POST/PATCH /obligations` (write: owner)
-- [ ] T093 [P] [US3] Build `frontend/src/pages/Cash.tsx` with `frontend/src/components/CashChart.tsx` and `frontend/src/components/ShortfallPlan.tsx`:
+- [ ] T094 [P] [US3] Build `frontend/src/pages/Cash.tsx` with `frontend/src/components/CashChart.tsx` and `frontend/src/components/ShortfallPlan.tsx`:
   - 30-day chart with the buffer line and lowest-point marker
   - ranked actions with a "Simulate" toggle that overlays the post-action line
   - receivables and payables ageing tables
@@ -517,7 +544,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Tests for User Story 4
 
-- [ ] T094 [P] [US4] Write acceptance tests in `backend/tests/integration/test_us4_harness.py` for spec US4 scenarios 1–8:
+- [ ] T095 [P] [US4] Write acceptance tests in `backend/tests/integration/test_us4_harness.py` for spec US4 scenarios 1–8:
   - audit completeness
   - approval needed without an auto-approve rule
   - verifier disagreement escalates
@@ -529,27 +556,27 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Implementation for User Story 4
 
-- [ ] T095 [P] [US4] Implement self-calibration in `backend/app/harness/calibration.py`:
+- [ ] T096 [P] [US4] Implement self-calibration in `backend/app/harness/calibration.py`:
   - `record(agent, metric, value)` and rolling window evaluation.
   - When over threshold: set `degraded`, raise the confidence thresholds, lower `auto_approve_limit`, set `method_override`, and open an incident with the suspected cause.
   - On recovery, restore in steps (e.g. 25% per healthy day).
   - Writes AgentCalibrationHistory.
-- [ ] T096 [P] [US4] Implement incident analysis in `backend/app/harness/analysis.py`: on escalation or resolution, call `LLMClient.parse(role="incident", output_model=IncidentAnalysis)` then `RuleProposal`. Prompts are in `backend/app/llm/prompts/incident_analysis.md` and `backend/app/llm/prompts/rule_proposal.md`. The trigger is validated against per-kind JSON schemas in `backend/app/harness/rule_schemas.py`.
-- [ ] T097 [US4] Implement learned rules in `backend/app/harness/rules.py`:
+- [ ] T097 [P] [US4] Implement incident analysis in `backend/app/harness/analysis.py`: on escalation or resolution, call `LLMClient.parse(role="incident", output_model=IncidentAnalysis)` then `RuleProposal`. Prompts are in `backend/app/llm/prompts/incident_analysis.md` and `backend/app/llm/prompts/rule_proposal.md`. The trigger is validated against per-kind JSON schemas in `backend/app/harness/rule_schemas.py`.
+- [ ] T098 [US4] Implement learned rules in `backend/app/harness/rules.py`:
   - `propose(incident, proposal)` creates a `proposed` rule.
   - `approve`, `reject`, `edit` (new version) and `deactivate` are owner only.
   - `active_rules(agent, kind)` is cached and refreshed on `rule.activated`/`rule.deactivated`.
   - `apply_preconditions(spec, state)` is called by the `precheck` node in `harness/graph.py`.
   - `parsing_hint` rules (e.g. supplier date format DMY) feed the extraction prompt and `date_sanity`.
   - `times_applied` and `times_overridden` are counted.
-- [ ] T098 [US4] Wire rules and calibration into the harness:
+- [ ] T099 [US4] Wire rules and calibration into the harness:
   - update `backend/app/harness/graph.py` so `precheck` runs active rules and `finalize` records calibration metrics and triggers analysis for escalated actions
   - update `backend/app/harness/confidence.py` to read the live thresholds
-- [ ] T099 [US4] Implement approval timeouts and the digest:
+- [ ] T100 [US4] Implement approval timeouts and the digest:
   - `ApprovalService.expire_due()` in `backend/app/approvals/service.py`: marks `timed_out`, resumes the graph with the `safe_default` (never irreversible), and creates a new request with `urgency+1` and `reask_count+1`.
   - `backend/app/harness/digest.py` collects `act_flag` items for the daily digest message.
   - Register both in the daily_run slots `approval_timeouts` and `digest`.
-- [ ] T100 [US4] Implement harness and settings endpoints in `backend/app/api/v1/harness.py` and `backend/app/api/v1/settings.py`:
+- [ ] T101 [US4] Implement harness and settings endpoints in `backend/app/api/v1/harness.py` and `backend/app/api/v1/settings.py`:
   - `GET /harness/actions?live=true`, `GET /harness/actions/{id}` and the SSE `/harness/stream`
   - `GET /harness/incidents`
   - `GET /harness/rules`
@@ -557,13 +584,13 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `GET /harness/calibration`
   - `GET /audit-log` (owner)
   - `GET/PATCH /settings` (write: owner, audited `setting_changed`)
-- [ ] T101 [P] [US4] Build `frontend/src/pages/Harness.tsx` with components:
+- [ ] T102 [P] [US4] Build `frontend/src/pages/Harness.tsx` with components:
   - `frontend/src/components/PipelineView.tsx`: live node stages per action from `/harness/stream`.
   - `frontend/src/components/IncidentLog.tsx`: detection method and resolution.
   - `frontend/src/components/RulesPanel.tsx`: active and pending rules, with approve/edit/reject for the owner.
   - `frontend/src/components/CalibrationChart.tsx`: accuracy over time and current thresholds/limits.
   - An action detail drawer showing plan, checks, verifier verdict and audit trail.
-- [ ] T102 [P] [US4] Build `frontend/src/pages/Settings.tsx` (owner): thresholds, minimum cash buffer, auto-approve limit, approval timeout, users, and the Telegram link code.
+- [ ] T103 [P] [US4] Build `frontend/src/pages/Settings.tsx` (owner): thresholds, minimum cash buffer, auto-approve limit, approval timeout, users, and the Telegram link code.
 
 **Checkpoint**: All P1 stories are complete.
 
@@ -588,31 +615,31 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Tests for User Story 5
 
-- [ ] T103 [P] [US5] Write event contract tests in `backend/tests/contract/test_events.py`. Every event type in contracts/events.md is published with its required payload fields and envelope; handlers are idempotent on re-dispatch.
-- [ ] T104 [P] [US5] Write the milk end-to-end test in `backend/tests/integration/test_milk_e2e.py`, covering the spec "End-to-end example" steps 1–7 and asserting the state of all three agents after each step.
+- [ ] T104 [P] [US5] Write event contract tests in `backend/tests/contract/test_events.py`. Every event type in contracts/events.md is published with its required payload fields and envelope; handlers are idempotent on re-dispatch.
+- [ ] T105 [P] [US5] Write the milk end-to-end test in `backend/tests/integration/test_milk_e2e.py`, covering the spec "End-to-end example" steps 1–7 and asserting the state of all three agents after each step.
 
 ### Implementation for User Story 5
 
-- [ ] T105 [P] [US5] Implement cash-flow event handlers in `backend/app/agents/cashflow/handlers.py`:
+- [ ] T106 [P] [US5] Implement cash-flow event handlers in `backend/app/agents/cashflow/handlers.py`:
   - `po.drafted`: budget check → publish `budget.check_result`, and add a committed outflow
   - `po.approved_sent`: schedule the outflow
   - `invoice.posted`: replace the PO commitment and schedule payment
   - `invoice.held`: keep the PO amount
   - `customer_payment.received`: cancel reminders and re-forecast
-- [ ] T106 [P] [US5] Implement stock event handlers in `backend/app/agents/stock/handlers.py`:
+- [ ] T107 [P] [US5] Implement stock event handlers in `backend/app/agents/stock/handlers.py`:
   - `budget.check_result`: proceed, defer or reduce, or open a conflict
   - `budget.updated` and `shortfall.predicted`: defer non-critical orders; prioritise `is_critical`, then `margin_class=high` fast movers
   - `invoice.posted`: update `unit_cost`, and publish `price.changed` when the change exceeds the threshold
   - `invoice.held`: note the supplier issue and lower reliability
   - `stock_valuation.mismatch`: open a joint incident
-- [ ] T107 [P] [US5] Implement accountant event handlers in `backend/app/agents/accountant/handlers.py`:
+- [ ] T108 [P] [US5] Implement accountant event handlers in `backend/app/agents/accountant/handlers.py`:
   - `po.approved_sent`: make the open PO available for matching
   - `delivery.received`: store delivery data for the three-way match
   - `price.changed`: update the cost context
 
   Add a stock valuation agreement check (inventory account vs Stock valuation) in `backend/app/agents/accountant/checks.py` that publishes `stock_valuation.mismatch`.
-- [ ] T108 [US5] Build `conflict_graph` in `backend/app/graphs/conflict.py`. It gathers both agents' positions with figures (e.g. Stock: order needed by date X; Cash-Flow: budget remaining Y) and computes a recommendation. A critical item's stockout outranks the budget, and the owner is notified. It then calls `interrupt()` for the owner's choice and publishes the outcome. Register it and start it from the `budget.check_result` handler when `conflict` is set.
-- [ ] T109 [US5] Register all handlers in `backend/app/main.py` lifespan. Add a guard test in `backend/tests/unit/test_ownership.py` asserting that each agent package writes only its own tables (the written-by column in data-model.md), by static import and usage check.
+- [ ] T109 [US5] Build `conflict_graph` in `backend/app/graphs/conflict.py`. It gathers both agents' positions with figures (e.g. Stock: order needed by date X; Cash-Flow: budget remaining Y) and computes a recommendation. A critical item's stockout outranks the budget, and the owner is notified. It then calls `interrupt()` for the owner's choice and publishes the outcome. Register it and start it from the `budget.check_result` handler when `conflict` is set.
+- [ ] T110 [US5] Register all handlers in `backend/app/main.py` lifespan. Add a guard test in `backend/tests/unit/test_ownership.py` asserting that each agent package writes only its own tables (the written-by column in data-model.md), by static import and usage check.
 
 **Checkpoint**: The three agents cooperate through logged events only.
 
@@ -626,12 +653,12 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Tests for User Story 6
 
-- [ ] T110 [P] [US6] Write parametrised acceptance tests for the 8 scenarios in `backend/tests/integration/test_chaos.py`. Each asserts `detected=True`, an incident with its detection method, an owner explanation, the correction or rollback applied, a proposed rule, and `elapsed_seconds < 120` (SC-001, SC-011). Scenario 3 additionally re-injects after rule approval and asserts no owner question is asked.
+- [ ] T111 [P] [US6] Write parametrised acceptance tests for the 8 scenarios in `backend/tests/integration/test_chaos.py`. Each asserts `detected=True`, an incident with its detection method, an owner explanation, the correction or rollback applied, a proposed rule, and `elapsed_seconds < 120` (SC-001, SC-011). Scenario 3 additionally re-injects after rule approval and asserts no owner question is asked.
 
 ### Implementation for User Story 6
 
-- [ ] T111 [P] [US6] Create the ChaosInjection model in `backend/app/models/chaos.py` (`scenario` enum of the 8 spec scenarios, `parameters`, `affected refs`, `outcome` with detected, incident_id, rule_id, elapsed_seconds) and the migration `backend/alembic/versions/0005_chaos.py`.
-- [ ] T112 [P] [US6] Implement injectors in `backend/app/chaos/scenarios.py`, each mutating data (scenarios 4, 6 and 8 by writing a `FeedOverride` for the affected dates via T043, rather than editing rows directly) and then running the normal graph:
+- [ ] T112 [P] [US6] Create the ChaosInjection model in `backend/app/models/chaos.py` (`scenario` enum of the 8 spec scenarios, `parameters`, `affected refs`, `outcome` with detected, incident_id, rule_id, elapsed_seconds) and the migration `backend/alembic/versions/0005_chaos.py`.
+- [ ] T113 [P] [US6] Implement injectors in `backend/app/chaos/scenarios.py`, each mutating data (scenarios 4, 6 and 8 by writing a `FeedOverride` for the affected dates via T043, rather than editing rows directly) and then running the normal graph:
   1. duplicate supplier invoice
   2. supplier price spike (+25%)
   3. DD/MM date-format invoice
@@ -640,9 +667,9 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   6. missing bank feed day
   7. short delivery vs full invoice
   8. cash crunch (large unplanned outflow ~3 weeks out)
-- [ ] T113 [US6] Implement the chaos service in `backend/app/chaos/service.py`: `inject(scenario, params)` is allowed only when `DEMO_MODE`. It links resulting incidents via `chaos_injection_id` and measures elapsed seconds until a rule is proposed.
-- [ ] T114 [US6] Implement chaos endpoints in `backend/app/api/v1/chaos.py` (owner, demo only): `GET /chaos/scenarios`, `POST /chaos/inject`, `GET /chaos/injections/{id}`.
-- [ ] T115 [P] [US6] Build `frontend/src/pages/Chaos.tsx`: scenario cards with an Inject button, a live timeline (injection → detection → explanation → correction → rule) from `/harness/stream`, and an outcome badge with elapsed time.
+- [ ] T114 [US6] Implement the chaos service in `backend/app/chaos/service.py`: `inject(scenario, params)` is allowed only when `DEMO_MODE`. It links resulting incidents via `chaos_injection_id` and measures elapsed seconds until a rule is proposed.
+- [ ] T115 [US6] Implement chaos endpoints in `backend/app/api/v1/chaos.py` (owner, demo only): `GET /chaos/scenarios`, `POST /chaos/inject`, `GET /chaos/injections/{id}`.
+- [ ] T116 [P] [US6] Build `frontend/src/pages/Chaos.tsx`: scenario cards with an Inject button, a live timeline (injection → detection → explanation → correction → rule) from `/harness/stream`, and an outcome badge with elapsed time.
 
 **Checkpoint**: All 8 scenarios can be demoed on stage.
 
@@ -656,7 +683,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Tests for User Story 7
 
-- [ ] T116 [P] [US7] Write Playwright e2e tests in `frontend/tests/e2e/dashboard.spec.ts`:
+- [ ] T117 [P] [US7] Write Playwright e2e tests in `frontend/tests/e2e/dashboard.spec.ts`:
   - home health strip, decisions and alerts visible at 390×844
   - approve a PO from Home in one tap
   - every figure on Home, Stock, Cash and Books renders a FreshnessLabel
@@ -664,13 +691,13 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Implementation for User Story 7
 
-- [ ] T117 [US7] Implement `GET /home` in `backend/app/api/v1/home.py` (manager):
+- [ ] T118 [US7] Implement `GET /home` in `backend/app/api/v1/home.py` (manager):
   - health strip: stock OK/warnings count; lowest cash point in 30 days with its date; % reconciled and review count
   - today's decisions (pending approvals for the caller's role)
   - alerts sorted by urgency
   - all with `data_as_of`
-- [ ] T118 [P] [US7] Build `frontend/src/pages/Home.tsx` with `frontend/src/components/HealthStrip.tsx` and `frontend/src/components/AlertList.tsx`: decisions as ApprovalCards, the chat panel docked on desktop and in a drawer on mobile, and the ClockControl for the owner.
-- [ ] T119 [US7] Add a response check in `backend/app/main.py` (dev and test only) that fails any figure-bearing response missing `data_as_of`. Add a contract test in `backend/tests/contract/test_freshness.py` iterating the manager-level GET endpoints.
+- [ ] T119 [P] [US7] Build `frontend/src/pages/Home.tsx` with `frontend/src/components/HealthStrip.tsx` and `frontend/src/components/AlertList.tsx`: decisions as ApprovalCards, the chat panel docked on desktop and in a drawer on mobile, and the ClockControl for the owner.
+- [ ] T120 [US7] Add a response check in `backend/app/main.py` (dev and test only) that fails any figure-bearing response missing `data_as_of`. Add a contract test in `backend/tests/contract/test_freshness.py` iterating the manager-level GET endpoints.
 
 **Checkpoint**: The dashboard is complete for the demo.
 
@@ -682,10 +709,10 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 **Independent Test**: Each capability is checked separately on sample data: the VAT summary totals match the posted invoices; 13 weekly points show three scenarios; the scorecard shows stated vs observed lead time; the UI switches to Arabic RTL.
 
-- [ ] T120 [P] [US8] Implement the VAT summary in `backend/app/agents/accountant/vat.py` (VatPeriodSummary: input VAT, output VAT, net, invoice list, and flags for invoices missing a valid VAT number or breakdown) with `GET /vat/summary?period=` in `backend/app/api/v1/books.py`. Add a reminder before the VAT period closes when bank payments have no invoice ("VAT period ends in 9 days. 4 bank payments have no invoice.").
-- [ ] T121 [P] [US8] Add the 13-week weekly aggregation with three scenarios in `backend/app/agents/cashflow/projection.py` (`horizon="13w"`), and the horizon toggle in `frontend/src/components/CashChart.tsx`.
-- [ ] T122 [P] [US8] Implement the supplier scorecard at `GET /suppliers/{id}/scorecard` in `backend/app/api/v1/stock.py` (stated vs observed lead time, price change history, reliability score), and `frontend/src/components/SupplierScorecard.tsx`.
-- [ ] T123 [P] [US8] Complete the Arabic UI: all strings in `frontend/src/i18n/ar.json`; `dir="rtl"` switching and logical Tailwind properties in `frontend/src/App.tsx`; a language toggle stored on the user via `PATCH /me` in `backend/app/api/v1/auth.py`.
+- [ ] T121 [P] [US8] Implement the VAT summary in `backend/app/agents/accountant/vat.py` (VatPeriodSummary: input VAT, output VAT, net, invoice list, and flags for invoices missing a valid VAT number or breakdown) with `GET /vat/summary?period=` in `backend/app/api/v1/books.py`. Add a reminder before the VAT period closes when bank payments have no invoice ("VAT period ends in 9 days. 4 bank payments have no invoice.").
+- [ ] T122 [P] [US8] Add the 13-week weekly aggregation with three scenarios in `backend/app/agents/cashflow/projection.py` (`horizon="13w"`), and the horizon toggle in `frontend/src/components/CashChart.tsx`.
+- [ ] T123 [P] [US8] Implement the supplier scorecard at `GET /suppliers/{id}/scorecard` in `backend/app/api/v1/stock.py` (stated vs observed lead time, price change history, reliability score), and `frontend/src/components/SupplierScorecard.tsx`.
+- [ ] T124 [P] [US8] Complete the Arabic UI: all strings in `frontend/src/i18n/ar.json`; `dir="rtl"` switching and logical Tailwind properties in `frontend/src/App.tsx`; a language toggle stored on the user via `PATCH /me` in `backend/app/api/v1/auth.py`.
 
 ---
 
@@ -693,26 +720,26 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 **Purpose**: Success-criteria verification, security, demo readiness
 
-- [ ] T124 [P] Write role tests in `backend/tests/integration/test_roles.py`:
+- [ ] T125 [P] Write role tests in `backend/tests/integration/test_roles.py`:
   - staff can record deliveries and waste
   - staff get 403 on money endpoints, and money fields are absent from staff responses
   - a manager can approve a PO but cannot approve a rule, change settings or change users
   - a Telegram answer from a staff user is refused
 
   Every refusal is audit-logged (SC-012).
-- [ ] T125 [P] Write Playwright role tests in `frontend/tests/e2e/roles.spec.ts` (nav hides pages; forbidden actions are refused).
-- [ ] T126 [P] Write the sample metrics test in `backend/tests/integration/test_sample_metrics.py`. It replays 3 months with the simulated clock against a "no assistant" baseline and asserts:
+- [ ] T126 [P] Write Playwright role tests in `frontend/tests/e2e/roles.spec.ts` (nav hides pages; forbidden actions are refused).
+- [ ] T127 [P] Write the sample metrics test in `backend/tests/integration/test_sample_metrics.py`. It replays 3 months with the simulated clock against a "no assistant" baseline and asserts:
   - SC-002: stockout warnings ≥ 3 days ahead in ≥ 90% of cases
   - SC-003: fewer stockouts and less waste value than the baseline
   - SC-004: shortfalls flagged ≥ 14 days ahead in ≥ 90% of cases
   - SC-006: ≤ 15 minutes and ≤ 25 taps/replies per simulated week, excluding chaos
   - SC-009: ≥ 85% of bank transactions auto-matched with zero incorrect auto-matches
-- [ ] T127 [P] Write REST contract tests with schemathesis in `backend/tests/contract/test_openapi.py`, run against `/api/v1/openapi.json` with seeded auth.
-- [ ] T128 [P] Write the safety guard test in `backend/tests/unit/test_no_money_movement.py`. It asserts that no module calls a payment or bank write API, that bank credentials are not stored in any model (FR-047, FR-048), and that only `irreversible_external` specs can send outside the system.
-- [ ] T129 Record LLM replay fixtures for every demo path (`LLM_MODE=record`, running quickstart steps 2–8) into `backend/tests/fixtures/llm/`. Document re-recording in `backend/tests/fixtures/llm/README.md`.
-- [ ] T130 [P] Performance check in `backend/tests/integration/test_performance.py`: a one-day advance takes < 10 s excluding LLM; main GET endpoints respond < 2 s on seeded data.
-- [ ] T131 [P] Write the root `README.md`: overview, architecture diagram (LangGraph harness + agent subgraphs + outbox events), setup, and a link to quickstart.md.
-- [ ] T132 Run the quickstart.md validation end to end (automated commands, then the manual walkthrough steps 1–8) and fix any gaps found.
+- [ ] T128 [P] Write REST contract tests with schemathesis in `backend/tests/contract/test_openapi.py`, run against `/api/v1/openapi.json` with seeded auth.
+- [ ] T129 [P] Write the safety guard test in `backend/tests/unit/test_no_money_movement.py`. It asserts that no module calls a payment or bank write API, that bank credentials are not stored in any model (FR-047, FR-048), and that only `irreversible_external` specs can send outside the system.
+- [ ] T130 Record LLM replay fixtures for every demo path (`LLM_MODE=record`, running quickstart steps 2–8) into `backend/tests/fixtures/llm/`. Document re-recording in `backend/tests/fixtures/llm/README.md`.
+- [ ] T131 [P] Performance check in `backend/tests/integration/test_performance.py`: a one-day advance takes < 10 s excluding LLM; main GET endpoints respond < 2 s on seeded data.
+- [ ] T132 [P] Write the root `README.md`: overview, architecture diagram (LangGraph harness + agent subgraphs + outbox events), setup, and a link to quickstart.md.
+- [ ] T133 Run the quickstart.md validation end to end (automated commands, then the manual walkthrough steps 1–8) and fix any gaps found.
 
 ---
 
@@ -764,29 +791,29 @@ Task: "T058 Supplier performance and expiry in backend/app/agents/stock/supplier
 ### User Story 2
 
 ```text
-Task: "T068 Sample invoice generator in backend/app/seed/invoices/generate.py"
-Task: "T069 Extraction prompt in backend/app/llm/prompts/invoice_extraction.md"
-Task: "T071 Supplier matching in backend/app/agents/accountant/supplier_match.py"
-Task: "T072 Books checks in backend/app/agents/accountant/checks.py"
-Task: "T073 Posting in backend/app/agents/accountant/posting.py"
-Task: "T074 Bank reconciliation in backend/app/agents/accountant/matching.py"
+Task: "T069 Sample invoice generator in backend/app/seed/invoices/generate.py"
+Task: "T070 Extraction prompt in backend/app/llm/prompts/invoice_extraction.md"
+Task: "T072 Supplier matching in backend/app/agents/accountant/supplier_match.py"
+Task: "T073 Books checks in backend/app/agents/accountant/checks.py"
+Task: "T074 Posting in backend/app/agents/accountant/posting.py"
+Task: "T075 Bank reconciliation in backend/app/agents/accountant/matching.py"
 ```
 
 ### User Story 3
 
 ```text
-Task: "T084 Bank statement import in backend/app/agents/accountant/bank_import.py"
-Task: "T085 Cash position in backend/app/agents/cashflow/position.py"
-Task: "T086 Projection in backend/app/agents/cashflow/projection.py"
-Task: "T087 Cash checks in backend/app/agents/cashflow/checks.py"
-Task: "T088 Shortfall plan in backend/app/agents/cashflow/plan.py"
+Task: "T085 Bank statement import in backend/app/agents/accountant/bank_import.py"
+Task: "T086 Cash position in backend/app/agents/cashflow/position.py"
+Task: "T087 Projection in backend/app/agents/cashflow/projection.py"
+Task: "T088 Cash checks in backend/app/agents/cashflow/checks.py"
+Task: "T089 Shortfall plan in backend/app/agents/cashflow/plan.py"
 ```
 
 ### Across stories (after Foundational)
 
 ```text
-Developer A: US1 (T050–T063)   Developer B: US2 (T064–T080)
-Developer C: US3 (T081–T093)   Developer D: US4 (T094–T102)
+Developer A: US1 (T050–T064)   Developer B: US2 (T065–T081)
+Developer C: US3 (T082–T094)   Developer D: US4 (T095–T103)
 ```
 
 ---
