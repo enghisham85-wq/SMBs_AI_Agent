@@ -34,12 +34,12 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create the directory skeleton from plan.md "Source Code": `backend/app/{db,models,core,graphs,harness,approvals,llm/prompts,agents/stock,agents/cashflow,agents/accountant,chaos,api/v1,seed}`, `backend/tests/{unit/graphs,contract,integration,eval,fixtures/llm}`, `frontend/src/{api,components,pages,i18n,hooks}`, `frontend/tests/{unit,e2e}`. Add an empty `__init__.py` to each Python package.
-- [ ] T002 Create `backend/pyproject.toml` (uv, Python 3.12) with these dependencies: fastapi, uvicorn[standard], pydantic>=2, pydantic-settings, sqlalchemy>=2, alembic, aiosqlite, langgraph>=1, langgraph-checkpoint-sqlite, anthropic, python-telegram-bot>=21, pandas, statsmodels, hijridate, argon2-cffi, python-multipart, sse-starlette, reportlab, arabic-reshaper, python-bidi, pillow. Dev dependencies: pytest, pytest-asyncio, httpx, schemathesis, ruff, mypy.
-- [ ] T003 [P] Scaffold `frontend/` with Vite React-TS. Add @tanstack/react-query, react-router-dom, recharts, tailwindcss, i18next, react-i18next, openapi-typescript, openapi-fetch; dev dependencies vitest, @testing-library/react, @playwright/test. Configure Tailwind in `frontend/tailwind.config.ts`.
-- [ ] T004 [P] Configure ruff and mypy (strict on `app/`) in `backend/pyproject.toml`, and pytest settings (`asyncio_mode = "auto"`, markers `llm_live`, `slow`).
-- [ ] T005 [P] Configure ESLint and Prettier in `frontend/eslint.config.js` and `frontend/.prettierrc`.
-- [ ] T006 [P] Implement settings in `backend/app/config.py` with pydantic-settings:
+- [X] T001 Create the directory skeleton from plan.md "Source Code": `backend/app/{db,models,core,graphs,harness,approvals,llm/prompts,agents/stock,agents/cashflow,agents/accountant,chaos,api/v1,seed}`, `backend/tests/{unit/graphs,contract,integration,eval,fixtures/llm}`, `frontend/src/{api,components,pages,i18n,hooks}`, `frontend/tests/{unit,e2e}`. Add an empty `__init__.py` to each Python package.
+- [X] T002 Create `backend/pyproject.toml` (uv, Python 3.12) with these dependencies: fastapi, uvicorn[standard], pydantic>=2, pydantic-settings, sqlalchemy>=2, alembic, aiosqlite, langgraph>=1, langgraph-checkpoint-sqlite, anthropic, python-telegram-bot>=21, pandas, statsmodels, hijridate, argon2-cffi, python-multipart, sse-starlette, reportlab, arabic-reshaper, python-bidi, pillow. Dev dependencies: pytest, pytest-asyncio, httpx, schemathesis, ruff, mypy.
+- [X] T003 [P] Scaffold `frontend/` with Vite React-TS. Add @tanstack/react-query, react-router-dom, recharts, tailwindcss, i18next, react-i18next, openapi-typescript, openapi-fetch; dev dependencies vitest, @testing-library/react, @playwright/test. Configure Tailwind in `frontend/tailwind.config.ts`.
+- [X] T004 [P] Configure ruff and mypy (strict on `app/`) in `backend/pyproject.toml`, and pytest settings (`asyncio_mode = "auto"`, markers `llm_live`, `slow`).
+- [X] T005 [P] Configure ESLint and Prettier in `frontend/eslint.config.js` and `frontend/.prettierrc`.
+- [X] T006 [P] Implement settings in `backend/app/config.py` with pydantic-settings:
   - `DATABASE_URL` (default `sqlite+aiosqlite:///./var/app.db`)
   - `CHECKPOINT_DB_PATH` (default `./var/checkpoints.db`; LangGraph checkpoints live in their own SQLite file)
   - `SQLITE_BUSY_TIMEOUT_MS` (default 5000)
@@ -53,7 +53,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `DEFAULT_VAT_RATE_PERCENT` (optional, decimal 0–100): when set, overrides the chosen profile's VAT rate for newly created businesses. Leave it empty to use the profile rate (Egypt 14). The owner can still change the rate later in Settings.
 
   Also create `backend/.env.example` listing the same keys, with `DEFAULT_COUNTRY=EG` and `DEFAULT_VAT_RATE_PERCENT=14` shown as a commented example.
-- [ ] T007 [P] Create `backend/tests/conftest.py` with fixtures:
+- [X] T007 [P] Create `backend/tests/conftest.py` with fixtures:
   - an async in-memory SQLite engine with the schema created
   - a seeded business
   - a `clock` set to a fixed simulated date
@@ -70,34 +70,34 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Database and shared types
 
-- [ ] T008 Implement the async engine and session factory in `backend/app/db/engine.py`:
+- [X] T008 Implement the async engine and session factory in `backend/app/db/engine.py`:
   - SQLite pragmas on every connection: WAL mode (`PRAGMA journal_mode=WAL`), foreign keys on, `PRAGMA busy_timeout` = `SQLITE_BUSY_TIMEOUT_MS`.
   - Provide the `get_session` FastAPI dependency (reads) and a `write_session()` context manager that holds one process-wide `asyncio.Lock` for the length of the write transaction, so API requests, Telegram callbacks, event handlers and the daily run never write at the same time.
   - All code that commits must use `write_session()`. The lock is a no-op when `DATABASE_URL` is PostgreSQL.
-- [ ] T009 [P] Implement shared column types and the base mixin in `backend/app/db/types.py`:
+- [X] T009 [P] Implement shared column types and the base mixin in `backend/app/db/types.py`:
   - `Money` composite: `amount_minor` int + `currency` text. Currency exponent table from ISO 4217 in `backend/app/db/currencies.py`, covering at least `{EGP:2, USD:2, EUR:2, AED:2, SAR:2, QAR:2, OMR:3, KWD:3, BHD:3, JOD:3}`; an unknown code raises. Helpers `from_decimal`, `to_display(locale)` (e.g. `EGP 1,800.00`, `OMR 36.000`), add/sub/compare that raise on currency mismatch.
   - `Quantity` = `Decimal(18,4)` + `unit`.
   - `BaseModel` mixin: UUID `id`, `business_id` FK, `created_at`/`updated_at` set from BusinessClock.
-- [ ] T010 Initialize Alembic in `backend/alembic/` with `env.py` using the async engine and `app.models` metadata.
-- [ ] T011 [P] Create tenancy models in `backend/app/models/tenancy.py`:
+- [X] T010 Initialize Alembic in `backend/alembic/` with `env.py` using the async engine and `app.models` metadata.
+- [X] T011 [P] Create tenancy models in `backend/app/models/tenancy.py`:
   - **Business**: `name` required; `country` ISO 3166 default `EG`; `currency` ISO 4217 default `EGP` ("owner can change only while no financial record exists"); `vat_registered`; `vat_rate_percent` Decimal(5,2), 0–100, default 14.00 (stored and shown as a percentage; calculations divide by 100); `vat_period` enum `monthly`/`quarterly` default `monthly`; `weekend_days` ISO weekday numbers (Mon=1 … Sun=7) default [5,6] (Fri, Sat); `tax_id_pattern` default Egypt 9-digit tax registration number; `min_cash_buffer` Money (owner-only edit); `demo_mode`. Defaults are filled from the country profile (T040), not hard-coded here.
   - **User**: `username` unique per business; `password_hash` argon2; `role` enum `owner`/`manager`/`staff`; `language` enum `en`/`ar`; `telegram_chat_id` unique ("one chat ↔ one user"); `telegram_link_code` ("one-time, expires 15 min"); `active`.
   - **Setting** key/value with defaults `price_change_pct=15`, `stock_variance_pct=5`, `approval_timeout_hours=4`, `journal_value_limit` (from the country profile; EG default 1000000 minor units = EGP 10,000.00; journal entries above it get the independent second check), `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off), `reminder_auto_approve` enum `off`/`polite_only` (default `off`; `polite_only` lets level-1 reminders send without approval, levels 2–3 always need approval), `manual_bookkeeping_hours_per_week=6` (comparison figure for SC-006).
-- [ ] T012 [P] Create the BusinessClock model in `backend/app/models/clock.py`: `mode` enum `real`/`simulated`, `current_date`, `last_run_date`, `advancing` bool.
-- [ ] T013 [P] Create master-data models in `backend/app/models/master.py`:
+- [X] T012 [P] Create the BusinessClock model in `backend/app/models/clock.py`: `mode` enum `real`/`simulated`, `current_date`, `last_run_date`, `advancing` bool.
+- [X] T013 [P] Create master-data models in `backend/app/models/master.py`:
   - **Item**: `name_en`, `name_ar`, `unit`, `category`, `is_ingredient`, `is_sold`, `shelf_life_days?`, `reorder_point?`, `safety_stock`, `storage_capacity?`, `preferred_supplier_id`, `is_critical`, `unit_cost` Money, `margin_class` enum `high`/`normal`/`low`.
   - **RecipeLine**: `sold_item_id`, `ingredient_item_id`, quantity + unit.
   - **Supplier**: `name_en`, `name_ar`, `vat_number?`, contact phone/email/telegram, `stated_lead_time_days`, `observed_lead_time_days`, `payment_terms_days`, `early_payment_discount?`, `reliability_score` 0–1, `date_format_hint?` `DMY`/`MDY`.
   - **SupplierAlias**: `supplier_id`, `alias_text`, `normalised_text`, `language`.
   - **SupplierPrice**: `supplier_id`, `item_id`, pack_size + unit, `min_order_qty`, `price` Money, `valid_from`.
-- [ ] T014 [P] Create finance master models in `backend/app/models/finance_master.py`:
+- [X] T014 [P] Create finance master models in `backend/app/models/finance_master.py`:
   - **Account**: `code`, `name_en`, `name_ar`, `type` enum `asset`/`liability`/`equity`/`income`/`expense`, flags `is_bank`, `is_inventory`, `is_vat_input`, `is_vat_output`.
   - **BankAccount**: `name`, `bank`, `currency`, `is_cash_on_hand`.
   - **BankTransaction**: `account_id`, `date`, signed Money `amount`, `description`, `external_ref?`, `import_batch_id`, `match_status` enum `unmatched`/`suggested`/`auto_matched`/`confirmed`/`excluded`, `matched_type`/`matched_id?`, `match_confidence?`.
   - **BankBalanceSnapshot**: `account_id`, `as_of`, `balance`.
   - **Sale**: `date`, `lines` (sold_item_id, qty, amount), `amount_total`, `payment_method` enum `cash`/`card`/`transfer`/`credit`, `source`, `import_batch_id?`, `row_hash?`.
   - **Obligation**: `type` enum `rent`/`salary`/`loan`/`tax`/`utility`/`subscription`/`other`, `description`, `amount`, `next_due_date`, `recurrence` `monthly`/`quarterly`/`annual`/`once`, `is_confirmed`, `last_seen_transaction_id?`.
-- [ ] T015 [P] Create harness models in `backend/app/models/harness.py`:
+- [X] T015 [P] Create harness models in `backend/app/models/harness.py`:
   - **Action**: `agent` enum `stock`/`cashflow`/`accountant`/`harness`; `type`; `graph_name`; `graph_thread_id`; `plan` JSON; `risk_class` enum `read_only`/`reversible`/`irreversible_external`; `stage` enum `planned`/`prechecked`/`awaiting_approval`/`executing`/`verifying`/`completed`/`rolled_back`/`retrying`/`escalated`/`failed`; `dry_run`; `attempt` (1–2); `parent_action_id?`; `result`; `verifier_verdict?`; `incident_id?`.
   - **CheckResult**.
   - **ApprovalRequest**: `kind` enum `approval`/`question`/`alert`; `text_en`; `text_ar`; `options` list (key, label_en, label_ar, effect); `required_role`; `deadline`; `safe_default`; `urgency` 1–3; `status` enum `pending`/`resolved`/`timed_out`/`superseded`; `resolved_option?`; `resolved_by?`; `resolved_via` enum `dashboard`/`telegram`; `resolved_at?`; `reask_count`; `telegram_message_refs`; `graph_thread_id`; `interrupt_id`; `request_token` (opaque).
@@ -105,62 +105,62 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - **LearnedRule**: `kind` enum `precondition`/`check`/`parsing_hint`/`classification`/`policy`; `status` enum `proposed`/`active`/`rejected`/`inactive`; `trigger` JSON; `times_applied`; `times_overridden`.
   - **AgentCalibration** + **AgentCalibrationHistory**.
   - **AuditLogEntry**: append-only.
-- [ ] T016 [P] Create event models in `backend/app/models/events.py`:
+- [X] T016 [P] Create event models in `backend/app/models/events.py`:
   - **Event**: `type`, `version`, `producer`, `payload` JSON, `action_id?`, `occurred_at`.
   - **EventDelivery**: `event_id`, `consumer`, `status`, `handled_at`, `error?`; unique (`event_id`, `consumer`).
   - **FeedOverride** (demo data feed, used by T044): `date`, `overrides` JSON, `chaos_injection_id?`; unique (`business_id`, `date`).
-- [ ] T017 Generate the first Alembic migration for T011–T016 in `backend/alembic/versions/0001_foundation.py`.
+- [X] T017 Generate the first Alembic migration for T011–T016 in `backend/alembic/versions/0001_foundation.py`.
 
 ### Core services
 
-- [ ] T018 Implement the BusinessClock service in `backend/app/core/clock.py`:
+- [X] T018 Implement the BusinessClock service in `backend/app/core/clock.py`:
   - `now()` / `today()`: simulated date in demo mode, wall clock otherwise.
   - `advance(days=1 | to_date)`: rejects with a conflict error while `advancing` is true, and calls a pluggable per-day callback for each date from `last_run_date+1` to the target, in order.
   - Updates `last_run_date` after each day.
-- [ ] T019 [P] Implement auth in `backend/app/core/auth.py`:
+- [X] T019 [P] Implement auth in `backend/app/core/auth.py`:
   - argon2 hashing
   - signed server-side session in an HTTP-only SameSite=Strict cookie
   - CSRF token check for non-GET requests
   - `require_role(min_role)` dependency with order `staff < manager < owner`
   - on refusal, writes AuditLogEntry `permission_denied` and returns 403 `{error:{code:"permission_denied",message_en,message_ar}}`
   - `can(user, min_role)` helper for use outside HTTP (Telegram)
-- [ ] T020 [P] Implement i18n and normalisation helpers in `backend/app/core/i18n.py`:
+- [X] T020 [P] Implement i18n and normalisation helpers in `backend/app/core/i18n.py`:
   - `normalize_digits()`: Arabic-Indic ٠-٩ and Eastern ۰-۹ to 0-9, `٫` to `.`, `٬` removed
   - `normalize_arabic_name()`: strip diacritics and tatweel; unify أإآ→ا, ى→ي, ة→ه; casefold Latin
   - message catalog lookup `t(key, lang, **vars)`
-- [ ] T021 [P] Write unit tests in `backend/tests/unit/test_money_i18n.py`: Money arithmetic and display for a 2-decimal currency (`EGP 1,800.00`) and a 3-decimal one (`OMR 36.000`), unknown-currency error, mismatched-currency error, digit normalisation (`٣٦٫٥٠٠` → `36.500`), Arabic name normalisation matching variants of the same supplier name.
-- [ ] T022 Implement the event outbox in `backend/app/core/events.py`:
+- [X] T021 [P] Write unit tests in `backend/tests/unit/test_money_i18n.py`: Money arithmetic and display for a 2-decimal currency (`EGP 1,800.00`) and a 3-decimal one (`OMR 36.000`), unknown-currency error, mismatched-currency error, digit normalisation (`٣٦٫٥٠٠` → `36.500`), Arabic name normalisation matching variants of the same supplier name.
+- [X] T022 Implement the event outbox in `backend/app/core/events.py`:
   - `publish(session, type, payload, producer, action_id)` writes an Event in the caller's transaction.
   - `subscribe(type, consumer_name, handler)` registry.
   - `dispatch_pending()` runs after commit. It calls each handler once per (event, consumer), records EventDelivery, and skips already-handled pairs (idempotent).
   - Validates payload required fields per contracts/events.md.
-- [ ] T023 [P] Implement the audit writer in `backend/app/harness/audit.py`: `audit(event, *, agent|user, action_id, inputs, outputs, verification_result)`, which records business-clock and wall-clock timestamps.
+- [X] T023 [P] Implement the audit writer in `backend/app/harness/audit.py`: `audit(event, *, agent|user, action_id, inputs, outputs, verification_result)`, which records business-clock and wall-clock timestamps.
 
 ### LLM client
 
-- [ ] T024 Implement `LLMClient` in `backend/app/llm/client.py` using the official `anthropic` SDK:
+- [X] T024 Implement `LLMClient` in `backend/app/llm/client.py` using the official `anthropic` SDK:
   - `parse(role, system, content_blocks, output_model)` calls `client.messages.parse` with model `claude-opus-5` and `output_config={"effort": EFFORT[role]}`. Effort: extraction and verifier `high`; classification `low`; message and incident `medium`.
   - Server-side refusal fallback: `betas=["server-side-fallback-2026-07-01"]`, `fallbacks="default"`.
   - Checks `stop_reason` and raises `LLMRefusal` on `"refusal"`.
   - Puts `cache_control` on the stable system and schema prefix.
   - Modes: `live`; `record` (live, and writes `backend/tests/fixtures/llm/<sha256>.json`); `replay` (reads the fixture, raising `MissingFixture` if absent). The hash covers role, system, content and schema name.
   - Retries typed rate-limit and 5xx errors only.
-- [ ] T025 [P] Define shared LLM output schemas in `backend/app/llm/schemas.py`, exactly as in contracts/llm-outputs.md: `Field[T]`, `InvoiceExtraction`, `VerifierVerdict`, `ExpenseClassification`, `OwnerMessage` (text_en/text_ar ≤ 280 chars), `IncidentAnalysis`, `RuleProposal`.
-- [ ] T026 [P] Implement owner-message composition in `backend/app/llm/messages.py`: `compose(facts: dict, options) -> OwnerMessage` calls LLMClient role `message`. It then checks that every number in `text_en`/`text_ar` (after digit normalisation) appears in `facts`, and otherwise falls back to a template from the i18n catalog. Prompt in `backend/app/llm/prompts/owner_message.md`.
+- [X] T025 [P] Define shared LLM output schemas in `backend/app/llm/schemas.py`, exactly as in contracts/llm-outputs.md: `Field[T]`, `InvoiceExtraction`, `VerifierVerdict`, `ExpenseClassification`, `OwnerMessage` (text_en/text_ar ≤ 280 chars), `IncidentAnalysis`, `RuleProposal`.
+- [X] T026 [P] Implement owner-message composition in `backend/app/llm/messages.py`: `compose(facts: dict, options) -> OwnerMessage` calls LLMClient role `message`. It then checks that every number in `text_en`/`text_ar` (after digit normalisation) appears in `facts`, and otherwise falls back to a template from the i18n catalog. Prompt in `backend/app/llm/prompts/owner_message.md`.
 
 ### LangGraph runtime and harness pipeline
 
-- [ ] T027 Implement the graph runtime in `backend/app/graphs/runtime.py`:
+- [X] T027 Implement the graph runtime in `backend/app/graphs/runtime.py`:
   - Creates one `AsyncSqliteSaver` at startup on its own SQLite file (`CHECKPOINT_DB_PATH`, WAL mode, same busy timeout), separate from the app database so checkpoint writes never compete with business-data writes. `Action.stage` in the app database stays the source the dashboard reads.
   - Graph registry `register(name, builder)` and `get(name)`.
   - `start(name, input, thread_id)`, `resume(thread_id, value)` (via `Command(resume=value)`) and `state(thread_id)`.
   - Tests can inject `InMemorySaver`.
-- [ ] T028 [P] Define `ActionState` (TypedDict) in `backend/app/harness/state.py` with the fields from data-model.md §5 "ActionState".
-- [ ] T029 [P] Implement `ActionSpec` and its registry in `backend/app/harness/action_spec.py`. Fields: `name`, `agent`, `risk_class`, and callables `plan`, `preconditions`, `execute(dry_run)`, `verify`, `compensate`. Optional: `verifier_packet` (for high-impact actions), `auto_approve(state, settings) -> bool` (default `False`; each irreversible spec defines its own owner-set rule) and `approval_request(state)` (builds options and text through `llm/messages.compose`).
-- [ ] T030 [P] Implement confidence routing in `backend/app/harness/confidence.py`: `band(confidence, agent) -> "act"|"act_flag"|"ask"`. It uses the AgentCalibration thresholds (defaults high 0.90, low 0.60). `act_flag` items go into the daily digest list.
-- [ ] T031 [P] Implement the verifier in `backend/app/harness/verifier.py`: `verify_independently(packet) -> VerifierVerdict`. It builds a fresh request from the `VerificationPacket` (action type, source inputs, proposed output, active rules) and must never include primary reasoning or messages. Prompt in `backend/app/llm/prompts/verifier.md`. Includes the pre-mortem failure-mode list for irreversible actions.
-- [ ] T032 [P] Implement incident creation in `backend/app/harness/incidents.py`: `open_incident(agent, type, detected_by, summary, refs, action_id?, chaos_injection_id?)` publishes `incident.opened`; `resolve_incident(...)` publishes `incident.resolved`.
-- [ ] T033 Build `harness_graph` in `backend/app/harness/graph.py` (LangGraph `StateGraph[ActionState]`):
+- [X] T028 [P] Define `ActionState` (TypedDict) in `backend/app/harness/state.py` with the fields from data-model.md §5 "ActionState".
+- [X] T029 [P] Implement `ActionSpec` and its registry in `backend/app/harness/action_spec.py`. Fields: `name`, `agent`, `risk_class`, and callables `plan`, `preconditions`, `execute(dry_run)`, `verify`, `compensate`. Optional: `verifier_packet` (for high-impact actions), `auto_approve(state, settings) -> bool` (default `False`; each irreversible spec defines its own owner-set rule) and `approval_request(state)` (builds options and text through `llm/messages.compose`).
+- [X] T030 [P] Implement confidence routing in `backend/app/harness/confidence.py`: `band(confidence, agent) -> "act"|"act_flag"|"ask"`. It uses the AgentCalibration thresholds (defaults high 0.90, low 0.60). `act_flag` items go into the daily digest list.
+- [X] T031 [P] Implement the verifier in `backend/app/harness/verifier.py`: `verify_independently(packet) -> VerifierVerdict`. It builds a fresh request from the `VerificationPacket` (action type, source inputs, proposed output, active rules) and must never include primary reasoning or messages. Prompt in `backend/app/llm/prompts/verifier.md`. Includes the pre-mortem failure-mode list for irreversible actions.
+- [X] T032 [P] Implement incident creation in `backend/app/harness/incidents.py`: `open_incident(agent, type, detected_by, summary, refs, action_id?, chaos_injection_id?)` publishes `incident.opened`; `resolve_incident(...)` publishes `incident.resolved`.
+- [X] T033 Build `harness_graph` in `backend/app/harness/graph.py` (LangGraph `StateGraph[ActionState]`):
   - **Nodes**: `plan`, `precheck`, `classify_risk`, `premortem_verify`, `approval_gate`, `execute`, `post_verify`, `rollback`, `retry`, `escalate`, `finalize`.
   - **Routing**:
     - precheck failure goes to `escalate`, which puts the action on hold and asks the owner
@@ -170,35 +170,35 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
     - failed `post_verify` goes to `rollback` → `retry` (attempt 2, with corrections) → `escalate`
   - **Every node**: updates `Action.stage` and writes an audit entry.
   - Register the graph in the runtime.
-- [ ] T034 Implement the approval service in `backend/app/approvals/service.py`:
+- [X] T034 Implement the approval service in `backend/app/approvals/service.py`:
   - `create_from_interrupt(action, payload)` stores the request with an opaque `request_token` and pushes it to the chat SSE broker and the Telegram sender.
   - `resolve(token_or_id, option_key, user, via, edits=None)`:
     - checks `can(user, required_role)`, otherwise audits and returns `permission_denied`
     - does an atomic `UPDATE … WHERE status='pending'`; if no row changed, it returns `already_resolved` with the winning answer
     - on success, calls `runtime.resume(thread_id, {option_key, edits, user_id})` exactly once and notifies both channels
   - `expire_due()` for timeouts (used in US4).
-- [ ] T035 [P] Implement the SSE broker and graph streaming in `backend/app/graphs/streaming.py`: an in-process pub/sub keyed by channel (`chat`, `harness`). `run_streamed(graph, input, config)` iterates `astream(stream_mode="updates")` and publishes node updates to `harness`.
-- [ ] T036 Implement the daily run in `backend/app/graphs/daily_run.py` and `backend/app/core/scheduler.py`:
+- [X] T035 [P] Implement the SSE broker and graph streaming in `backend/app/graphs/streaming.py`: an in-process pub/sub keyed by channel (`chat`, `harness`). `run_streamed(graph, input, config)` iterates `astream(stream_mode="updates")` and publishes node updates to `harness`.
+- [X] T036 Implement the daily run in `backend/app/graphs/daily_run.py` and `backend/app/core/scheduler.py`:
   - `daily_run_graph` is built from an ordered slot list: `import_sales`, `stock_update`, `forecast_check`, `reorder`, `bank_import`, `reconcile`, `balance_compare`, `cash_forecast`, `trial_balance`, `reminders`, `approval_timeouts`, `digest`.
   - Agents register node callables into slots, and empty slots are no-ops.
   - `scheduler.advance_to(date)` wires BusinessClock.advance so `daily_run_graph` runs once per day in date order. In real mode an asyncio loop triggers the same run once per real day.
 
 ### API shell, Telegram, seed
 
-- [ ] T037 Implement the app entry in `backend/app/main.py`:
+- [X] T037 Implement the app entry in `backend/app/main.py`:
   - **Lifespan**: DB, checkpointer, graph registrations, event subscriptions, Telegram poller if a token is set, real-mode daily loop.
   - **Wiring**: mounts `api/v1` routers under `/api/v1`.
   - **Errors**: `{error:{code,message_en,message_ar}}`.
   - **Response helper**: `with_freshness(data, sources)` adds `data_as_of`.
-- [ ] T038 [P] Implement auth and user endpoints in `backend/app/api/v1/auth.py` and `backend/app/api/v1/users.py`:
+- [X] T038 [P] Implement auth and user endpoints in `backend/app/api/v1/auth.py` and `backend/app/api/v1/users.py`:
   - `POST /auth/login`, `POST /auth/logout`, `GET /me`
   - `POST /me/telegram-link-code` (8 chars, 15-min expiry)
   - `GET/POST/PATCH /users` (owner only)
-- [ ] T039 [P] Implement clock and demo endpoints in `backend/app/api/v1/clock.py`:
+- [X] T039 [P] Implement clock and demo endpoints in `backend/app/api/v1/clock.py`:
   - `GET /clock`
   - `POST /clock/advance` (owner) with body `{days}` or `{to_date}`, returning 409 while advancing
   - `POST /demo/reset` (owner, demo mode only), which re-runs the seed; optional body `{country}` reseeds with another country profile
-- [ ] T040 Implement configurable country profiles and business settings (FR-051; default Egypt):
+- [X] T040 Implement configurable country profiles and business settings (FR-051; default Egypt):
   - **Profile files** in `backend/app/seed/countries/`: `EG.json` (default), `OM.json`, `AE.json`, `SA.json`, with the CountryProfile fields in data-model.md.
     - `EG`: currency `EGP`; `vat_rate_percent` 14, monthly; weekend [5,6]; `tax_id_pattern` `^\d{9}$`; `default_date_format` `DMY`; `seed_price_factor` 1.0; money defaults `min_cash_buffer` EGP 50,000.00, `journal_value_limit` EGP 10,000.00, `po_auto_approve_limit` 0.
     - `EG` fixed-date public holidays: 7 Jan, 25 Jan, 25 Apr, 1 May, 30 Jun, 23 Jul, 6 Oct. Also Sham El-Nessim (the Monday after Orthodox Easter), and the Islamic holidays Eid al-Fitr, Eid al-Adha, Islamic New Year and the Prophet's Birthday, computed from the Hijri calendar.
@@ -225,18 +225,18 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
     - changing the currency after invoices exist returns 409
     - changing the VAT rate affects only invoices dated after the change
     - a 7 Jan (Coptic Christmas) sales day gets the holiday uplift in the EG forecast calendar
-- [ ] T041 [P] Implement approval endpoints in `backend/app/api/v1/approvals.py`:
+- [X] T041 [P] Implement approval endpoints in `backend/app/api/v1/approvals.py`:
   - `GET /approvals?status=` filtered to the caller's role
   - `POST /approvals/{id}/resolve` returning 200 `resolved`, 409 `already_resolved` or 403
   - `GET /chat/stream` (SSE via sse-starlette)
-- [ ] T042 Implement the Telegram bot in `backend/app/approvals/telegram_bot.py` (python-telegram-bot v21, long polling), per contracts/telegram-bot.md:
+- [X] T042 Implement the Telegram bot in `backend/app/approvals/telegram_bot.py` (python-telegram-bot v21, long polling), per contracts/telegram-bot.md:
   - **Commands**: `/start <code>` links one chat to one user; `/pending`; `/status`; `/lang en|ar`.
   - **Unlinked chats**: get only the link prompt.
   - **Approval messages**: sent with an inline keyboard, `callback_data = "ar:<request_token>:<option_key>"`.
   - **Callbacks**: call `ApprovalService.resolve(..., via="telegram")`. Dedupe on `callback_query_id`. Edit the message for `resolved` / `already_resolved` / `permission_denied`.
   - **Dashboard resolutions**: edit every sent copy.
   - **Send failures**: audit `telegram_send_failed`, keep the request open in the dashboard (FR-010a) and retry on the next tick.
-- [ ] T043 Implement the sample-cafe seed in `backend/app/seed/sample_cafe.py` with CLI `python -m app.seed --sample-cafe [--reset]` in `backend/app/seed/__main__.py`:
+- [X] T043 Implement the sample-cafe seed in `backend/app/seed/sample_cafe.py` with CLI `python -m app.seed --sample-cafe [--reset]` in `backend/app/seed/__main__.py`:
   - **Business and users**: 1 business created from a country profile, `--country` flag default `EG` (EGP, VAT 14%, buffer EGP 50,000.00); users owner, manager and staff, with printed demo passwords. Seed prices are defined once in EGP in `backend/app/seed/catalog.json` and multiplied by the profile's `seed_price_factor`, so `--country OM` produces a consistent OMR dataset.
   - **Items and recipes**: 20 items, milk and coffee beans marked critical; recipes such as latte = 18 g coffee + 200 ml milk.
   - **Suppliers**: 5 suppliers with Arabic and English names, aliases, VAT numbers and prices, including "Al Noor Dairy" and "Gulf Packaging".
@@ -246,7 +246,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - **Accounts**: small-business chart of accounts in `backend/app/seed/chart_of_accounts.json`.
   - **Calendar**: public holidays and Ramadan come from the business's country profile (T040); nothing country-specific lives in the seed code.
   - **Clock**: set so the demo starts on a date that shows the milk scenario within 3 simulated days.
-- [ ] T044 Implement the simulated daily data feed in `backend/app/seed/feed.py`, which supplies new data for each business date the clock moves into (demo mode only):
+- [X] T044 Implement the simulated daily data feed in `backend/app/seed/feed.py`, which supplies new data for each business date the clock moves into (demo mode only):
   - **Generator**: `generate_day(business, date, overrides=None) -> DayFeed` (sales + bank transactions + balance snapshot). Deterministic: the random seed is derived from `business_id` + date, so replays and tests are repeatable. Also used by T043 to create the history.
   - **Sales**: per sold item, base weekday demand × weekend (Fri/Sat) / public-holiday / Ramadan-evening uplift × noise; split across payment methods `cash`/`card`/`transfer`/`credit`; `source = seed`.
   - **Bank transactions**: card settlements (T+1), cash deposits (every 2–3 days), obligation payments on their due dates (rent, salaries, utilities), customer payments for open receivables following each customer's on-time profile, and payments for supplier invoices on their scheduled date. Ends with one `BankBalanceSnapshot` per account.
@@ -261,21 +261,21 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Frontend shell
 
-- [ ] T045 [P] Generate the typed API client: script `npm run gen:api` runs openapi-typescript against `/api/v1/openapi.json` into `frontend/src/api/schema.d.ts`. The wrapper `frontend/src/api/client.ts` uses openapi-fetch and sends the CSRF header and cookies.
-- [ ] T046 [P] Build the app shell:
+- [X] T045 [P] Generate the typed API client: script `npm run gen:api` runs openapi-typescript against `/api/v1/openapi.json` into `frontend/src/api/schema.d.ts`. The wrapper `frontend/src/api/client.ts` uses openapi-fetch and sends the CSRF header and cookies.
+- [X] T046 [P] Build the app shell:
   - `frontend/src/App.tsx`: router, QueryClient, role-aware nav that hides pages below the user's role, and a mobile-first layout.
   - `frontend/src/pages/Login.tsx`.
   - `frontend/src/i18n/{index.ts,en.json,ar.json}`, with `dir` switching prepared for Arabic.
-- [ ] T047 [P] Build the chat panel: `frontend/src/components/ChatPanel.tsx` and `frontend/src/components/ApprovalCard.tsx`.
+- [X] T047 [P] Build the chat panel: `frontend/src/components/ChatPanel.tsx` and `frontend/src/components/ApprovalCard.tsx`.
   - Subscribe to `/chat/stream`.
   - Render one-tap option buttons.
   - Show "Already answered in <channel> by <user>" on 409.
   - Show "resolved" state.
-- [ ] T048 [P] Build `frontend/src/components/ClockControl.tsx` (owner only; "Advance 1 day", "Jump to date", disabled while advancing), `frontend/src/components/FreshnessLabel.tsx` (renders `data_as_of`) and `frontend/src/lib/money.ts` (display with the currency exponent).
+- [X] T048 [P] Build `frontend/src/components/ClockControl.tsx` (owner only; "Advance 1 day", "Jump to date", disabled while advancing), `frontend/src/components/FreshnessLabel.tsx` (renders `data_as_of`) and `frontend/src/lib/money.ts` (display with the currency exponent).
 
 ### Foundation verification
 
-- [ ] T049 Write graph tests in `backend/tests/unit/graphs/test_harness_graph.py` with `InMemorySaver` and fake ActionSpecs. Cases:
+- [X] T049 Write graph tests in `backend/tests/unit/graphs/test_harness_graph.py` with `InMemorySaver` and fake ActionSpecs. Cases:
   1. `read_only` completes without interrupt.
   2. A `reversible` action with a failing `verify` is rolled back, retried once, then `escalated` with an incident.
   3. An `irreversible_external` action pauses with an `__interrupt__` payload, and `resume` with approve reaches `completed` while reject reaches `finalize` without `execute`.
