@@ -76,6 +76,7 @@ The repository is empty (greenfield), so every technical choice below was made i
 
 - **Decision**: A `BusinessClock` service is the only source of "now". In demo mode it stores a simulated datetime in the DB; `advance(days | to_date)` iterates day by day and, for each day, invokes the LangGraph `daily_run_graph` (R17), whose nodes run in fixed order (import day's sales → stock deduction → morning forecast check → reorder planning → bank import → balance comparison → cash forecast → trial balance → reminders → approval timeouts). Outside demo mode an asyncio loop triggers the same job list once per real day.
 - **Rationale**: FR-012a requires in-order catch-up; a single job list for both modes avoids two code paths.
+- **Demo data feed**: In demo mode, the `import_sales` and `bank_import` steps are fed by a deterministic generator (`seed/feed.py`) that produces each new business date's sales and bank transactions from the same seasonal model as the 3-month history. The random seed comes from business and date, so a replay gives the same data, and re-running a date is a no-op. Chaos scenarios change future days through stored per-date overrides (demand spike, missing bank day, extra outflow) instead of editing records directly. Real mode uses uploads and imports instead.
 - **Alternatives considered**: APScheduler (hard to drive from a simulated clock), freezegun in production code (test-only tool). LangGraph nodes must read time only from `BusinessClock`, never the system clock.
 
 ## R11. Inter-agent events

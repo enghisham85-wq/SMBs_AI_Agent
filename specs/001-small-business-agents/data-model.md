@@ -212,6 +212,9 @@ TypedDict carried through `harness_graph`: `action_id`, `spec_name`, `plan`, `in
 ### Event (outbox) and EventDelivery
 Event: type (see [contracts/events.md](./contracts/events.md)), producer agent, payload JSON, action_id?, occurred_at. EventDelivery: event_id, consumer, status, handled_at, error?. Consumers are idempotent on event_id.
 
+### FeedOverride
+date, overrides JSON (e.g. `sales_multiplier` per item, `skip_bank`, `extra_outflow`), chaos_injection_id?. Unique (business_id, date). Read by the demo data feed (`seed/feed.py`) when it generates that date's sales and bank transactions.
+
 ### ChaosInjection
 scenario enum (8 spec scenarios), injected_by, injected_at, parameters, affected refs, outcome (detected bool, incident_id, rule_id, elapsed_seconds). Used for SC-001 and SC-011 reporting.
 

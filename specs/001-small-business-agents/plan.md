@@ -116,7 +116,7 @@ backend/
 │   │   └── accountant/         # graphs: document (extract→checks→re-extract→post), reconciliation, trial_balance; logic: posting, matching, vat
 │   ├── chaos/                  # 8 scenario injectors
 │   ├── api/v1/                 # routers per contracts/rest-api.md
-│   └── seed/                   # sample cafe dataset + invoice samples
+│   └── seed/                   # sample cafe dataset, invoice samples, feed.py (daily simulated sales + bank data)
 └── tests/
     ├── unit/
     ├── contract/
