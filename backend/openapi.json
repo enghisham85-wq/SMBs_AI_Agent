@@ -597,6 +597,463 @@
           }
         }
       }
+    },
+    "/api/v1/stock/items": {
+      "get": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "List Items",
+        "description": "Purchased items with stock, days of cover, reorder status and expiry risk. Staff see no costs.",
+        "operationId": "list_items_api_v1_stock_items_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stock/products": {
+      "get": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "List Products",
+        "description": "Sold products (for manual sales entry). Staff see no prices.",
+        "operationId": "list_products_api_v1_stock_products_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stock/items/{item_id}/forecast": {
+      "get": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Item Forecast",
+        "operationId": "item_forecast_api_v1_stock_items__item_id__forecast_get",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 14,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stock/waste": {
+      "post": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Record Waste",
+        "operationId": "record_waste_api_v1_stock_waste_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WasteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stock/counts": {
+      "post": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Record Counts",
+        "operationId": "record_counts_api_v1_stock_counts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CountIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/purchase-orders": {
+      "get": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "List Pos",
+        "operationId": "list_pos_api_v1_purchase_orders_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/purchase-orders/{po_id}": {
+      "patch": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Patch Po",
+        "operationId": "patch_po_api_v1_purchase_orders__po_id__patch",
+        "parameters": [
+          {
+            "name": "po_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Po Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/POPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/purchase-orders/{po_id}/deliveries": {
+      "post": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Record Delivery",
+        "description": "Staff delivery checklist; `lines` is JSON [{item_id, qty_received, unit_price_minor?}].",
+        "operationId": "record_delivery_api_v1_purchase_orders__po_id__deliveries_post",
+        "parameters": [
+          {
+            "name": "po_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Po Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_record_delivery_api_v1_purchase_orders__po_id__deliveries_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/suppliers": {
+      "get": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Suppliers",
+        "operationId": "suppliers_api_v1_suppliers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sales/import": {
+      "post": {
+        "tags": [
+          "sales"
+        ],
+        "summary": "Import Csv",
+        "operationId": "import_csv_api_v1_sales_import_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_csv_api_v1_sales_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sales/manual": {
+      "post": {
+        "tags": [
+          "sales"
+        ],
+        "summary": "Manual Entry",
+        "operationId": "manual_entry_api_v1_sales_manual_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sales": {
+      "get": {
+        "tags": [
+          "sales"
+        ],
+        "summary": "List Sales",
+        "operationId": "list_sales_api_v1_sales_get",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -629,6 +1086,56 @@
         },
         "type": "object",
         "title": "AdvanceIn"
+      },
+      "Body_import_csv_api_v1_sales_import_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mapping"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_csv_api_v1_sales_import_post"
+      },
+      "Body_record_delivery_api_v1_purchase_orders__po_id__deliveries_post": {
+        "properties": {
+          "lines": {
+            "type": "string",
+            "title": "Lines"
+          },
+          "photo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "contentMediaType": "application/octet-stream"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lines"
+        ],
+        "title": "Body_record_delivery_api_v1_purchase_orders__po_id__deliveries_post"
       },
       "BusinessPatch": {
         "properties": {
@@ -731,6 +1238,23 @@
         "type": "object",
         "title": "BusinessPatch"
       },
+      "CountIn": {
+        "properties": {
+          "counts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Counts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "counts"
+        ],
+        "title": "CountIn"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -762,6 +1286,82 @@
         ],
         "title": "LoginIn"
       },
+      "ManualIn": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ManualLine"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Lines"
+          },
+          "payment_method": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "card",
+              "transfer",
+              "credit"
+            ],
+            "title": "Payment Method",
+            "default": "cash"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "lines"
+        ],
+        "title": "ManualIn"
+      },
+      "ManualLine": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Item Id"
+          },
+          "qty": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Qty"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "qty",
+          "amount"
+        ],
+        "title": "ManualLine"
+      },
       "MePatch": {
         "properties": {
           "language": {
@@ -778,6 +1378,23 @@
           "language"
         ],
         "title": "MePatch"
+      },
+      "POPatch": {
+        "properties": {
+          "lines": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lines"
+        ],
+        "title": "POPatch"
       },
       "ResetIn": {
         "properties": {
@@ -975,6 +1592,50 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WasteIn": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Item Id"
+          },
+          "qty": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Qty"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "waste",
+              "spoilage"
+            ],
+            "title": "Type",
+            "default": "waste"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 2,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "qty",
+          "reason"
+        ],
+        "title": "WasteIn"
       }
     }
   }

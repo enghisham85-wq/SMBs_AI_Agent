@@ -29,6 +29,8 @@ def _jsonable(value: Any) -> Any:
         return value.isoformat()
     if isinstance(value, Decimal):
         return str(value)
+    if isinstance(value, float) and (value != value or value in (float("inf"), float("-inf"))):
+        return None  # JSON has no Infinity/NaN (e.g. days of cover with zero demand)
     return value
 
 

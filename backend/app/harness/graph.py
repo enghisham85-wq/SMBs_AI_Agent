@@ -296,6 +296,11 @@ async def finalize_node(state: ActionState) -> dict[str, Any]:
         outcome, "completed"
     )
     await _stage(state, stage, "action_finalized", {"outcome": outcome})
+    if spec.on_finalize is not None:
+        try:
+            await spec.on_finalize(_ctx(state), state["inputs"], outcome, state.get("execution_result") or {})
+        except Exception:
+            log.exception("on_finalize failed for %s", spec.name)
     for hook in FINALIZE_HOOKS:
         try:
             await hook(spec, {**state, "outcome": outcome})  # type: ignore[typeddict-item]

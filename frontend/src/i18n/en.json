@@ -9,12 +9,31 @@
     "timed_out": "Timed out — safe default applied: {{option}}",
     "urgency": "Urgency {{level}}",
     "due": "Answer by {{time}}",
-    "from": "From {{agent}}"
+    "from": "From {{agent}}",
+    "send_edited": "Approve with these quantities"
   },
   "agents": { "stock": "Stock Agent", "cashflow": "Cash-Flow Agent", "accountant": "Accountant Agent", "harness": "Harness" },
   "clock": { "today": "Business date", "advance1": "Advance 1 day", "jump": "Jump to date", "go": "Go", "advancing": "Advancing…", "real": "Real time" },
   "freshness": { "as_of": "{{source}} as of {{time}}", "unknown": "{{source}}: no data yet", "sources": { "bank": "Bank data", "sales": "Sales data", "stock": "Stock data", "forecast": "Forecast", "books": "Books", "clock": "Business date" } },
   "lang": { "switch": "العربية" },
   "common": { "save": "Save", "cancel": "Cancel", "none": "None", "yes": "Yes", "no": "No", "details": "Details", "back": "Back" },
+  "stock": {
+    "tabs": { "items": "Items", "orders": "Orders", "delivery": "Receive delivery", "waste": "Record waste", "sales": "Sales data" },
+    "item": "Item", "in_stock": "In stock", "cover": "Days of cover", "status": "Status", "expiry": "Expiry", "unit_cost": "Unit cost",
+    "critical": "critical", "days_one": "{{count}} day", "days_other": "{{count}} days", "runs_out": "Runs out {{date}}",
+    "statuses": { "ok": "OK", "reorder": "Reorder", "on_order": "On order" },
+    "po_status": { "draft": "Draft", "pending_approval": "Awaiting approval", "approved": "Approved", "sent": "Sent", "partially_received": "Partly received", "received": "Received", "closed": "Closed", "rejected": "Rejected", "on_hold": "On hold", "cancelled": "Cancelled" },
+    "expiry_risk": "May expire before use (shelf life {{days}} d)",
+    "forecast_title": "Daily demand ({{unit}})", "method": "Method", "methods": { "holt_winters": "Seasonal model", "same_weekday_avg": "Average of last 4 same weekdays", "derived": "From product forecasts" },
+    "show_table": "Table", "show_chart": "Chart", "date": "Date", "actual": "Actual", "forecast": "Forecast", "range": "Likely range", "today": "Today",
+    "late": "Late", "expected": "Expected {{date}}", "delivered_on": "Delivered {{date}}", "discrepancies": "{{count}} difference(s)",
+    "choose_order": "Order being delivered", "ordered": "ordered", "received": "Received quantity", "photo": "Photo of the delivery (optional)",
+    "confirm_delivery": "Confirm delivery", "delivery_saved": "Delivery recorded.",
+    "quantity": "Quantity", "type": "Type", "types": { "waste": "Waste", "spoilage": "Spoilage" }, "reason": "Reason", "waste_saved": "Recorded.",
+    "import_csv": "Import sales (CSV)", "csv_hint": "Columns: date, item, qty, amount, payment_method. Arabic item names and digits are fine.",
+    "upload": "Upload", "manual_entry": "Enter a day's sales", "amount": "Amount", "payment_method": "Payment method",
+    "methods_pay": { "cash": "Cash", "card": "Card", "transfer": "Transfer", "credit": "On account" },
+    "import_result": "Imported {{imported}} row(s); {{skipped}} duplicate(s) skipped.", "row_error": "Row {{row}}: {{reason}}"
+  },
   "placeholder": { "coming": "This view is being built." }
 }

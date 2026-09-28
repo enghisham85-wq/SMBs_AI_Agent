@@ -9,6 +9,7 @@ MODULES: list[str] = [
     "app.harness.graph",
     "app.graphs.daily_run",
     "app.seed.feed",
+    "app.agents.stock.wiring",
 ]
 
 

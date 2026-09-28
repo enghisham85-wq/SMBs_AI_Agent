@@ -13,11 +13,14 @@ export function ApprovalCard({ request, compact = false }: { request: ApprovalRe
   const qc = useQueryClient();
   const [notice, setNotice] = useState<string | null>(null);
   const [reply, setReply] = useState("");
+  const editLines = ((request.context?.edit as any)?.lines ?? []) as { item_id: string; name_en: string; name_ar: string; qty: string; unit: string }[];
+  const [editing, setEditing] = useState(false);
+  const [qtys, setQtys] = useState<Record<string, string>>({});
   const text = lang === "ar" ? request.text_ar : request.text_en;
   const label = (o: { label_en: string; label_ar: string }) => (lang === "ar" ? o.label_ar : o.label_en);
 
   const resolve = useMutation({
-    mutationFn: (body: { option_key?: string; text?: string }) =>
+    mutationFn: (body: { option_key?: string; text?: string; edits?: Record<string, unknown> }) =>
       api.post(`/approvals/${request.id}/resolve`, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["approvals"] }),
     onError: (e) => {
@@ -61,11 +64,42 @@ export function ApprovalCard({ request, compact = false }: { request: ApprovalRe
               type="button"
               className={o.effect === "reject" || o.effect === "cancel" ? "btn-danger" : o.effect === "approve" || o.effect === "override" ? "btn-primary" : "btn-secondary"}
               disabled={resolve.isPending}
-              onClick={() => resolve.mutate({ option_key: o.key })}
+              onClick={() => (o.effect === "edit" && editLines.length ? setEditing((v) => !v) : resolve.mutate({ option_key: o.key }))}
             >
               {label(o)}
             </button>
           ))}
+          {editing && (
+            <form
+              className="flex w-full flex-col gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                resolve.mutate({
+                  option_key: request.options.find((o) => o.effect === "edit")!.key,
+                  edits: { lines: editLines.map((l) => ({ item_id: l.item_id, qty: qtys[l.item_id] ?? l.qty })) },
+                });
+              }}
+            >
+              {editLines.map((l) => (
+                <label key={l.item_id} className="flex items-center gap-2 text-sm">
+                  <span className="flex-1">{lang === "ar" ? l.name_ar : l.name_en}</span>
+                  <input
+                    className="input w-24"
+                    type="number"
+                    min="0"
+                    step="any"
+                    inputMode="decimal"
+                    value={qtys[l.item_id] ?? String(Number(l.qty))}
+                    onChange={(e) => setQtys({ ...qtys, [l.item_id]: e.target.value })}
+                  />
+                  <span className="w-10 text-ink-500">{l.unit}</span>
+                </label>
+              ))}
+              <button type="submit" className="btn-primary" disabled={resolve.isPending}>
+                {t("approval.send_edited")}
+              </button>
+            </form>
+          )}
           {request.allow_text && (
             <form
               className="flex w-full gap-2"
