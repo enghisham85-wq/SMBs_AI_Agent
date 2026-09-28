@@ -150,7 +150,13 @@ draft ──checks ok──> posted ──bank match──> paid
 ```
 
 ### ReceivableInvoice
-customer (name, contact, telegram?), number, invoice_date, due_date, total, status (`open`, `partially_paid`, `paid`, `void`), paid_on?, late_payment_history_score.
+customer (name, contact, telegram?), number (unique per business; auto `INV-###` when not given), invoice_date, due_date (≥ invoice_date), lines (description, qty, unit_price, vat_rate, line_total), subtotal, vat_amount, total, amount_paid, status (`open`, `partially_paid`, `paid`, `void`), paid_on?, source (`seed`, `manual`), late_payment_history_score.
+```
+open ──partial payment──> partially_paid ──rest paid──> paid
+  │                                └──full payment──────────────^
+  └──void (only while amount_paid = 0, posts reversal)──> void
+```
+Created by the Accountant Agent (dashboard) or the seed; journal on creation Dr Accounts receivable / Cr Sales + Cr VAT output.
 
 ### Account (chart of accounts)
 code, name_en, name_ar, type enum (`asset`, `liability`, `equity`, `income`, `expense`), is_bank, is_inventory, is_vat_input, is_vat_output. Seeded from a small-business template.

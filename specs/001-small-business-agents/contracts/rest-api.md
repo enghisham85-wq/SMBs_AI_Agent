@@ -75,6 +75,10 @@ Base path `/api/v1`. JSON over HTTPS. Session cookie auth (R14); state-changing 
 | GET | `/documents?status=` | manager | document inbox with extraction confidence |
 | GET | `/documents/{id}` | manager | fields, raw text, per-field confidence, checks, original file URL |
 | GET | `/review-queue` | manager | items needing answers |
+| POST | `/receivables` | manager | create customer invoice `{customer, invoice_date, due_date, lines, number?}` → 201; duplicate number → 409 |
+| GET | `/receivables?status=&overdue=` | manager | list with ageing bucket |
+| GET | `/receivables/{id}` | manager | lines, payments, reminders sent, promises |
+| POST | `/receivables/{id}/void` | manager | void with reason; 409 if any amount paid |
 | GET | `/reconciliation` | manager | % matched, unmatched list |
 | POST | `/reconciliation/{bank_txn_id}/match` | manager | confirm/override a match |
 | GET | `/reports/pnl?from&to`, `/reports/balance-sheet?as_of` | manager | reports |
