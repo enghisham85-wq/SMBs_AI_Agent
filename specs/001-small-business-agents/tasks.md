@@ -49,8 +49,10 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `TELEGRAM_BOT_TOKEN` (optional)
   - `FILES_DIR` (default `./var/files`)
   - `SESSION_SECRET`
+  - `DEFAULT_COUNTRY` (default `EG`): profile used when a business is created or seeded without `--country`
+  - `DEFAULT_VAT_RATE_PERCENT` (optional, decimal 0–100): when set, overrides the chosen profile's VAT rate for newly created businesses. Leave it empty to use the profile rate (Egypt 14). The owner can still change the rate later in Settings.
 
-  Also create `backend/.env.example` listing the same keys.
+  Also create `backend/.env.example` listing the same keys, with `DEFAULT_COUNTRY=EG` and `DEFAULT_VAT_RATE_PERCENT=14` shown as a commented example.
 - [ ] T007 [P] Create `backend/tests/conftest.py` with fixtures:
   - an async in-memory SQLite engine with the schema created
   - a seeded business
@@ -78,7 +80,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `BaseModel` mixin: UUID `id`, `business_id` FK, `created_at`/`updated_at` set from BusinessClock.
 - [ ] T010 Initialize Alembic in `backend/alembic/` with `env.py` using the async engine and `app.models` metadata.
 - [ ] T011 [P] Create tenancy models in `backend/app/models/tenancy.py`:
-  - **Business**: `name` required; `country` ISO 3166 default `EG`; `currency` ISO 4217 default `EGP` ("owner can change only while no financial record exists"); `vat_registered`; `vat_rate` default 0.14; `vat_period` enum `monthly`/`quarterly` default `monthly`; `weekend_days` ISO weekday numbers (Mon=1 … Sun=7) default [5,6] (Fri, Sat); `tax_id_pattern` default Egypt 9-digit tax registration number; `min_cash_buffer` Money (owner-only edit); `demo_mode`. Defaults are filled from the country profile (T040), not hard-coded here.
+  - **Business**: `name` required; `country` ISO 3166 default `EG`; `currency` ISO 4217 default `EGP` ("owner can change only while no financial record exists"); `vat_registered`; `vat_rate_percent` Decimal(5,2), 0–100, default 14.00 (stored and shown as a percentage; calculations divide by 100); `vat_period` enum `monthly`/`quarterly` default `monthly`; `weekend_days` ISO weekday numbers (Mon=1 … Sun=7) default [5,6] (Fri, Sat); `tax_id_pattern` default Egypt 9-digit tax registration number; `min_cash_buffer` Money (owner-only edit); `demo_mode`. Defaults are filled from the country profile (T040), not hard-coded here.
   - **User**: `username` unique per business; `password_hash` argon2; `role` enum `owner`/`manager`/`staff`; `language` enum `en`/`ar`; `telegram_chat_id` unique ("one chat ↔ one user"); `telegram_link_code` ("one-time, expires 15 min"); `active`.
   - **Setting** key/value with defaults `price_change_pct=15`, `stock_variance_pct=5`, `approval_timeout_hours=4`, `journal_value_limit` (from the country profile; EG default 1000000 minor units = EGP 10,000.00; journal entries above it get the independent second check), `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off), `reminder_auto_approve` enum `off`/`polite_only` (default `off`; `polite_only` lets level-1 reminders send without approval, levels 2–3 always need approval), `manual_bookkeeping_hours_per_week=6` (comparison figure for SC-006).
 - [ ] T012 [P] Create the BusinessClock model in `backend/app/models/clock.py`: `mode` enum `real`/`simulated`, `current_date`, `last_run_date`, `advancing` bool.
@@ -198,14 +200,14 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `POST /demo/reset` (owner, demo mode only), which re-runs the seed; optional body `{country}` reseeds with another country profile
 - [ ] T040 Implement configurable country profiles and business settings (FR-051; default Egypt):
   - **Profile files** in `backend/app/seed/countries/`: `EG.json` (default), `OM.json`, `AE.json`, `SA.json`, with the CountryProfile fields in data-model.md.
-    - `EG`: currency `EGP`; VAT 0.14 monthly; weekend [5,6]; `tax_id_pattern` `^\d{9}$`; `default_date_format` `DMY`; `seed_price_factor` 1.0; money defaults `min_cash_buffer` EGP 50,000.00, `journal_value_limit` EGP 10,000.00, `po_auto_approve_limit` 0.
+    - `EG`: currency `EGP`; `vat_rate_percent` 14, monthly; weekend [5,6]; `tax_id_pattern` `^\d{9}$`; `default_date_format` `DMY`; `seed_price_factor` 1.0; money defaults `min_cash_buffer` EGP 50,000.00, `journal_value_limit` EGP 10,000.00, `po_auto_approve_limit` 0.
     - `EG` fixed-date public holidays: 7 Jan, 25 Jan, 25 Apr, 1 May, 30 Jun, 23 Jul, 6 Oct. Also Sham El-Nessim (the Monday after Orthodox Easter), and the Islamic holidays Eid al-Fitr, Eid al-Adha, Islamic New Year and the Prophet's Birthday, computed from the Hijri calendar.
-    - `OM`: currency `OMR`; VAT 0.05; its own holidays and money defaults.
+    - `OM`: currency `OMR`; `vat_rate_percent` 5; its own holidays and money defaults.
   - **Loader** in `backend/app/core/country_profiles.py`:
     - `load(code)` validates the JSON with a Pydantic model and checks that the currency exists in the ISO 4217 table.
     - `holidays(profile, year)` expands fixed and Hijri-based dates (via hijridate), then applies the per-year override list.
     - `ramadan(profile, year)` returns the Ramadan dates.
-    - `apply(business, profile)` copies the profile values into the Business row and Settings.
+    - `apply(business, profile)` copies the profile values into the Business row and Settings; `DEFAULT_VAT_RATE_PERCENT`, if set, replaces the profile's VAT rate at creation.
     - Forecasting (calendar uplift), the demo feed and the weekend logic read only these functions.
   - **Endpoints** in `backend/app/api/v1/business.py`:
     - `GET /business` (manager) returns country, currency with its decimals, VAT, weekend and holidays for the year.
@@ -213,11 +215,12 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
     - `PATCH /business` (owner):
       - Changing `country` re-applies the profile's non-money fields (VAT, weekend, holidays, tax id pattern, date format) from the current business date forward, and never rewrites past invoices.
       - `currency` changes only if no Money-bearing record exists yet, otherwise 409 `currency_locked` with a bilingual message.
-      - Each field (`vat_rate`, `vat_period`, `weekend_days`, `tax_id_pattern`, `min_cash_buffer`) can also be edited on its own.
+      - Each field (`vat_rate_percent`, `vat_period`, `weekend_days`, `tax_id_pattern`, `min_cash_buffer`) can also be edited on its own. `vat_rate_percent` must be 0–100 with at most 2 decimals; a change applies to invoices dated on or after the change and never recalculates earlier ones.
     - Every change is audited as `setting_changed`.
   - **Frontend**: `frontend/src/lib/money.ts` takes the currency and decimals from `GET /business`, never from a constant.
   - **Test** in `backend/tests/integration/test_country_profiles.py`:
-    - seeding with no flag gives EGP, VAT 14% and Egyptian holidays
+    - seeding with no flag gives EGP, `vat_rate_percent` 14 and Egyptian holidays; with `DEFAULT_VAT_RATE_PERCENT=10` a new business gets 10
+    - `PATCH /business {"vat_rate_percent": 101}` → 422
     - `--country OM` gives OMR with 3 decimals and scaled prices
     - changing the currency after invoices exist returns 409
     - changing the VAT rate affects only invoices dated after the change
@@ -441,7 +444,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - **Document**: file path, mime, `sha256`; `channel` enum `dashboard`/`telegram`; `uploaded_by`; `language_detected` enum `en`/`ar`/`bilingual`; `status` enum `received`/`extracting`/`extracted`/`needs_review`/`posted`/`rejected`/`duplicate`.
   - **Extraction**: `attempt` 1 or 2; `fields` JSON; `document_confidence`; `checks`; `verifier_verdict?`.
   - **PayableInvoice**: lines; `status` enum `draft`/`held`/`posted`/`paid`/`void`; `hold_reason?`; `match_result`; guard on (supplier_id, normalised invoice_number).
-  - **ReceivableInvoice**: customer name, contact, `telegram?`; `number` unique per business (auto `INV-###` when not given); `invoice_date`; `due_date`; `lines` (description, qty, unit_price, vat_rate, line_total); `subtotal`, `vat_amount`, `total`; `amount_paid`; `status` enum `open`/`partially_paid`/`paid`/`void`; `paid_on?`; `source` (`seed`/`manual`); `late_payment_history_score`.
+  - **ReceivableInvoice**: customer name, contact, `telegram?`; `number` unique per business (auto `INV-###` when not given); `invoice_date`; `due_date`; `lines` (description, qty, unit_price, `vat_rate_percent` (default `Business.vat_rate_percent`; 0 allowed for exempt items), line_total); `subtotal`, `vat_amount`, `total`; `amount_paid`; `status` enum `open`/`partially_paid`/`paid`/`void`; `paid_on?`; `source` (`seed`/`manual`); `late_payment_history_score`.
   - **JournalEntry**: `status` enum `posted`/`quarantined`/`reversed`; "never edited in place"; reversal creates an opposite entry.
   - **ClassificationCorrection**: `supplier_id`, `from_account_id`, `to_account_id`, `corrected_by`, `date`, `source_ref` (the transaction or invoice line).
   - **JournalLine**: `debit_minor`, `credit_minor`.
@@ -460,7 +463,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `LLMRefusal` is handled as low confidence plus an owner question.
 - [ ] T073 [P] [US2] Implement supplier matching in `backend/app/agents/accountant/supplier_match.py`: VAT number first, then exact normalised alias (Arabic or English), then fuzzy ratio ≥ 0.9, otherwise unknown. Creates a SupplierAlias on owner confirmation.
 - [ ] T074 [P] [US2] Implement books checks in `backend/app/agents/accountant/checks.py`:
-  - `extraction_arithmetic`: lines sum to subtotal; subtotal + VAT = total; VAT = rate × base, within 1 minor unit.
+  - `extraction_arithmetic`: lines sum to subtotal; subtotal + VAT = total; VAT = Σ(line base × line `vat_rate_percent` / 100), within 1 minor unit per line. The line rate is the one printed on the invoice (0 for exempt items); if none is printed, `Business.vat_rate_percent` is used.
   - `duplicate_invoice`: same supplier + number, or same supplier + total + date; also a sha256 duplicate file.
   - `date_sanity`: future, more than 1 year old, or DMY/MDY ambiguous (ambiguous dates default to the country profile's `default_date_format`, DMY for Egypt, unless a supplier rule says otherwise).
   - `balanced_entry`.
@@ -507,7 +510,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 - [ ] T081 [US2] Add the Telegram photo/PDF upload handler in `backend/app/approvals/telegram_bot.py`. For managers and above it creates a Document with channel `telegram` and starts `document_graph`, replying "Received, reading…" and then the result.
 - [ ] T082 [US2] Implement customer (receivable) invoices, so receivables can be created in the app rather than only seeded:
   - **Service** in `backend/app/agents/accountant/receivables.py`:
-    - `create(customer, invoice_date, due_date, lines)` computes line totals, subtotal, VAT at `Business.vat_rate` and total in integer minor units, and assigns the next `INV-###` number when none is given.
+    - `create(customer, invoice_date, due_date, lines)` computes line totals, subtotal, VAT per line at the line's `vat_rate_percent` (defaulting to `Business.vat_rate_percent`, e.g. 14) and total in integer minor units, and assigns the next `INV-###` number when none is given.
     - Validation:
       - `due_date` ≥ `invoice_date`
       - `invoice_date` is not after `BusinessClock.today()`
@@ -676,7 +679,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `frontend/src/components/RulesPanel.tsx`: active and pending rules, with approve/edit/reject for the owner.
   - `frontend/src/components/CalibrationChart.tsx`: accuracy over time and current thresholds/limits.
   - An action detail drawer showing plan, checks, verifier verdict and audit trail.
-- [ ] T105 [P] [US4] Build `frontend/src/pages/Settings.tsx` (owner): country profile and currency (currency picker disabled with an explanation once financial records exist), VAT rate and period, weekend days, thresholds, minimum cash buffer, PO auto-approve limit, reminder auto-approval (off / polite first reminders only), approval timeout, users, and the Telegram link code.
+- [ ] T105 [P] [US4] Build `frontend/src/pages/Settings.tsx` (owner): country profile and currency (currency picker disabled with an explanation once financial records exist), VAT rate as a percentage input (e.g. "14 %") and filing period, weekend days, thresholds, minimum cash buffer, PO auto-approve limit, reminder auto-approval (off / polite first reminders only), approval timeout, users, and the Telegram link code.
 
 **Checkpoint**: All P1 stories are complete.
 

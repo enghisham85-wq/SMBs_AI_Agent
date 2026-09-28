@@ -31,9 +31,9 @@ Base path `/api/v1`. JSON over HTTPS. Session cookie auth (R14); state-changing 
 
 | Method | Path | Role | Purpose |
 |---|---|---|---|
-| GET | `/business` | manager | country, currency and decimals, VAT rate and period, weekend days, tax id pattern, this year's holidays |
+| GET | `/business` | manager | country, currency and decimals, `vat_rate_percent` (e.g. 14) and VAT period, weekend days, tax id pattern, this year's holidays |
 | GET | `/countries` | manager | available country profiles (EG default, OM, AE, SA) |
-| PATCH | `/business` | owner | change country (re-applies profile values from today forward) or any single field; `currency` change → 409 `currency_locked` once financial records exist |
+| PATCH | `/business` | owner | change country (re-applies profile values from today forward) or any single field, e.g. `{"vat_rate_percent": 14}` (0–100, max 2 decimals, else 422); `currency` change → 409 `currency_locked` once financial records exist |
 
 ## Home
 

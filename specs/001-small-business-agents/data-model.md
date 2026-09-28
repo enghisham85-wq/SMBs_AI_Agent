@@ -8,6 +8,7 @@ Conventions (apply to every entity unless stated):
 - `created_at`, `updated_at`: business-clock timestamps (FR-012a), not wall-clock.
 - **Money** = `amount_minor` (integer) + `currency` (ISO 4217). The number of decimal places (exponent) comes from the ISO 4217 table, e.g. EGP 2 (piastres), OMR 3 (baisa). Default currency EGP. Never floats (R3).
 - **Quantity** = `Decimal(18,4)` + `unit` code from the item's unit set.
+- **VAT rates** are stored and shown as percentages, `Decimal(5,2)` in 0–100 (14.00 = 14%); calculations divide by 100 and round each line to the currency's minor unit.
 - `confidence`: decimal 0–1. `source`: enum of where a value came from (`pos_import`, `csv_upload`, `manual`, `extraction`, `agent`, `seed`, `chaos`).
 - Written-by column shows which agent owns writes; other agents change it only via events (FR-044).
 
@@ -22,14 +23,14 @@ Conventions (apply to every entity unless stated):
 | country | text | ISO 3166 code; default `EG`; selects a CountryProfile; owner can change at any time (new values apply from that date forward) |
 | currency | text | ISO 4217 code; default from the profile (`EGP`); owner can change **only while no financial record exists** (no currency conversion in the MVP), otherwise 409 `currency_locked` |
 | vat_registered | bool | |
-| vat_rate | decimal | default from the profile (EG 0.14); editable; a change applies to invoices dated from then on |
+| vat_rate_percent | Decimal(5,2), 0–100 | default from the profile (EG **14**), or `DEFAULT_VAT_RATE_PERCENT` from the app config if set; owner-editable in Settings; a change applies to invoices dated on or after it and never recalculates earlier ones; invoice lines may carry their own rate (0 for exempt items) |
 | vat_period | enum `monthly`/`quarterly` | default from the profile (EG `monthly`) |
 | weekend_days | int[] | ISO weekday numbers (Mon=1 … Sun=7); default from the profile (EG [5,6] = Fri, Sat) |
 | tax_id_pattern | text (regex) | default from the profile (EG 9-digit tax registration number); used by `supplier_vat_validity` |
 | min_cash_buffer | Money | owner-only edit; seed default EGP 50,000.00 |
 
 ### CountryProfile (reference data, not per business)
-Stored as JSON files `backend/app/seed/countries/<code>.json`, loaded at startup. Fields: `code`, `name_en`, `name_ar`, `currency`, `vat_rate`, `vat_period`, `weekend_days`, `tax_id_pattern`, `default_date_format` (`DMY` for EG), `public_holidays` (fixed-date list plus Islamic holidays computed from the Hijri calendar, with an optional per-year override list for moon-sighting dates), `ramadan_source` (`computed` or override dates), `money_defaults` (`min_cash_buffer`, `journal_value_limit`, `po_auto_approve_limit` in that currency), `seed_price_factor` (multiplier from the EGP seed price list). MVP ships `EG` (default), `OM`, `AE`, `SA`. Choosing a profile copies its values into the Business row, where the owner can then edit each one.
+Stored as JSON files `backend/app/seed/countries/<code>.json`, loaded at startup. Fields: `code`, `name_en`, `name_ar`, `currency`, `vat_rate_percent` (EG 14, OM 5, AE 5, SA 15), `vat_period`, `weekend_days`, `tax_id_pattern`, `default_date_format` (`DMY` for EG), `public_holidays` (fixed-date list plus Islamic holidays computed from the Hijri calendar, with an optional per-year override list for moon-sighting dates), `ramadan_source` (`computed` or override dates), `money_defaults` (`min_cash_buffer`, `journal_value_limit`, `po_auto_approve_limit` in that currency), `seed_price_factor` (multiplier from the EGP seed price list). MVP ships `EG` (default), `OM`, `AE`, `SA`. Choosing a profile copies its values into the Business row, where the owner can then edit each one.
 | demo_mode | bool | enables BusinessClock simulation |
 
 ### User
@@ -157,7 +158,7 @@ draft ──checks ok──> posted ──bank match──> paid
 ```
 
 ### ReceivableInvoice
-customer (name, contact, telegram?), number (unique per business; auto `INV-###` when not given), invoice_date, due_date (≥ invoice_date), lines (description, qty, unit_price, vat_rate, line_total), subtotal, vat_amount, total, amount_paid, status (`open`, `partially_paid`, `paid`, `void`), paid_on?, source (`seed`, `manual`), late_payment_history_score.
+customer (name, contact, telegram?), number (unique per business; auto `INV-###` when not given), invoice_date, due_date (≥ invoice_date), lines (description, qty, unit_price, vat_rate_percent (default Business.vat_rate_percent; 0 for exempt items), line_total), subtotal, vat_amount, total, amount_paid, status (`open`, `partially_paid`, `paid`, `void`), paid_on?, source (`seed`, `manual`), late_payment_history_score.
 ```
 open ──partial payment──> partially_paid ──rest paid──> paid
   │                                └──full payment──────────────^

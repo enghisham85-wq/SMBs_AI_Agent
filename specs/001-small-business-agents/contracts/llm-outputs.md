@@ -16,7 +16,7 @@ InvoiceExtraction
   invoice_date: Field[date]            # ISO; raw_text keeps printed form
   due_date: Field[date] | null
   currency: Field[str]
-  lines: list[Line]                    # description, qty, unit, unit_price, vat_rate, line_total (each a Field)
+  lines: list[Line]                    # description, qty, unit, unit_price, vat_rate_percent (as printed, e.g. 14 or 0; null if not printed), line_total (each a Field)
   subtotal: Field[decimal]
   vat_amount: Field[decimal]
   total: Field[decimal]
