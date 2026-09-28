@@ -301,38 +301,38 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Tests for User Story 1
 
-- [ ] T051 [P] [US1] Write acceptance tests in `backend/tests/integration/test_us1_stock.py` covering spec US1 scenarios 1–6: reorder trigger and quantity rules; recipe deduction (latte → 18 g coffee, 200 ml milk); >15% price change held; duplicate open PO blocked with merge offered; delivery discrepancy flagged; forecast-error fallback to "average of the last 4 same weekdays". Also assert the warning comes ≥ 3 days before the projected stockout, and that a PO past its `expected_date` is flagged late once, with reliability lowered once and an owner alert (FR-017).
+- [X] T051 [P] [US1] Write acceptance tests in `backend/tests/integration/test_us1_stock.py` covering spec US1 scenarios 1–6: reorder trigger and quantity rules; recipe deduction (latte → 18 g coffee, 200 ml milk); >15% price change held; duplicate open PO blocked with merge offered; delivery discrepancy flagged; forecast-error fallback to "average of the last 4 same weekdays". Also assert the warning comes ≥ 3 days before the projected stockout, and that a PO past its `expected_date` is flagged late once, with reliability lowered once and an owner alert (FR-017).
 
 ### Implementation for User Story 1
 
-- [ ] T052 [P] [US1] Create stock operation models in `backend/app/models/stock_ops.py`:
+- [X] T052 [P] [US1] Create stock operation models in `backend/app/models/stock_ops.py`:
   - **StockLevel**: unique (item_id, location).
   - **StockMovement**: `type` enum `sale`/`purchase`/`waste`/`spoilage`/`adjustment`/`transfer`/`count_correction`; `reason` "required for waste/adjustment/count_correction"; append-only.
   - **StockCount**: `resolution` enum `accepted`/`investigating`/`adjusted`.
   - **DemandForecast**: `method` enum `holt_winters`/`same_weekday_avg`; unique (item_id, forecast_date, generated_on).
-- [ ] T053 [P] [US1] Create purchasing models in `backend/app/models/purchasing.py`:
+- [X] T053 [P] [US1] Create purchasing models in `backend/app/models/purchasing.py`:
   - **PurchaseOrder**: `status` enum `draft`/`pending_approval`/`approved`/`sent`/`partially_received`/`received`/`closed`/`rejected`/`on_hold`/`cancelled`; `lines`; `total`; `expected_date`; `is_critical_order`; `created_by_action_id`; `approved_by?`; `approval_request_id?`; `sent_at?`; `merged_into_id?`.
   - **PurchaseOrderLine**.
   - **Delivery** and its lines, with `photo_file_id?`.
   - Enforce the transitions from data-model.md §2 in a `transition(po, to)` helper that raises on illegal moves.
-- [ ] T054 [US1] Add the Alembic migration `backend/alembic/versions/0002_stock.py` for T052–T053.
-- [ ] T055 [P] [US1] Implement stock tracking in `backend/app/agents/stock/tracking.py`:
+- [X] T054 [US1] Add the Alembic migration `backend/alembic/versions/0002_stock.py` for T052–T053.
+- [X] T055 [P] [US1] Implement stock tracking in `backend/app/agents/stock/tracking.py`:
   - `apply_sales(date)`: deducts ingredients via RecipeLine; sold items with no mapping raise a `missing_mapping` finding.
   - `receive_delivery(delivery)`.
   - `record_waste(item, qty, reason)` and `record_adjustment(...)`.
   - Every change is a StockMovement, and StockLevel is recomputed.
-- [ ] T056 [P] [US1] Implement forecasting in `backend/app/agents/stock/forecasting.py`:
+- [X] T056 [P] [US1] Implement forecasting in `backend/app/agents/stock/forecasting.py`:
   - `holt_winters(series)` (statsmodels ExponentialSmoothing, weekly seasonality) × calendar uplift factors (weekend, public holiday, Ramadan evening) learned from history. Weekend, holiday and Ramadan dates come only from `country_profiles.holidays()` / `ramadan()` for the business's country (T040).
   - `same_weekday_avg(series)`: last 4 same weekdays, with min/max range.
   - `forecast(item, horizon=14..30)` returns low/expected/high per day, using P10/P90 residual quantiles. The daily run always stores a 30-day horizon, so the cash projection (30 days) never runs short of sales forecast; the stock screens show the first 14 days by default.
   - `mape_7d(item)`.
-- [ ] T057 [P] [US1] Implement reorder planning in `backend/app/agents/stock/reorder.py`:
+- [X] T057 [P] [US1] Implement reorder planning in `backend/app/agents/stock/reorder.py`:
   - `days_of_cover = stock / expected daily demand`.
   - Trigger when cover < lead time + safety buffer. Lead time = max(stated, observed); safety stock is raised before peak periods.
   - Quantity respects `min_order_qty`, pack size, `shelf_life_days`, `storage_capacity` and the current weekly PurchasingBudget remaining (unlimited until US3 publishes one).
   - Groups lines by supplier.
   - Produces the projected stockout date and ensures the warning is ≥ 3 days ahead.
-- [ ] T058 [P] [US1] Implement stock checks in `backend/app/agents/stock/checks.py`, each returning CheckResult:
+- [X] T058 [P] [US1] Implement stock checks in `backend/app/agents/stock/checks.py`, each returning CheckResult:
   - `negative_or_impossible_stock`
   - `count_variance` (> `stock_variance_pct`)
   - `price_sanity` (new vs trailing median > `price_change_pct` default 15)
@@ -341,12 +341,12 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `sales_data_gap` (open business day with no sales)
   - `forecast_accuracy` (MAPE over threshold)
   - `late_delivery` (PO in status `sent` or `partially_received` and `BusinessClock.today()` > `expected_date`; the finding includes days late and whether any line is a critical item)
-- [ ] T059 [P] [US1] Implement supplier performance and expiry in `backend/app/agents/stock/supplier.py` and `backend/app/agents/stock/waste.py`:
+- [X] T059 [P] [US1] Implement supplier performance and expiry in `backend/app/agents/stock/supplier.py` and `backend/app/agents/stock/waste.py`:
   - rolling observed lead time and `reliability_score` update on delivery
   - `record_late(supplier, po, days_late)` lowers `reliability_score` once per PO (not once per day late), and the late days count into observed lead time when the delivery arrives
   - expiry risk (stock won't sell before `shelf_life_days`)
   - dead stock (unsold ≥ `dead_stock_days`)
-- [ ] T060 [US1] Implement stock ActionSpecs in `backend/app/agents/stock/action_specs.py`:
+- [X] T060 [US1] Implement stock ActionSpecs in `backend/app/agents/stock/action_specs.py`:
   - **`draft_po`** (reversible): preconditions run duplicate, price and unit checks. A failing check sets PO `on_hold` and asks the owner. It verifies that the PO exists with the correct totals and no duplicates.
   - **`send_po`** (irreversible_external):
     - `approval_request` uses `llm/messages.compose`, e.g. "Milk will run out Thursday evening. Order 40 L from Al Noor Dairy (arrives Wednesday), EGP 1,800.00?" with options Approve/Edit/Reject. Amounts are always formatted in the business currency.
@@ -355,7 +355,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
     - `execute` marks the PO `sent` and records `sent_at` (MVP: no real supplier contact).
   - **`record_delivery`** (reversible).
   - **`adjust_stock`** (reversible, reason required).
-- [ ] T061 [US1] Build the stock graphs in `backend/app/agents/stock/graphs.py`:
+- [X] T061 [US1] Build the stock graphs in `backend/app/agents/stock/graphs.py`:
   - `stock_update_graph`: apply sales, then run the impossible-stock and sales-gap checks.
   - `forecast_check_graph`: compare yesterday's forecast with actuals. On breach, switch that item's method to `same_weekday_avg`, record calibration and report the cause.
   - `reorder_graph`: first runs `late_delivery` over open POs. For each late PO it:
@@ -367,7 +367,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
     Then: forecast → cover → quantities → group → one `draft_po` harness run per supplier, then `send_po`.
   - `delivery_graph`: compare delivered vs PO and flag differences.
   - Register them into the daily_run slots `stock_update`, `forecast_check` and `reorder`.
-- [ ] T062 [US1] Implement stock endpoints in `backend/app/api/v1/stock.py`, per contracts/rest-api.md "Stock":
+- [X] T062 [US1] Implement stock endpoints in `backend/app/api/v1/stock.py`, per contracts/rest-api.md "Stock":
   - `GET /stock/items` (staff: no cost fields)
   - `GET /stock/items/{id}/forecast`
   - `POST /stock/waste` (staff)
@@ -376,8 +376,8 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `PATCH /purchase-orders/{id}`, which re-runs `draft_po` checks
   - `POST /purchase-orders/{id}/deliveries` (staff, multipart photo saved under FILES_DIR by sha256)
   - `GET /suppliers`
-- [ ] T063 [US1] Add the Telegram `/delivery <po>` photo caption handler in `backend/app/approvals/telegram_bot.py`, which attaches the photo to the PO's delivery (staff role).
-- [ ] T064 [US1] Implement sales import and manual entry, as the real-data alternative to the demo feed (T044):
+- [X] T063 [US1] Add the Telegram `/delivery <po>` photo caption handler in `backend/app/approvals/telegram_bot.py`, which attaches the photo to the PO's delivery (staff role).
+- [X] T064 [US1] Implement sales import and manual entry, as the real-data alternative to the demo feed (T044):
   - **Service** in `backend/app/agents/stock/sales_import.py`:
     - `parse_csv(file, mapping)`: columns `date`, `item` (matched on `name_en`, `name_ar` via `normalize_arabic_name`, or item id), `qty`, `amount`, `payment_method` (enum `cash`/`card`/`transfer`/`credit`). Arabic-Indic digits are normalised.
     - Row validation:
@@ -403,7 +403,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
     - re-uploading the same file is rejected
     - manual entry for a gap day resolves the `sales_data_gap` incident
     - the demo feed does not add sales for an imported date
-- [ ] T065 [P] [US1] Build `frontend/src/pages/Stock.tsx` with components `frontend/src/components/StockTable.tsx` and `frontend/src/components/ForecastChart.tsx`:
+- [X] T065 [P] [US1] Build `frontend/src/pages/Stock.tsx` with components `frontend/src/components/StockTable.tsx` and `frontend/src/components/ForecastChart.tsx`:
   - items with days of cover, reorder status and expiry risk
   - per-item forecast vs actual chart with low/high band and method label
   - open POs and expected deliveries
