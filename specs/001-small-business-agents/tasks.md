@@ -80,7 +80,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 - [ ] T011 [P] Create tenancy models in `backend/app/models/tenancy.py`:
   - **Business**: `name` required; `currency` default `OMR`; `country` default `OM`; `vat_registered`; `vat_rate` default 0.05; `vat_period` enum `monthly`/`quarterly`; `weekend_days` default [5,6]; `min_cash_buffer` Money (owner-only edit); `demo_mode`.
   - **User**: `username` unique per business; `password_hash` argon2; `role` enum `owner`/`manager`/`staff`; `language` enum `en`/`ar`; `telegram_chat_id` unique ("one chat ↔ one user"); `telegram_link_code` ("one-time, expires 15 min"); `active`.
-  - **Setting** key/value with defaults `price_change_pct=15`, `stock_variance_pct=5`, `approval_timeout_hours=4`, `journal_value_limit=200000` (minor units = OMR 200.000; journal entries above it get the independent second check), `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off).
+  - **Setting** key/value with defaults `price_change_pct=15`, `stock_variance_pct=5`, `approval_timeout_hours=4`, `journal_value_limit=200000` (minor units = OMR 200.000; journal entries above it get the independent second check), `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off), `manual_bookkeeping_hours_per_week=6` (comparison figure for SC-006).
 - [ ] T012 [P] Create the BusinessClock model in `backend/app/models/clock.py`: `mode` enum `real`/`simulated`, `current_date`, `last_run_date`, `advancing` bool.
 - [ ] T013 [P] Create master-data models in `backend/app/models/master.py`:
   - **Item**: `name_en`, `name_ar`, `unit`, `category`, `is_ingredient`, `is_sold`, `shelf_life_days?`, `reorder_point?`, `safety_stock`, `storage_capacity?`, `preferred_supplier_id`, `is_critical`, `unit_cost` Money, `margin_class` enum `high`/`normal`/`low`.
@@ -177,7 +177,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `expire_due()` for timeouts (used in US4).
 - [ ] T035 [P] Implement the SSE broker and graph streaming in `backend/app/graphs/streaming.py`: an in-process pub/sub keyed by channel (`chat`, `harness`). `run_streamed(graph, input, config)` iterates `astream(stream_mode="updates")` and publishes node updates to `harness`.
 - [ ] T036 Implement the daily run in `backend/app/graphs/daily_run.py` and `backend/app/core/scheduler.py`:
-  - `daily_run_graph` is built from an ordered slot list: `import_sales`, `stock_update`, `forecast_check`, `reorder`, `bank_import`, `balance_compare`, `cash_forecast`, `trial_balance`, `reminders`, `approval_timeouts`, `digest`.
+  - `daily_run_graph` is built from an ordered slot list: `import_sales`, `stock_update`, `forecast_check`, `reorder`, `bank_import`, `reconcile`, `balance_compare`, `cash_forecast`, `trial_balance`, `reminders`, `approval_timeouts`, `digest`.
   - Agents register node callables into slots, and empty slots are no-ops.
   - `scheduler.advance_to(date)` wires BusinessClock.advance so `daily_run_graph` runs once per day in date order. In real mode an asyncio loop triggers the same run once per real day.
 
@@ -253,6 +253,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   4. Value within `po_auto_approve_limit` skips the interrupt.
   5. Verifier disagreement escalates without retry.
   6. Every node writes an audit entry and updates `Action.stage`.
+  7. SC-005: every `ApprovalRequest` created by an interrupt has 2–4 options, each with `label_en` and `label_ar`, or is a `question` that accepts one short reply (≤ 100 characters). A request that breaks this fails creation in `ApprovalService`.
 - [ ] T049 Write approval tests in `backend/tests/unit/graphs/test_approvals.py`:
   - concurrent resolves from dashboard and telegram: exactly one `resolved`, one `already_resolved`, and the graph resumed once
   - staff resolving a manager request returns `permission_denied` plus an audit entry
@@ -294,7 +295,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 - [ ] T055 [P] [US1] Implement forecasting in `backend/app/agents/stock/forecasting.py`:
   - `holt_winters(series)` (statsmodels ExponentialSmoothing, weekly seasonality) × calendar uplift factors (weekend, public holiday, Ramadan evening via hijridate) learned from history.
   - `same_weekday_avg(series)`: last 4 same weekdays, with min/max range.
-  - `forecast(item, horizon=14..30)` returns low/expected/high per day, using P10/P90 residual quantiles.
+  - `forecast(item, horizon=14..30)` returns low/expected/high per day, using P10/P90 residual quantiles. The daily run always stores a 30-day horizon, so the cash projection (30 days) never runs short of sales forecast; the stock screens show the first 14 days by default.
   - `mape_7d(item)`.
 - [ ] T056 [P] [US1] Implement reorder planning in `backend/app/agents/stock/reorder.py`:
   - `days_of_cover = stock / expected daily demand`.
@@ -404,6 +405,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - the bilingual total disagreement conflict
   - a supplier matched from its Arabic name
   - three owner corrections of the same supplier to the same account open one `recurring_correction` incident and a proposed classification rule, and a fourth correction does not open another (FR-039)
+  - two faults on one record: a duplicate invoice that also has a wrong total fires both `duplicate_invoice` and `extraction_arithmetic`; both are reported, and the invoice stays `held` until both are resolved (spec Edge Cases)
 - [ ] T066 [P] [US2] Write the live accuracy eval in `backend/tests/eval/test_extraction_accuracy.py` (marker `llm_live`). It scores field accuracy separately for English, bilingual and Arabic-only groups against ground truth, and asserts each group is ≥ 90% (SC-008).
 
 ### Implementation for User Story 2
@@ -449,6 +451,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `score(txn, candidate)` from amount equality, date proximity, and reference or name similarity (after Arabic normalisation), giving 0–1.
   - Auto-match at or above the high threshold, suggest between the thresholds, leave unmatched below.
   - `reconciliation_status()` returns % matched and the unmatched list.
+  - Every match records its `source` (`auto`, `suggested_confirmed`, `manual`) with confidence, so the UI can show where each match came from (FR-046).
 - [ ] T076 [P] [US2] Implement expense classification in `backend/app/agents/accountant/classification.py`: first active `classification` rules, then supplier history, then `LLMClient.parse(role="classification", output_model=ExpenseClassification)`. It validates that `account_code` exists and routes by confidence band. Prompt in `backend/app/llm/prompts/classification.md`.
 
   Recurring-correction detection (FR-039):
@@ -506,7 +509,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
     - staff → 403
 - [ ] T082 [P] [US2] Build `frontend/src/pages/Books.tsx` with `frontend/src/components/DocumentDetail.tsx`:
   - document inbox with extraction confidence
-  - original file side by side with fields (low-confidence fields highlighted)
+  - original file side by side with fields (low-confidence fields highlighted); every field and every bank match shows its confidence and source (extraction attempt, owner answer, learned rule, auto or manual match) (FR-046)
   - review queue
   - reconciliation % and unmatched list with confirm/override
   - P&L and balance sheet tables
@@ -614,7 +617,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 - [ ] T097 [P] [US4] Implement self-calibration in `backend/app/harness/calibration.py`:
   - `record(agent, metric, value)` and rolling window evaluation.
   - When over threshold: set `degraded`, raise the confidence thresholds, lower `auto_approve_limit`, set `method_override`, and open an incident with the suspected cause.
-  - On recovery, restore in steps (e.g. 25% per healthy day).
+  - On recovery, restore in steps. A **healthy day** is a business day on which the metric's value for that day is within its threshold. Each consecutive healthy day moves the thresholds, auto-approve limit and method back 25% of the way to their normal values, so 4 consecutive healthy days fully restore them and clear `degraded`. Any unhealthy day during recovery restarts the count from the current (partly restored) values.
   - Writes AgentCalibrationHistory.
 - [ ] T098 [P] [US4] Implement incident analysis in `backend/app/harness/analysis.py`: on escalation or resolution, call `LLMClient.parse(role="incident", output_model=IncidentAnalysis)` then `RuleProposal`. Prompts are in `backend/app/llm/prompts/incident_analysis.md` and `backend/app/llm/prompts/rule_proposal.md`. The trigger is validated against per-kind JSON schemas in `backend/app/harness/rule_schemas.py`.
 - [ ] T099 [US4] Implement learned rules in `backend/app/harness/rules.py`:
@@ -694,7 +697,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
   Add a stock valuation agreement check (inventory account vs Stock valuation) in `backend/app/agents/accountant/checks.py` that publishes `stock_valuation.mismatch`.
 - [ ] T110 [US5] Build `conflict_graph` in `backend/app/graphs/conflict.py`. It gathers both agents' positions with figures (e.g. Stock: order needed by date X; Cash-Flow: budget remaining Y) and computes a recommendation. A critical item's stockout outranks the budget, and the owner is notified. It then calls `interrupt()` for the owner's choice and publishes the outcome. Register it and start it from the `budget.check_result` handler when `conflict` is set.
-- [ ] T111 [US5] Register all handlers in `backend/app/main.py` lifespan. Add a guard test in `backend/tests/unit/test_ownership.py` asserting that each agent package writes only its own tables (the written-by column in data-model.md), by static import and usage check.
+- [ ] T111 [US5] Register all handlers in `backend/app/main.py` lifespan. Add a guard test in `backend/tests/unit/test_ownership.py` asserting that each agent package writes only its own tables (the written-by column in data-model.md). Method: a table `OWNERSHIP = {model_class: owning_agent}` in the test; the test parses every module under `backend/app/agents/<agent>/` with Python's `ast` and fails if a module other than `handlers.py` imports a model class owned by another agent. It also fails at runtime if a harness run started by one agent flushes an INSERT/UPDATE/DELETE on another agent's table (checked with a SQLAlchemy `before_flush` listener in the test).
 
 **Checkpoint**: The three agents cooperate through logged events only.
 
@@ -764,7 +767,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 **Independent Test**: Each capability is checked separately on sample data: the VAT summary totals match the posted invoices; 13 weekly points show three scenarios; the scorecard shows stated vs observed lead time; the UI switches to Arabic RTL.
 
-- [ ] T122 [P] [US8] Implement the VAT summary in `backend/app/agents/accountant/vat.py` (VatPeriodSummary: input VAT, output VAT, net, invoice list, and flags for invoices missing a valid VAT number or breakdown) with `GET /vat/summary?period=` in `backend/app/api/v1/books.py`. Add a reminder before the VAT period closes when bank payments have no invoice ("VAT period ends in 9 days. 4 bank payments have no invoice.").
+- [ ] T122 [P] [US8] Implement the VAT summary in `backend/app/agents/accountant/vat.py` (VatPeriodSummary: input VAT, output VAT, net, invoice list, and flags for invoices missing a valid VAT number or breakdown) with `GET /vat/summary?period=` in `backend/app/api/v1/books.py`. The summary is produced by a reversible `prepare_vat_summary` ActionSpec whose `verifier_packet` (period invoices, posted VAT lines, proposed totals) goes through the independent second check, because FR-003 covers tax figures; a disagreement escalates to the owner before the summary is marked ready. Add a reminder before the VAT period closes when bank payments have no invoice ("VAT period ends in 9 days. 4 bank payments have no invoice.").
 - [ ] T123 [P] [US8] Add the 13-week weekly aggregation with three scenarios in `backend/app/agents/cashflow/projection.py` (`horizon="13w"`), and the horizon toggle in `frontend/src/components/CashChart.tsx`.
 - [ ] T124 [P] [US8] Implement the supplier scorecard at `GET /suppliers/{id}/scorecard` in `backend/app/api/v1/stock.py` (stated vs observed lead time, price change history, reliability score), and `frontend/src/components/SupplierScorecard.tsx`.
 - [ ] T125 [P] [US8] Complete the Arabic UI: all strings in `frontend/src/i18n/ar.json`; `dir="rtl"` switching and logical Tailwind properties in `frontend/src/App.tsx`; a language toggle stored on the user via `PATCH /me` in `backend/app/api/v1/auth.py`.
@@ -784,11 +787,13 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   Every refusal is audit-logged (SC-012).
 - [ ] T127 [P] Write Playwright role tests in `frontend/tests/e2e/roles.spec.ts` (nav hides pages; forbidden actions are refused).
 - [ ] T128 [P] Write the sample metrics test in `backend/tests/integration/test_sample_metrics.py`. It replays 3 months with the simulated clock against a "no assistant" baseline and asserts the criteria below. The baseline (in `backend/tests/integration/baseline_policy.py`) runs on the same feed data, starting stock and supplier lead times:
-- every Sunday, order each item's average weekly consumption over the previous 4 weeks, from its preferred supplier
-- no forecast, no safety-stock adjustment, no expiry handling and no budget limits
-- stockouts and waste are counted the same way for both runs
+  - every Sunday, order each item's average weekly consumption over the previous 4 weeks, from its preferred supplier
+  - no forecast, no safety-stock adjustment, no expiry handling and no budget limits
+  - stockouts and waste are counted the same way for both runs
 
-Assertions:
+  The test also writes a metrics report (`backend/var/reports/sample_metrics.json`) that shows owner effort next to the manual bookkeeping estimate from `Setting.manual_bookkeeping_hours_per_week` (default 6 hours; see spec Assumptions) for SC-006.
+
+  Assertions:
   - SC-002: stockout warnings ≥ 3 days ahead in ≥ 90% of cases
   - SC-003: fewer stockouts and less waste value than the baseline
   - SC-004: shortfalls flagged ≥ 14 days ahead in ≥ 90% of cases

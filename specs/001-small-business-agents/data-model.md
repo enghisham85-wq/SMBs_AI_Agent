@@ -40,14 +40,15 @@ Conventions (apply to every entity unless stated):
 | active | bool | |
 
 ### Setting (key/value per business)
-Thresholds and limits with defaults: `price_change_pct=15`, `stock_variance_pct=5`, `approval_timeout_hours=4`, `journal_value_limit=OMR 200.000` (journal entries above it get the independent second check), `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off). Owner-only edit; changes audited.
+Thresholds and limits with defaults: `price_change_pct=15`, `stock_variance_pct=5`, `approval_timeout_hours=4`, `journal_value_limit=OMR 200.000` (journal entries above it get the independent second check), `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off), `manual_bookkeeping_hours_per_week=6` (comparison figure for SC-006). Owner-only edit; changes audited.
 
 ### BusinessClock
 | Field | Type | Rules |
 |---|---|---|
 | mode | enum `real`/`simulated` | |
 | current_date | date | simulated only |
-| last_run_date | date | last day whose DailyScheduler jobs completed |
+| last_run_date | date | last day whose daily run completed |
+| advancing | bool | true while an advance is running; a second advance is rejected (409) |
 
 Advance is rejected while a previous advance is running. Each skipped day's jobs run in date order (R10).
 
@@ -185,14 +186,14 @@ agent enum (`stock`, `cashflow`, `accountant`, `harness`), type (e.g. `draft_po`
 ```
 planned → prechecked → [awaiting_approval] → executing → verifying → completed
                 │                                           └─fail→ rolled_back → retrying (attempt 2) → … → escalated
-                └─precondition fail → escalated / on_hold
+                └─precondition fail → escalated   (the business record, e.g. a PO, may go on_hold; the Action itself has no on_hold stage)
 ```
 
 ### CheckResult
 action_id | extraction_id, check_name (e.g. `extraction_arithmetic`, `duplicate_invoice`, `price_sanity`, `balanced_entry`), passed bool, details JSON, learned_rule_id?.
 
 ### ApprovalRequest
-action_id?, kind enum (`approval`, `question`, `alert`), text_en, text_ar, options (list: key, label_en, label_ar, effect), required_role (minimum role), deadline, safe_default (always non-irreversible), urgency (1–3), status enum (`pending`, `resolved`, `timed_out`, `superseded`), resolved_option?, resolved_by?, resolved_via enum (`dashboard`, `telegram`), resolved_at?, reask_count, telegram_message_refs.
+action_id?, kind enum (`approval`, `question`, `alert`), text_en, text_ar, options (list: key, label_en, label_ar, effect), required_role (minimum role), deadline, safe_default (always non-irreversible), urgency (1–3), status enum (`pending`, `resolved`, `timed_out`, `superseded`), resolved_option?, resolved_by?, resolved_via enum (`dashboard`, `telegram`), resolved_at?, reask_count, telegram_message_refs, graph_thread_id, interrupt_id, request_token (opaque, unique; used in Telegram callbacks instead of the id).
 - Created by the `approval_gate` / question nodes when they call LangGraph `interrupt()`; stores `graph_thread_id` and `interrupt_id` so the paused thread can be resumed.
 - Resolution is an atomic conditional update `WHERE status='pending'`; only the winning resolution resumes the graph with `Command(resume={option_key, edits, user_id})`; second answer returns "already resolved" (spec edge case).
 - On deadline: status `timed_out`, safe default applied, new request created with urgency+1 (FR-011).

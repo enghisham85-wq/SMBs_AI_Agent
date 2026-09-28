@@ -87,7 +87,7 @@ The owner sees today's cash, the lowest projected balance in the next 30 days an
 3. **Given** a proposed action in the plan, **When** the owner views it, **Then** the forecast after that action is shown.
 4. **Given** a scheduled payment reminder, **When** the latest bank transactions or books show the invoice already paid, **Then** the reminder is cancelled and the owner is told why.
 5. **Given** bank data older than one business day, **When** the forecast is shown, **Then** it is marked low confidence and the owner is asked for a fresh statement.
-6. **Given** a payable that appears both as a purchase order commitment and as an invoice, **When** the forecast runs, **Then** it is counted once.
+6. **Given** a payable that appears both as a purchase order commitment and as an invoice, **When** the forecast runs, **Then** it is counted once (FR-031).
 
 ---
 
@@ -186,7 +186,7 @@ Nice-to-have capabilities: VAT summary per period with supporting invoice list a
 - Sales data missing for an open business day: forecasting updates for that day are paused and the owner is alerted; no demand is assumed to be zero.
 - Calculated stock goes negative or above storage capacity: flagged as a likely missing recipe mapping or unrecorded delivery, and a stock count is requested.
 - Counted stock differs from calculated stock beyond tolerance: investigated (missing waste record, recipe error, possible theft) and adjusted with a recorded reason.
-- Order unit differs from stock unit, or pack size changed: blocked until the owner confirms.
+- Order unit differs from stock unit, or pack size changed: see FR-019 (blocked until the owner confirms).
 - Invoice date in the future, far in the past, or ambiguous between DD/MM and MM/DD: the supplier's learned format is applied; otherwise the owner is asked.
 - Supplier invoice arrives with no matching purchase order or delivery: flagged as a possible error or fraud.
 - Ledger does not balance on the daily check: the entry causing the imbalance is located and quarantined.
@@ -333,7 +333,8 @@ Nice-to-have capabilities: VAT summary per period with supporting invoice list a
 - Owner approvals use a simulated in-dashboard chat panel plus a real Telegram bot (see Clarifications); WhatsApp, email to suppliers, and live bank feeds are not required for the MVP.
 - "Sending" a purchase order or payment reminder in the MVP means recording it as sent in the approval channel; no real supplier or customer is contacted.
 - Sales and bank data come from the seeded sample dataset or file upload; live connections to point-of-sale systems and banks are out of scope for the MVP.
-- Default thresholds (confidence high/low, forecast error, price change 15%, stock variance tolerance, approval timeout, journal value limit) are configurable and set to sensible values for a small cafe; exact values will be tuned during planning.
+- Default thresholds are configurable: confidence high 0.90 / low 0.60, price change 15%, stock count variance 5%, approval timeout 4 hours, journal value limit OMR 200.000; forecast-error thresholds are set per item during tuning.
+- The manual bookkeeping comparison for SC-006 is a configurable estimate of 6 hours per week for a cafe of this size (owner-adjustable); it is a stated assumption, not a measured value.
 - Stale bank data means older than one business day.
 - Single business (tenant) for the demo, seeded with one owner, one manager and one staff user; multi-business onboarding is out of scope.
 - Default chart of accounts is a standard small-business template; customisation is not required for the MVP.
