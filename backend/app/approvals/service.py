@@ -35,6 +35,13 @@ log = logging.getLogger(__name__)
 
 Notifier = Callable[[str, dict[str, Any]], Awaitable[None]]
 _notifiers: list[Notifier] = []
+# Standalone questions (post_question key "<kind>:<ref>") act on their answer through these handlers.
+QuestionHandler = Callable[[dict[str, Any]], Awaitable[None]]
+QUESTION_HANDLERS: dict[str, QuestionHandler] = {}
+
+
+def register_question_handler(kind: str, fn: QuestionHandler) -> None:
+    QUESTION_HANDLERS[kind] = fn
 
 
 class InvalidRequestError(ValueError):
@@ -292,6 +299,11 @@ async def resolve(
 
     await _notify("resolved", data)
     graph_result = None
+    if fresh.graph_thread_id and fresh.graph_thread_id.startswith("q:"):
+        kind = fresh.graph_thread_id[2:].split(":", 1)[0]
+        handler = QUESTION_HANDLERS.get(kind)
+        if handler is not None:
+            await handler({**data, "effect": option["effect"] if option else "text", "text": text, "edits": edits or {}})
     if fresh.graph_name and fresh.graph_thread_id:
         from app.graphs import runtime
 

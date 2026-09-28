@@ -69,7 +69,8 @@ class ActionSpec:
     auto_approve: Fn | None = None  # (ctx, inputs, settings) -> bool   (default: never)
     approval_request: Fn | None = None  # (ctx, inputs, plan) -> OwnerAsk
     on_option: Fn | None = None  # (ctx, inputs, option_key, edits) -> {"inputs": ..., "next": ...}
-    on_hold: Fn | None = None  # (ctx, inputs, failed_checks) -> None
+    on_hold: Fn | None = None  # (ctx, inputs, failed_checks) -> OwnerAsk | None
+    on_finalize: Fn | None = None  # (ctx, inputs, outcome, result) -> None  (tidy own records)
 
 
 _registry: dict[str, ActionSpec] = {}

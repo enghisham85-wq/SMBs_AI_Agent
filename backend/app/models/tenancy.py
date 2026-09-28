@@ -65,6 +65,8 @@ SETTING_DEFAULTS: dict[str, Any] = {
     "po_auto_approve_limit": 0,  # 0 = off
     "reminder_auto_approve": "off",  # off | polite_only
     "manual_bookkeeping_hours_per_week": 6,
+    # Stock Agent: a product's 7-day forecast error above this switches it to the safer method.
+    "forecast_mape_threshold": 0.35,
     "confidence_high": 0.90,
     "confidence_low": 0.60,
 }

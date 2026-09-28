@@ -283,7 +283,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   5. Verifier disagreement escalates without retry.
   6. Every node writes an audit entry and updates `Action.stage`.
   7. SC-005: every `ApprovalRequest` created by an interrupt has 2–4 options, each with `label_en` and `label_ar`, or is a `question` that accepts one short reply (≤ 100 characters). A request that breaks this fails creation in `ApprovalService`.
-- [ ] T050 Write approval tests in `backend/tests/unit/graphs/test_approvals.py`:
+- [X] T050 Write approval tests in `backend/tests/unit/graphs/test_approvals.py`:
   - concurrent resolves from dashboard and telegram: exactly one `resolved`, one `already_resolved`, and the graph resumed once
   - staff resolving a manager request returns `permission_denied` plus an audit entry
   - a checkpoint survives recreating the runtime (restart) and can then be resumed

@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import approvals, auth, business, clock, users
+from app.api.v1 import approvals, auth, business, clock, sales, stock, users
 
 router = APIRouter()
-for module in (auth, users, clock, business, approvals):
+for module in (auth, users, clock, business, approvals, stock, sales):
     router.include_router(module.router)

@@ -9,12 +9,31 @@
     "timed_out": "انتهت المهلة — طُبّق الخيار الآمن: {{option}}",
     "urgency": "الأولوية {{level}}",
     "due": "أجب قبل {{time}}",
-    "from": "من {{agent}}"
+    "from": "من {{agent}}",
+    "send_edited": "موافقة بهذه الكميات"
   },
   "agents": { "stock": "وكيل المخزون", "cashflow": "وكيل التدفق النقدي", "accountant": "الوكيل المحاسبي", "harness": "المشرف" },
   "clock": { "today": "تاريخ العمل", "advance1": "تقديم يوم", "jump": "الانتقال إلى تاريخ", "go": "انتقال", "advancing": "جارٍ التقديم…", "real": "الوقت الفعلي" },
   "freshness": { "as_of": "{{source}} حتى {{time}}", "unknown": "{{source}}: لا توجد بيانات بعد", "sources": { "bank": "بيانات البنك", "sales": "بيانات المبيعات", "stock": "بيانات المخزون", "forecast": "التوقعات", "books": "الدفاتر", "clock": "تاريخ العمل" } },
   "lang": { "switch": "English" },
   "common": { "save": "حفظ", "cancel": "إلغاء", "none": "لا يوجد", "yes": "نعم", "no": "لا", "details": "التفاصيل", "back": "رجوع" },
+  "stock": {
+    "tabs": { "items": "الأصناف", "orders": "أوامر الشراء", "delivery": "استلام توريد", "waste": "تسجيل هالك", "sales": "بيانات المبيعات" },
+    "item": "الصنف", "in_stock": "الرصيد", "cover": "أيام التغطية", "status": "الحالة", "expiry": "الصلاحية", "unit_cost": "تكلفة الوحدة",
+    "critical": "حرج", "days_one": "يوم {{count}}", "days_other": "{{count}} أيام", "runs_out": "ينفد {{date}}",
+    "statuses": { "ok": "جيد", "reorder": "يحتاج طلب", "on_order": "تم الطلب" },
+    "po_status": { "draft": "مسودة", "pending_approval": "بانتظار الموافقة", "approved": "معتمد", "sent": "مُرسل", "partially_received": "مستلم جزئياً", "received": "مستلم", "closed": "مغلق", "rejected": "مرفوض", "on_hold": "موقوف", "cancelled": "ملغى" },
+    "expiry_risk": "قد تنتهي صلاحيته قبل الاستخدام ({{days}} يوم)",
+    "forecast_title": "الطلب اليومي ({{unit}})", "method": "الطريقة", "methods": { "holt_winters": "نموذج موسمي", "same_weekday_avg": "متوسط آخر 4 أيام مماثلة", "derived": "من توقعات المنتجات" },
+    "show_table": "جدول", "show_chart": "رسم", "date": "التاريخ", "actual": "الفعلي", "forecast": "المتوقع", "range": "النطاق المرجح", "today": "اليوم",
+    "late": "متأخر", "expected": "متوقع {{date}}", "delivered_on": "وصل {{date}}", "discrepancies": "{{count}} فرق",
+    "choose_order": "الأمر الذي يتم توريده", "ordered": "المطلوب", "received": "الكمية المستلمة", "photo": "صورة التوريد (اختياري)",
+    "confirm_delivery": "تأكيد الاستلام", "delivery_saved": "تم تسجيل التوريد.",
+    "quantity": "الكمية", "type": "النوع", "types": { "waste": "هالك", "spoilage": "تالف" }, "reason": "السبب", "waste_saved": "تم التسجيل.",
+    "import_csv": "استيراد المبيعات (CSV)", "csv_hint": "الأعمدة: date, item, qty, amount, payment_method. يمكن استخدام الأسماء والأرقام العربية.",
+    "upload": "رفع", "manual_entry": "إدخال مبيعات يوم", "amount": "المبلغ", "payment_method": "طريقة الدفع",
+    "methods_pay": { "cash": "نقداً", "card": "بطاقة", "transfer": "تحويل", "credit": "آجل" },
+    "import_result": "تم استيراد {{imported}} صف؛ تم تخطي {{skipped}} مكرر.", "row_error": "الصف {{row}}: {{reason}}"
+  },
   "placeholder": { "coming": "هذه الشاشة قيد الإنشاء." }
 }

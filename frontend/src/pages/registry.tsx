@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import type { Role } from "../api/types";
+import { Stock } from "./Stock";
 
 /** Routes; each story replaces its placeholder with the real page. */
 export const pages: { path: string; key: string; min: Role; element?: ReactNode }[] = [
   { path: "/", key: "home", min: "manager" },
-  { path: "/stock", key: "stock", min: "staff" },
+  { path: "/stock", key: "stock", min: "staff", element: <Stock /> },
   { path: "/cash", key: "cash", min: "manager" },
   { path: "/books", key: "books", min: "manager" },
   { path: "/harness", key: "harness", min: "manager" },

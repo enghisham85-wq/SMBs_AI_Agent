@@ -43,13 +43,17 @@ def _keyboard(req: dict[str, Any], lang: str) -> Any:
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
     label = "label_ar" if lang == "ar" else "label_en"
+    # "Edit" needs quantities, which a button cannot carry; it is done in the dashboard.
     buttons = [[InlineKeyboardButton(o[label], callback_data=f"ar:{req['request_token']}:{o['key']}")]
-               for o in req["options"]]
+               for o in req["options"] if o.get("effect") != "edit"]
     return InlineKeyboardMarkup(buttons)
 
 
 def _text(req: dict[str, Any], lang: str) -> str:
-    return req["text_ar"] if lang == "ar" else req["text_en"]
+    text = req["text_ar"] if lang == "ar" else req["text_en"]
+    if any(o.get("effect") == "edit" for o in req.get("options", [])):
+        text += "\n(لتعديل الكميات استخدم لوحة التحكم)" if lang == "ar" else "\n(To change quantities, use the dashboard.)"
+    return text
 
 
 async def _linked_users(business_id: str, min_role: str) -> list[User]:
