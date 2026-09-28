@@ -422,7 +422,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Tests for User Story 2
 
-- [ ] T066 [P] [US2] Write acceptance tests in `backend/tests/integration/test_us2_books.py` (replay mode) for spec US2 scenarios 1–6:
+- [X] T066 [P] [US2] Write acceptance tests in `backend/tests/integration/test_us2_books.py` (replay mode) for spec US2 scenarios 1–6:
   - fields with per-field confidence and the original file linked
   - arithmetic mismatch: one re-extract, then a question with the field highlighted
   - duplicate by (supplier, number) and by (supplier, amount, date)
@@ -440,7 +440,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Implementation for User Story 2
 
-- [ ] T068 [P] [US2] Create books models in `backend/app/models/books.py`:
+- [X] T068 [P] [US2] Create books models in `backend/app/models/books.py`:
   - **Document**: file path, mime, `sha256`; `channel` enum `dashboard`/`telegram`; `uploaded_by`; `language_detected` enum `en`/`ar`/`bilingual`; `status` enum `received`/`extracting`/`extracted`/`needs_review`/`posted`/`rejected`/`duplicate`.
   - **Extraction**: `attempt` 1 or 2; `fields` JSON; `document_confidence`; `checks`; `verifier_verdict?`.
   - **PayableInvoice**: lines; `status` enum `draft`/`held`/`posted`/`paid`/`void`; `hold_reason?`; `match_result`; guard on (supplier_id, normalised invoice_number).
@@ -448,21 +448,21 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - **JournalEntry**: `status` enum `posted`/`quarantined`/`reversed`; "never edited in place"; reversal creates an opposite entry.
   - **ClassificationCorrection**: `supplier_id`, `from_account_id`, `to_account_id`, `corrected_by`, `date`, `source_ref` (the transaction or invoice line).
   - **JournalLine**: `debit_minor`, `credit_minor`.
-- [ ] T069 [US2] Add the Alembic migration `backend/alembic/versions/0003_books.py`.
-- [ ] T070 [P] [US2] Build the sample invoice generator in `backend/app/seed/invoices/generate.py`:
+- [X] T069 [US2] Add the Alembic migration `backend/alembic/versions/0003_books.py`.
+- [X] T070 [P] [US2] Build the sample invoice generator in `backend/app/seed/invoices/generate.py`:
   - Renders PDFs and photo-style JPEGs with reportlab, arabic-reshaper and python-bidi.
   - Three groups: English, bilingual and Arabic-only (Arabic-Indic digits).
   - Faulty variants: wrong total, duplicate number, DD/MM ambiguous date, bilingual total mismatch, missing VAT number, and full-quantity invoice vs short delivery.
   - Writes ground-truth JSON next to each file in `backend/app/seed/invoices/out/`.
   - Hooks into the sample-cafe seed.
-- [ ] T071 [P] [US2] Write the extraction prompt in `backend/app/llm/prompts/invoice_extraction.md`. It asks for canonical values (ISO dates, Western digits, decimal point) plus `raw_text` as printed, per-field confidence, `date_format_observed`, and both language versions of supplier name and total on bilingual invoices. It includes the supplier hint list and active `parsing_hint` rules.
-- [ ] T072 [US2] Implement extraction in `backend/app/agents/accountant/extraction.py`:
+- [X] T071 [P] [US2] Write the extraction prompt in `backend/app/llm/prompts/invoice_extraction.md`. It asks for canonical values (ISO dates, Western digits, decimal point) plus `raw_text` as printed, per-field confidence, `date_format_observed`, and both language versions of supplier name and total on bilingual invoices. It includes the supplier hint list and active `parsing_hint` rules.
+- [X] T072 [US2] Implement extraction in `backend/app/agents/accountant/extraction.py`:
   - `extract(document, attempt)` sends a PDF `document` block or an image block with the prompt to `LLMClient.parse(role="extraction", output_model=InvoiceExtraction)`.
   - Post-processing: `normalize_digits` on raw_text vs value; bilingual name and total agreement (a disagreement becomes a conflict check); apply the supplier `date_format_hint`.
   - Confidence = model confidence × penalties (arithmetic, date sanity, unknown supplier, bilingual disagreement). Document confidence = minimum over required fields.
   - `LLMRefusal` is handled as low confidence plus an owner question.
-- [ ] T073 [P] [US2] Implement supplier matching in `backend/app/agents/accountant/supplier_match.py`: VAT number first, then exact normalised alias (Arabic or English), then fuzzy ratio ≥ 0.9, otherwise unknown. Creates a SupplierAlias on owner confirmation.
-- [ ] T074 [P] [US2] Implement books checks in `backend/app/agents/accountant/checks.py`:
+- [X] T073 [P] [US2] Implement supplier matching in `backend/app/agents/accountant/supplier_match.py`: VAT number first, then exact normalised alias (Arabic or English), then fuzzy ratio ≥ 0.9, otherwise unknown. Creates a SupplierAlias on owner confirmation.
+- [X] T074 [P] [US2] Implement books checks in `backend/app/agents/accountant/checks.py`:
   - `extraction_arithmetic`: lines sum to subtotal; subtotal + VAT = total; VAT = Σ(line base × line `vat_rate_percent` / 100), within 1 minor unit per line. The line rate is the one printed on the invoice (0 for exempt items); if none is printed, `Business.vat_rate_percent` is used.
   - `duplicate_invoice`: same supplier + number, or same supplier + total + date; also a sha256 duplicate file.
   - `date_sanity`: future, more than 1 year old, or DMY/MDY ambiguous (ambiguous dates default to the country profile's `default_date_format`, DMY for Egypt, unless a supplier rule says otherwise).
@@ -470,31 +470,31 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `three_way_match`: invoice vs PO vs delivery quantities and prices.
   - `supplier_vat_validity`: VAT charged without a tax number matching `Business.tax_id_pattern` (Egypt: 9-digit tax registration number).
   - `missing_po_or_delivery`.
-- [ ] T075 [P] [US2] Implement posting in `backend/app/agents/accountant/posting.py`:
+- [X] T075 [P] [US2] Implement posting in `backend/app/agents/accountant/posting.py`:
   - journal builders for a payable invoice (expense or inventory + VAT input / payable)
   - daily sales summary (bank or cash / sales + VAT output)
   - stock purchases (inventory account)
   - supplier payment
   - Every builder asserts Σdebit = Σcredit before returning.
   - `reverse(entry)`.
-- [ ] T076 [P] [US2] Implement bank reconciliation in `backend/app/agents/accountant/matching.py`:
+- [X] T076 [P] [US2] Implement bank reconciliation in `backend/app/agents/accountant/matching.py`:
   - `score(txn, candidate)` from amount equality, date proximity, and reference or name similarity (after Arabic normalisation), giving 0–1.
   - Auto-match at or above the high threshold, suggest between the thresholds, leave unmatched below.
   - `reconciliation_status()` returns % matched and the unmatched list.
   - Every match records its `source` (`auto`, `suggested_confirmed`, `manual`) with confidence, so the UI can show where each match came from (FR-046).
-- [ ] T077 [P] [US2] Implement expense classification in `backend/app/agents/accountant/classification.py`: first active `classification` rules, then supplier history, then `LLMClient.parse(role="classification", output_model=ExpenseClassification)`. It validates that `account_code` exists and routes by confidence band. Prompt in `backend/app/llm/prompts/classification.md`.
+- [X] T077 [P] [US2] Implement expense classification in `backend/app/agents/accountant/classification.py`: first active `classification` rules, then supplier history, then `LLMClient.parse(role="classification", output_model=ExpenseClassification)`. It validates that `account_code` exists and routes by confidence band. Prompt in `backend/app/llm/prompts/classification.md`.
 
   Recurring-correction detection (FR-039):
   - every owner override of a suggested account is recorded as a `ClassificationCorrection` (supplier_id, from_account, to_account, date)
   - when the same (supplier, to_account) correction reaches 3 within 90 days and no active `classification` rule covers it, open an incident of type `recurring_correction`
   - the incident analysis step (`backend/app/harness/analysis.py`) turns it into a `RuleProposal` of kind `classification`, e.g. "Always classify Gulf Packaging as Packaging supplies (5120)"
   - no second incident is opened while a proposal for the same pair is pending or was rejected in the last 90 days
-- [ ] T078 [US2] Implement accountant ActionSpecs in `backend/app/agents/accountant/action_specs.py`:
+- [X] T078 [US2] Implement accountant ActionSpecs in `backend/app/agents/accountant/action_specs.py`:
   - **`post_invoice`** (reversible): preconditions are the checks; verify that the entry is balanced, the invoice is `posted` and there is no duplicate; compensate by reversal. `verifier_packet` applies when total > `journal_value_limit`.
   - **`post_sales_summary`**.
   - **`apply_bank_match`** (reversible).
   - **`quarantine_entry`**.
-- [ ] T079 [US2] Build the accountant graphs in `backend/app/agents/accountant/graphs.py`:
+- [X] T079 [US2] Build the accountant graphs in `backend/app/agents/accountant/graphs.py`:
   - **`document_graph`**: extract (attempt 1) → normalise and checks → if the arithmetic fails, re-extract (attempt 2) → if still failing or the band is `ask`, `interrupt()` with a question, e.g. "This receipt's total (EGP 1,150.00) does not equal its lines plus VAT (EGP 1,140.00). [Use 1,150.00] [Use 1,140.00] [Retake photo]" → classify → `post_invoice` harness run. It publishes `invoice.posted` or `invoice.held`.
   - **`reconciliation_graph`**.
   - **`trial_balance_graph`**: a daily check that quarantines the entry causing an imbalance.
@@ -507,7 +507,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `GET /reconciliation`
   - `POST /reconciliation/{bank_txn_id}/match`
   - `GET /reports/pnl?from&to` and `GET /reports/balance-sheet?as_of`, built from journal lines in `backend/app/agents/accountant/reports.py`
-- [ ] T081 [US2] Add the Telegram photo/PDF upload handler in `backend/app/approvals/telegram_bot.py`. For managers and above it creates a Document with channel `telegram` and starts `document_graph`, replying "Received, reading…" and then the result.
+- [X] T081 [US2] Add the Telegram photo/PDF upload handler in `backend/app/approvals/telegram_bot.py`. For managers and above it creates a Document with channel `telegram` and starts `document_graph`, replying "Received, reading…" and then the result.
 - [ ] T082 [US2] Implement customer (receivable) invoices, so receivables can be created in the app rather than only seeded:
   - **Service** in `backend/app/agents/accountant/receivables.py`:
     - `create(customer, invoice_date, due_date, lines)` computes line totals, subtotal, VAT per line at the line's `vat_rate_percent` (defaulting to `Business.vat_rate_percent`, e.g. 14) and total in integer minor units, and assigns the next `INV-###` number when none is given.

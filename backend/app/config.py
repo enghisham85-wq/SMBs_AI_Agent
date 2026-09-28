@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str | None = None
 
     FILES_DIR: str = "./var/files"
+    # Sample invoices written by the generator (the offline extractor reads their ground truth).
+    SAMPLE_INVOICES_DIR: str = "./var/sample_invoices"
     SESSION_SECRET: str = "change-me-in-production"
 
     DEFAULT_COUNTRY: str = "EG"
