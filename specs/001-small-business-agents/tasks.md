@@ -41,6 +41,8 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 - [ ] T005 [P] Configure ESLint and Prettier in `frontend/eslint.config.js` and `frontend/.prettierrc`.
 - [ ] T006 [P] Implement settings in `backend/app/config.py` with pydantic-settings:
   - `DATABASE_URL` (default `sqlite+aiosqlite:///./var/app.db`)
+  - `CHECKPOINT_DB_PATH` (default `./var/checkpoints.db`; LangGraph checkpoints live in their own SQLite file)
+  - `SQLITE_BUSY_TIMEOUT_MS` (default 5000)
   - `DEMO_MODE` (bool, default true)
   - `LLM_MODE` (`live|record|replay`, default `replay`)
   - `ANTHROPIC_API_KEY` (optional)
@@ -66,7 +68,10 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Database and shared types
 
-- [ ] T008 Implement the async engine and session factory in `backend/app/db/engine.py`. SQLite must use WAL mode (`PRAGMA journal_mode=WAL`) and foreign keys on. Provide the `get_session` FastAPI dependency.
+- [ ] T008 Implement the async engine and session factory in `backend/app/db/engine.py`:
+  - SQLite pragmas on every connection: WAL mode (`PRAGMA journal_mode=WAL`), foreign keys on, `PRAGMA busy_timeout` = `SQLITE_BUSY_TIMEOUT_MS`.
+  - Provide the `get_session` FastAPI dependency (reads) and a `write_session()` context manager that holds one process-wide `asyncio.Lock` for the length of the write transaction, so API requests, Telegram callbacks, event handlers and the daily run never write at the same time.
+  - All code that commits must use `write_session()`. The lock is a no-op when `DATABASE_URL` is PostgreSQL.
 - [ ] T009 [P] Implement shared column types and the base mixin in `backend/app/db/types.py`:
   - `Money` composite: `amount_minor` int + `currency` text. Currency exponent table `{OMR:3, AED:2, SAR:2, QAR:2, KWD:3, BHD:3}`. Helpers `from_decimal`, `to_display` (e.g. `36.000`), add/sub/compare that raise on currency mismatch.
   - `Quantity` = `Decimal(18,4)` + `unit`.
@@ -75,7 +80,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 - [ ] T011 [P] Create tenancy models in `backend/app/models/tenancy.py`:
   - **Business**: `name` required; `currency` default `OMR`; `country` default `OM`; `vat_registered`; `vat_rate` default 0.05; `vat_period` enum `monthly`/`quarterly`; `weekend_days` default [5,6]; `min_cash_buffer` Money (owner-only edit); `demo_mode`.
   - **User**: `username` unique per business; `password_hash` argon2; `role` enum `owner`/`manager`/`staff`; `language` enum `en`/`ar`; `telegram_chat_id` unique ("one chat ↔ one user"); `telegram_link_code` ("one-time, expires 15 min"); `active`.
-  - **Setting** key/value with defaults `price_change_pct=15`, `stock_variance_pct`, `approval_timeout_hours=4`, `journal_value_limit`, `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off).
+  - **Setting** key/value with defaults `price_change_pct=15`, `stock_variance_pct=5`, `approval_timeout_hours=4`, `journal_value_limit=200000` (minor units = OMR 200.000; journal entries above it get the independent second check), `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off).
 - [ ] T012 [P] Create the BusinessClock model in `backend/app/models/clock.py`: `mode` enum `real`/`simulated`, `current_date`, `last_run_date`, `advancing` bool.
 - [ ] T013 [P] Create master-data models in `backend/app/models/master.py`:
   - **Item**: `name_en`, `name_ar`, `unit`, `category`, `is_ingredient`, `is_sold`, `shelf_life_days?`, `reorder_point?`, `safety_stock`, `storage_capacity?`, `preferred_supplier_id`, `is_critical`, `unit_cost` Money, `margin_class` enum `high`/`normal`/`low`.
@@ -144,7 +149,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 ### LangGraph runtime and harness pipeline
 
 - [ ] T027 Implement the graph runtime in `backend/app/graphs/runtime.py`:
-  - Creates one `AsyncSqliteSaver` on the app database at startup.
+  - Creates one `AsyncSqliteSaver` at startup on its own SQLite file (`CHECKPOINT_DB_PATH`, WAL mode, same busy timeout), separate from the app database so checkpoint writes never compete with business-data writes. `Action.stage` in the app database stays the source the dashboard reads.
   - Graph registry `register(name, builder)` and `get(name)`.
   - `start(name, input, thread_id)`, `resume(thread_id, value)` (via `Command(resume=value)`) and `state(thread_id)`.
   - Tests can inject `InMemorySaver`.
@@ -252,6 +257,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - concurrent resolves from dashboard and telegram: exactly one `resolved`, one `already_resolved`, and the graph resumed once
   - staff resolving a manager request returns `permission_denied` plus an audit entry
   - a checkpoint survives recreating the runtime (restart) and can then be resumed
+  - concurrency (file-based SQLite, not in-memory): 20 parallel writers mixing API resolves, Telegram callbacks, event dispatch and a clock advance all complete with no "database is locked" error and no lost update
 
 **Checkpoint**: Foundation ready. User story work can begin.
 
@@ -265,7 +271,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Tests for User Story 1
 
-- [ ] T050 [P] [US1] Write acceptance tests in `backend/tests/integration/test_us1_stock.py` covering spec US1 scenarios 1–6: reorder trigger and quantity rules; recipe deduction (latte → 18 g coffee, 200 ml milk); >15% price change held; duplicate open PO blocked with merge offered; delivery discrepancy flagged; forecast-error fallback to "average of the last 4 same weekdays". Also assert the warning comes ≥ 3 days before the projected stockout.
+- [ ] T050 [P] [US1] Write acceptance tests in `backend/tests/integration/test_us1_stock.py` covering spec US1 scenarios 1–6: reorder trigger and quantity rules; recipe deduction (latte → 18 g coffee, 200 ml milk); >15% price change held; duplicate open PO blocked with merge offered; delivery discrepancy flagged; forecast-error fallback to "average of the last 4 same weekdays". Also assert the warning comes ≥ 3 days before the projected stockout, and that a PO past its `expected_date` is flagged late once, with reliability lowered once and an owner alert (FR-017).
 
 ### Implementation for User Story 1
 
@@ -304,8 +310,10 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `unit_mismatch` (order unit or pack size differs from the stock unit)
   - `sales_data_gap` (open business day with no sales)
   - `forecast_accuracy` (MAPE over threshold)
+  - `late_delivery` (PO in status `sent` or `partially_received` and `BusinessClock.today()` > `expected_date`; the finding includes days late and whether any line is a critical item)
 - [ ] T058 [P] [US1] Implement supplier performance and expiry in `backend/app/agents/stock/supplier.py` and `backend/app/agents/stock/waste.py`:
   - rolling observed lead time and `reliability_score` update on delivery
+  - `record_late(supplier, po, days_late)` lowers `reliability_score` once per PO (not once per day late), and the late days count into observed lead time when the delivery arrives
   - expiry risk (stock won't sell before `shelf_life_days`)
   - dead stock (unsold ≥ `dead_stock_days`)
 - [ ] T059 [US1] Implement stock ActionSpecs in `backend/app/agents/stock/action_specs.py`:
@@ -319,7 +327,13 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 - [ ] T060 [US1] Build the stock graphs in `backend/app/agents/stock/graphs.py`:
   - `stock_update_graph`: apply sales, then run the impossible-stock and sales-gap checks.
   - `forecast_check_graph`: compare yesterday's forecast with actuals. On breach, switch that item's method to `same_weekday_avg`, record calibration and report the cause.
-  - `reorder_graph`: forecast → cover → quantities → group → one `draft_po` harness run per supplier, then `send_po`.
+  - `reorder_graph`: first runs `late_delivery` over open POs. For each late PO it:
+    - calls `record_late`
+    - recomputes days of cover assuming the delivery has not arrived
+    - sends the owner an alert, e.g. "Al Noor Dairy delivery is 2 days late; milk runs out Friday", with options to wait, reorder from another supplier, or call the supplier
+    - opens an incident only when a critical item would run out before the new expected date
+
+    Then: forecast → cover → quantities → group → one `draft_po` harness run per supplier, then `send_po`.
   - `delivery_graph`: compare delivered vs PO and flag differences.
   - Register them into the daily_run slots `stock_update`, `forecast_check` and `reorder`.
 - [ ] T061 [US1] Implement stock endpoints in `backend/app/api/v1/stock.py`, per contracts/rest-api.md "Stock":
@@ -385,7 +399,11 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - three-way mismatch held
   - bank matches auto-applied above 0.90 and the rest listed
 
-  Also cover Arabic digits normalised, the bilingual total disagreement conflict, and a supplier matched from its Arabic name.
+  Also cover:
+  - Arabic digits normalised
+  - the bilingual total disagreement conflict
+  - a supplier matched from its Arabic name
+  - three owner corrections of the same supplier to the same account open one `recurring_correction` incident and a proposed classification rule, and a fourth correction does not open another (FR-039)
 - [ ] T066 [P] [US2] Write the live accuracy eval in `backend/tests/eval/test_extraction_accuracy.py` (marker `llm_live`). It scores field accuracy separately for English, bilingual and Arabic-only groups against ground truth, and asserts each group is ≥ 90% (SC-008).
 
 ### Implementation for User Story 2
@@ -396,6 +414,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - **PayableInvoice**: lines; `status` enum `draft`/`held`/`posted`/`paid`/`void`; `hold_reason?`; `match_result`; guard on (supplier_id, normalised invoice_number).
   - **ReceivableInvoice**: customer name, contact, `telegram?`; `number` unique per business (auto `INV-###` when not given); `invoice_date`; `due_date`; `lines` (description, qty, unit_price, vat_rate, line_total); `subtotal`, `vat_amount`, `total`; `amount_paid`; `status` enum `open`/`partially_paid`/`paid`/`void`; `paid_on?`; `source` (`seed`/`manual`); `late_payment_history_score`.
   - **JournalEntry**: `status` enum `posted`/`quarantined`/`reversed`; "never edited in place"; reversal creates an opposite entry.
+  - **ClassificationCorrection**: `supplier_id`, `from_account_id`, `to_account_id`, `corrected_by`, `date`, `source_ref` (the transaction or invoice line).
   - **JournalLine**: `debit_minor`, `credit_minor`.
 - [ ] T068 [US2] Add the Alembic migration `backend/alembic/versions/0003_books.py`.
 - [ ] T069 [P] [US2] Build the sample invoice generator in `backend/app/seed/invoices/generate.py`:
@@ -431,6 +450,12 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - Auto-match at or above the high threshold, suggest between the thresholds, leave unmatched below.
   - `reconciliation_status()` returns % matched and the unmatched list.
 - [ ] T076 [P] [US2] Implement expense classification in `backend/app/agents/accountant/classification.py`: first active `classification` rules, then supplier history, then `LLMClient.parse(role="classification", output_model=ExpenseClassification)`. It validates that `account_code` exists and routes by confidence band. Prompt in `backend/app/llm/prompts/classification.md`.
+
+  Recurring-correction detection (FR-039):
+  - every owner override of a suggested account is recorded as a `ClassificationCorrection` (supplier_id, from_account, to_account, date)
+  - when the same (supplier, to_account) correction reaches 3 within 90 days and no active `classification` rule covers it, open an incident of type `recurring_correction`
+  - the incident analysis step (`backend/app/harness/analysis.py`) turns it into a `RuleProposal` of kind `classification`, e.g. "Always classify Gulf Packaging as Packaging supplies (5120)"
+  - no second incident is opened while a proposal for the same pair is pending or was rejected in the last 90 days
 - [ ] T077 [US2] Implement accountant ActionSpecs in `backend/app/agents/accountant/action_specs.py`:
   - **`post_invoice`** (reversible): preconditions are the checks; verify that the entry is balanced, the invoice is `posted` and there is no duplicate; compensate by reversal. `verifier_packet` applies when total > `journal_value_limit`.
   - **`post_sales_summary`**.
@@ -758,7 +783,12 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
   Every refusal is audit-logged (SC-012).
 - [ ] T127 [P] Write Playwright role tests in `frontend/tests/e2e/roles.spec.ts` (nav hides pages; forbidden actions are refused).
-- [ ] T128 [P] Write the sample metrics test in `backend/tests/integration/test_sample_metrics.py`. It replays 3 months with the simulated clock against a "no assistant" baseline and asserts:
+- [ ] T128 [P] Write the sample metrics test in `backend/tests/integration/test_sample_metrics.py`. It replays 3 months with the simulated clock against a "no assistant" baseline and asserts the criteria below. The baseline (in `backend/tests/integration/baseline_policy.py`) runs on the same feed data, starting stock and supplier lead times:
+- every Sunday, order each item's average weekly consumption over the previous 4 weeks, from its preferred supplier
+- no forecast, no safety-stock adjustment, no expiry handling and no budget limits
+- stockouts and waste are counted the same way for both runs
+
+Assertions:
   - SC-002: stockout warnings ≥ 3 days ahead in ≥ 90% of cases
   - SC-003: fewer stockouts and less waste value than the baseline
   - SC-004: shortfalls flagged ≥ 14 days ahead in ≥ 90% of cases

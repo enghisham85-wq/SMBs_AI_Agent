@@ -18,7 +18,7 @@ Technical approach (from [research.md](./research.md)): Python 3.12 + FastAPI ba
 
 **Primary Dependencies**: LangGraph 1.x + `langgraph-checkpoint-sqlite` (agent orchestration, required), FastAPI, Uvicorn, Pydantic v2, SQLAlchemy 2 + Alembic, `anthropic` SDK, `python-telegram-bot` v21, `statsmodels` + `pandas` (forecasting), `hijridate` (Ramadan), `argon2-cffi`; Vite, TanStack Query, Recharts, Tailwind CSS, i18next
 
-**Storage**: SQLite (WAL) for demo, PostgreSQL-compatible schema; LangGraph checkpoints in the same database via `AsyncSqliteSaver` (swap to the Postgres saver with the schema); uploaded documents on local disk under `backend/var/files` (sha256-named)
+**Storage**: SQLite (WAL) for demo, PostgreSQL-compatible schema; LangGraph checkpoints via `AsyncSqliteSaver` in a separate file `var/checkpoints.db` (swap to the Postgres saver with the schema); SQLite busy timeout 5 s plus one process-wide write lock so concurrent writers never hit "database is locked"; uploaded documents on local disk under `backend/var/files` (sha256-named)
 
 **Testing**: pytest (+ pytest-asyncio, httpx, schemathesis), graphs compiled with `InMemorySaver` and interrupts resumed via `Command(resume=...)`, LLM record/replay fixtures, separate live eval suite; Vitest + Testing Library; Playwright e2e
 

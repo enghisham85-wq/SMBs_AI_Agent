@@ -21,6 +21,7 @@ The repository is empty (greenfield), so every technical choice below was made i
 ## R3. Storage and money representation
 
 - **Decision**: SQLAlchemy 2.0 ORM + Alembic migrations. SQLite (WAL mode) for the demo; schema kept PostgreSQL-compatible. All money stored as integer **minor units** (baisa for OMR, 1/1000) with a currency code; quantities stored as `Decimal` with an explicit unit.
+- **Concurrency**: API requests, Telegram callbacks, event handlers and the daily run share one process. Every SQLite connection sets `busy_timeout` (5 s), and all commits go through one process-wide `asyncio.Lock` (`write_session()`), so writes are serialised instead of failing with "database is locked". LangGraph checkpoints use a separate SQLite file. The lock is skipped on PostgreSQL.
 - **Rationale**: One file database makes the demo reset (`seed` → known state) instant and reliable; integer minor units remove floating-point rounding errors that would break balanced-entry and arithmetic checks (FR-033, FR-035). 3-decimal OMR and 2-decimal AED/SAR handled by per-currency exponent (FR-051).
 - **Alternatives considered**: PostgreSQL from day one (extra setup for judges); floats (unacceptable for accounting); `Decimal` columns for money (works, but integer minor units are simpler to sum and compare exactly).
 
@@ -117,7 +118,7 @@ The repository is empty (greenfield), so every technical choice below was made i
   |---|---|
   | Harness action lifecycle (FR-001) | `harness_graph`: a `StateGraph` with nodes `plan → precheck → classify_risk → premortem_verify → approval_gate → execute → post_verify → finalize`, conditional edges `post_verify → rollback → retry` (max 1) `→ escalate`. Each agent capability plugs in its own node callables via an `ActionSpec`; the graph shape is shared. |
   | Owner approval / question (FR-002, FR-010, FR-011) | `interrupt()` inside `approval_gate`; state persisted by the checkpointer; `ApprovalService.resolve()` resumes the thread with `Command(resume={option_key, user})`. Timeouts resume with the safe-default option. |
-  | Durable, resumable actions | `AsyncSqliteSaver` checkpointer in the same SQLite file; `thread_id = action.id`. A server restart mid-approval resumes cleanly. |
+  | Durable, resumable actions | `AsyncSqliteSaver` checkpointer in its own SQLite file (`var/checkpoints.db`) so its writes don't compete with business-data writes; `thread_id = action.id`. A server restart mid-approval resumes cleanly. |
   | Stock / Cash-Flow / Accountant agents | One compiled subgraph per workflow, e.g. `stock.reorder_graph` (forecast → days-of-cover → quantities → group by supplier → spawn `draft_po` actions), `accountant.document_graph` (extract → normalise → checks → re-extract once → classify → post), `cashflow.forecast_graph` (project → detect shortfall → build plan → simulate actions). |
   | Daily scheduler (FR-012a) | `daily_run_graph`: fixed sequence of agent subgraph nodes for one business date; `BusinessClock.advance` invokes it once per skipped day, in date order. |
   | Cross-agent conflict (FR-043) | `conflict_graph`: gathers both agents' positions, computes recommendation, interrupts for the owner. |

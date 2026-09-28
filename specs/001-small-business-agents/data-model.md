@@ -40,7 +40,7 @@ Conventions (apply to every entity unless stated):
 | active | bool | |
 
 ### Setting (key/value per business)
-Thresholds and limits with defaults: `price_change_pct=15`, `stock_variance_pct`, `approval_timeout_hours=4`, `journal_value_limit`, `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off). Owner-only edit; changes audited.
+Thresholds and limits with defaults: `price_change_pct=15`, `stock_variance_pct=5`, `approval_timeout_hours=4`, `journal_value_limit=OMR 200.000` (journal entries above it get the independent second check), `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off). Owner-only edit; changes audited.
 
 ### BusinessClock
 | Field | Type | Rules |
@@ -96,6 +96,8 @@ auto-approve rule within limit: draft ──> approved (logged, still verified)
 
 ### Delivery
 purchase_order_id, received_on, received_by, lines (item_id, qty_received, unit_price_on_note), photo_file_id?, discrepancies (computed). Emits `delivery.received`.
+
+A PO is **late** when its status is `sent` or `partially_received` and the business date is after `expected_date`. A late PO is flagged once (owner alert, supplier `reliability_score` lowered once), and the late days count into the supplier's observed lead time when the delivery arrives (FR-017).
 
 ---
 
@@ -167,6 +169,9 @@ date, reference (type + id), memo, created_by (agent/user), status enum (`posted
 ### ClassificationRule / expense classification result
 Stored as LearnedRule (below) with `kind = classification`; each classified transaction records account_id, confidence, rule_id?.
 
+### ClassificationCorrection
+supplier_id, from_account_id, to_account_id, corrected_by, date, source_ref. Written each time the owner overrides a suggested account. Three identical (supplier, to_account) corrections within 90 days, with no active rule covering them, open a `recurring_correction` incident that leads to a classification rule proposal (FR-039); no repeat while a proposal is pending or was rejected in the last 90 days.
+
 ### VatPeriodSummary (P3)
 period_start, period_end, input_vat, output_vat, net, invoice_ids, flagged_invoice_ids.
 
@@ -210,7 +215,7 @@ agent, metric (e.g. `forecast_mape`, `extraction_correction_rate`, `recon_mismat
 timestamp (business clock + wall clock), agent/user, action_id?, event (stage change, permission_denied, telegram_send_failed, setting_changed, …), inputs JSON, outputs JSON, verification_result?. Append-only.
 
 ### Graph checkpoints (LangGraph-managed)
-Tables created and owned by `AsyncSqliteSaver` (checkpoints and pending writes per `thread_id`). Not written by application code; treated as the durable state of in-flight graph runs. `Action.stage` is the application-level mirror, updated by each harness node, so dashboards and reports never read checkpoint internals.
+Tables created and owned by `AsyncSqliteSaver` (checkpoints and pending writes per `thread_id`), stored in a separate SQLite file (`var/checkpoints.db`) from the business data. Not written by application code; treated as the durable state of in-flight graph runs. `Action.stage` is the application-level mirror, updated by each harness node, so dashboards and reports never read checkpoint internals.
 
 ### ActionState (graph state, not a table)
 TypedDict carried through `harness_graph`: `action_id`, `spec_name`, `plan`, `inputs`, `precheck_results`, `risk_class`, `verifier_verdict`, `approval` (option, user), `attempt`, `execution_result`, `verification_result`, `corrections`, `outcome`. Agent subgraphs have their own state types (e.g. `DocumentState`, `ReorderState`, `CashForecastState`) and spawn harness runs for each state-changing step.

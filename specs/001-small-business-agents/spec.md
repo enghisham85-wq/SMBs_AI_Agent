@@ -316,7 +316,7 @@ Nice-to-have capabilities: VAT summary per period with supporting invoice list a
 
 - **SC-001**: In the 8 Chaos mode scenarios, 100% of injected faults are detected automatically, explained to the owner, and followed by a proposed learned rule.
 - **SC-002**: On the sample cafe data, stockout warnings for forecast-driven stockouts arrive at least 3 days before the projected stockout in at least 90% of cases.
-- **SC-003**: Simulated over the sample 3 months, stockouts and waste value are each lower than a "no assistant" baseline replay of the same data.
+- **SC-003**: Simulated over the sample 3 months, stockouts and waste value are each lower than a "no assistant" baseline replay of the same data. The baseline orders each item's average weekly consumption of the previous 4 weeks once a week from its preferred supplier, with no forecasting, safety-stock adjustment, expiry handling or budget limits, and uses the same sales, starting stock and supplier lead times.
 - **SC-004**: Projected cash shortfalls are flagged at least 14 days before the shortfall date in at least 90% of cases.
 - **SC-005**: 100% of owner requests can be answered in a single tap or a single short reply.
 - **SC-006**: Owner effort for the sample cafe is at most 15 minutes and at most 25 taps or replies per simulated week (excluding Chaos mode injections), presented alongside a manual bookkeeping estimate.
