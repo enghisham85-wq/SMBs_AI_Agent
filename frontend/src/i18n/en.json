@@ -1,0 +1,20 @@
+{
+  "app": { "title": "Business Assistants", "loading": "Loading…", "error": "Something went wrong.", "retry": "Try again" },
+  "nav": { "home": "Home", "stock": "Stock", "cash": "Cash", "books": "Books", "harness": "Harness", "chaos": "Chaos mode", "settings": "Settings", "logout": "Log out" },
+  "login": { "title": "Sign in", "username": "Username", "password": "Password", "submit": "Sign in", "failed": "Wrong username or password." },
+  "chat": { "title": "Assistant messages", "empty": "Nothing needs you right now.", "open": "Messages", "close": "Close", "activity": "Recent activity", "reply": "Short reply", "send": "Send" },
+  "approval": {
+    "already": "Already answered in {{channel}}",
+    "resolved": "Answered: {{option}}",
+    "timed_out": "Timed out — safe default applied: {{option}}",
+    "urgency": "Urgency {{level}}",
+    "due": "Answer by {{time}}",
+    "from": "From {{agent}}"
+  },
+  "agents": { "stock": "Stock Agent", "cashflow": "Cash-Flow Agent", "accountant": "Accountant Agent", "harness": "Harness" },
+  "clock": { "today": "Business date", "advance1": "Advance 1 day", "jump": "Jump to date", "go": "Go", "advancing": "Advancing…", "real": "Real time" },
+  "freshness": { "as_of": "{{source}} as of {{time}}", "unknown": "{{source}}: no data yet", "sources": { "bank": "Bank data", "sales": "Sales data", "stock": "Stock data", "forecast": "Forecast", "books": "Books", "clock": "Business date" } },
+  "lang": { "switch": "العربية" },
+  "common": { "save": "Save", "cancel": "Cancel", "none": "None", "yes": "Yes", "no": "No", "details": "Details", "back": "Back" },
+  "placeholder": { "coming": "This view is being built." }
+}

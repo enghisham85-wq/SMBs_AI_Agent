@@ -24,3 +24,8 @@ backend/var/
 Thumbs.db
 .vscode/
 .idea/
+
+# Frontend test output
+frontend/test-results/
+frontend/playwright-report/
+.venv/

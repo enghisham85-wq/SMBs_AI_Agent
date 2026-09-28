@@ -1,0 +1,24 @@
+{
+  "code": "SA",
+  "name_en": "Saudi Arabia",
+  "name_ar": "المملكة العربية السعودية",
+  "currency": "SAR",
+  "vat_rate_percent": "15",
+  "vat_period": "quarterly",
+  "weekend_days": [5, 6],
+  "tax_id_pattern": "^3\\d{13}3$",
+  "default_date_format": "DMY",
+  "fixed_holidays": [
+    {"month": 2, "day": 22, "name_en": "Founding Day", "name_ar": "يوم التأسيس"},
+    {"month": 9, "day": 23, "name_en": "National Day", "name_ar": "اليوم الوطني"}
+  ],
+  "hijri_holidays": [
+    {"month": 10, "day": 1, "days": 4, "name_en": "Eid al-Fitr", "name_ar": "عيد الفطر"},
+    {"month": 12, "day": 9, "days": 4, "name_en": "Arafat Day and Eid al-Adha", "name_ar": "وقفة عرفات وعيد الأضحى"}
+  ],
+  "special_holidays": [],
+  "holiday_overrides": {},
+  "ramadan_overrides": {},
+  "money_defaults": {"min_cash_buffer": "20000", "journal_value_limit": "3000", "po_auto_approve_limit": "0"},
+  "seed_price_factor": "0.075"
+}
