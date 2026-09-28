@@ -40,7 +40,7 @@ Conventions (apply to every entity unless stated):
 | active | bool | |
 
 ### Setting (key/value per business)
-Thresholds and limits with defaults: `price_change_pct=15`, `stock_variance_pct=5`, `approval_timeout_hours=4`, `journal_value_limit=OMR 200.000` (journal entries above it get the independent second check), `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off), `manual_bookkeeping_hours_per_week=6` (comparison figure for SC-006). Owner-only edit; changes audited.
+Thresholds and limits with defaults: `price_change_pct=15`, `stock_variance_pct=5`, `approval_timeout_hours=4`, `journal_value_limit=OMR 200.000` (journal entries above it get the independent second check), `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off), `reminder_auto_approve` enum `off`/`polite_only` (default `off`; `polite_only` lets level-1 reminders send without approval, levels 2–3 always need it), `manual_bookkeeping_hours_per_week=6` (comparison figure for SC-006). Owner-only edit; changes audited.
 
 ### BusinessClock
 | Field | Type | Rules |

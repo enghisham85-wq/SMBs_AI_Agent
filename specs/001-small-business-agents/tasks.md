@@ -80,7 +80,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 - [ ] T011 [P] Create tenancy models in `backend/app/models/tenancy.py`:
   - **Business**: `name` required; `currency` default `OMR`; `country` default `OM`; `vat_registered`; `vat_rate` default 0.05; `vat_period` enum `monthly`/`quarterly`; `weekend_days` default [5,6]; `min_cash_buffer` Money (owner-only edit); `demo_mode`.
   - **User**: `username` unique per business; `password_hash` argon2; `role` enum `owner`/`manager`/`staff`; `language` enum `en`/`ar`; `telegram_chat_id` unique ("one chat ↔ one user"); `telegram_link_code` ("one-time, expires 15 min"); `active`.
-  - **Setting** key/value with defaults `price_change_pct=15`, `stock_variance_pct=5`, `approval_timeout_hours=4`, `journal_value_limit=200000` (minor units = OMR 200.000; journal entries above it get the independent second check), `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off), `manual_bookkeeping_hours_per_week=6` (comparison figure for SC-006).
+  - **Setting** key/value with defaults `price_change_pct=15`, `stock_variance_pct=5`, `approval_timeout_hours=4`, `journal_value_limit=200000` (minor units = OMR 200.000; journal entries above it get the independent second check), `stale_bank_days=1`, `dead_stock_days=21`, `po_auto_approve_limit` (0 = off), `reminder_auto_approve` enum `off`/`polite_only` (default `off`; `polite_only` lets level-1 reminders send without approval, levels 2–3 always need approval), `manual_bookkeeping_hours_per_week=6` (comparison figure for SC-006).
 - [ ] T012 [P] Create the BusinessClock model in `backend/app/models/clock.py`: `mode` enum `real`/`simulated`, `current_date`, `last_run_date`, `advancing` bool.
 - [ ] T013 [P] Create master-data models in `backend/app/models/master.py`:
   - **Item**: `name_en`, `name_ar`, `unit`, `category`, `is_ingredient`, `is_sold`, `shelf_life_days?`, `reorder_point?`, `safety_stock`, `storage_capacity?`, `preferred_supplier_id`, `is_critical`, `unit_cost` Money, `margin_class` enum `high`/`normal`/`low`.
@@ -154,7 +154,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `start(name, input, thread_id)`, `resume(thread_id, value)` (via `Command(resume=value)`) and `state(thread_id)`.
   - Tests can inject `InMemorySaver`.
 - [ ] T028 [P] Define `ActionState` (TypedDict) in `backend/app/harness/state.py` with the fields from data-model.md §5 "ActionState".
-- [ ] T029 [P] Implement `ActionSpec` and its registry in `backend/app/harness/action_spec.py`. Fields: `name`, `agent`, `risk_class`, and callables `plan`, `preconditions`, `execute(dry_run)`, `verify`, `compensate`. Optional: `verifier_packet` (for high-impact actions), `value_of(state)` (for the auto-approve limit) and `approval_request(state)` (builds options and text through `llm/messages.compose`).
+- [ ] T029 [P] Implement `ActionSpec` and its registry in `backend/app/harness/action_spec.py`. Fields: `name`, `agent`, `risk_class`, and callables `plan`, `preconditions`, `execute(dry_run)`, `verify`, `compensate`. Optional: `verifier_packet` (for high-impact actions), `auto_approve(state, settings) -> bool` (default `False`; each irreversible spec defines its own owner-set rule) and `approval_request(state)` (builds options and text through `llm/messages.compose`).
 - [ ] T030 [P] Implement confidence routing in `backend/app/harness/confidence.py`: `band(confidence, agent) -> "act"|"act_flag"|"ask"`. It uses the AgentCalibration thresholds (defaults high 0.90, low 0.60). `act_flag` items go into the daily digest list.
 - [ ] T031 [P] Implement the verifier in `backend/app/harness/verifier.py`: `verify_independently(packet) -> VerifierVerdict`. It builds a fresh request from the `VerificationPacket` (action type, source inputs, proposed output, active rules) and must never include primary reasoning or messages. Prompt in `backend/app/llm/prompts/verifier.md`. Includes the pre-mortem failure-mode list for irreversible actions.
 - [ ] T032 [P] Implement incident creation in `backend/app/harness/incidents.py`: `open_incident(agent, type, detected_by, summary, refs, action_id?, chaos_injection_id?)` publishes `incident.opened`; `resolve_incident(...)` publishes `incident.resolved`.
@@ -163,7 +163,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - **Routing**:
     - precheck failure goes to `escalate`, which puts the action on hold and asks the owner
     - `premortem_verify` runs only for specs with `verifier_packet`, and disagreement or a high-severity issue goes to `escalate` (no silent retry)
-    - `approval_gate` calls `interrupt()` for `irreversible_external` actions unless value ≤ `po_auto_approve_limit`
+    - `approval_gate` calls `interrupt()` for `irreversible_external` actions unless the spec's `auto_approve(state, settings)` returns true; an auto-approval is audited as `auto_approved` with the rule that allowed it, and all other stages (verifier, pre-send checks, post-verify) still run
     - `execute` runs reversible writes inside a savepoint
     - failed `post_verify` goes to `rollback` → `retry` (attempt 2, with corrections) → `escalate`
   - **Every node**: updates `Action.stage` and writes an audit entry.
@@ -250,7 +250,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   1. `read_only` completes without interrupt.
   2. A `reversible` action with a failing `verify` is rolled back, retried once, then `escalated` with an incident.
   3. An `irreversible_external` action pauses with an `__interrupt__` payload, and `resume` with approve reaches `completed` while reject reaches `finalize` without `execute`.
-  4. Value within `po_auto_approve_limit` skips the interrupt.
+  4. A spec whose `auto_approve` returns true skips the interrupt and writes an `auto_approved` audit entry; one returning false (the default) always interrupts.
   5. Verifier disagreement escalates without retry.
   6. Every node writes an audit entry and updates `Action.stage`.
   7. SC-005: every `ApprovalRequest` created by an interrupt has 2–4 options, each with `label_en` and `label_ar`, or is a `question` that accepts one short reply (≤ 100 characters). A request that breaks this fails creation in `ApprovalService`.
@@ -322,6 +322,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - **`send_po`** (irreversible_external):
     - `approval_request` uses `llm/messages.compose`, e.g. "Milk will run out Thursday evening. Order 40 L from Al Noor Dairy (arrives Wednesday), OMR 36.000?" with options Approve/Edit/Reject.
     - `verifier_packet` = PO, forecast, stock and price history.
+    - `auto_approve` returns true only when `po_auto_approve_limit` > 0 and the PO total ≤ that limit.
     - `execute` marks the PO `sent` and records `sent_at` (MVP: no real supplier contact).
   - **`record_delivery`** (reversible).
   - **`adjust_stock`** (reversible, reason required).
@@ -532,6 +533,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - gap size, date and days-to-act
   - ranked actions with impact, risk and simulated forecast
   - reminder cancelled when paid
+  - reminder approval rule: with `reminder_auto_approve = off` every reminder waits for approval; with `polite_only` a level-1 reminder is sent without approval (audited `auto_approved`) while level 2 still waits; a paid invoice is cancelled in both modes
   - stale bank data (> `stale_bank_days`) marks low confidence and asks for a statement
   - PO + invoice counted once
 
@@ -567,7 +569,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `backend/app/agents/cashflow/reminders.py`: escalating levels 1–3, with earlier starts for customers with late history, and promise tracking.
   - `backend/app/agents/cashflow/budget.py`: weekly purchasing budget, tightened when the pessimistic scenario breaches the buffer.
 - [ ] T092 [US3] Implement cash-flow ActionSpecs in `backend/app/agents/cashflow/action_specs.py`:
-  - **`send_reminder`** (irreversible_external): the precondition re-checks the latest bank transactions and Accountant records. If paid, it cancels with `cancelled_paid` and informs the owner ("Customer Al Mazaya paid invoice INV-104 today, so I cancelled the reminder…"). Has a `verifier_packet`.
+  - **`send_reminder`** (irreversible_external): the precondition re-checks the latest bank transactions and Accountant records. If paid, it cancels with `cancelled_paid` and informs the owner ("Customer Al Mazaya paid invoice INV-104 today, so I cancelled the reminder…"). Has a `verifier_packet`. `auto_approve` returns true only when `reminder_auto_approve = polite_only` and the reminder is level 1; otherwise the owner approves it. The paid-check precondition runs either way.
   - **`publish_budget`** (reversible): publishes `budget.updated`.
   - **`save_forecast_run`** (reversible).
 - [ ] T093 [US3] Build the cash graphs in `backend/app/agents/cashflow/graphs.py`:
@@ -648,7 +650,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `frontend/src/components/RulesPanel.tsx`: active and pending rules, with approve/edit/reject for the owner.
   - `frontend/src/components/CalibrationChart.tsx`: accuracy over time and current thresholds/limits.
   - An action detail drawer showing plan, checks, verifier verdict and audit trail.
-- [ ] T104 [P] [US4] Build `frontend/src/pages/Settings.tsx` (owner): thresholds, minimum cash buffer, auto-approve limit, approval timeout, users, and the Telegram link code.
+- [ ] T104 [P] [US4] Build `frontend/src/pages/Settings.tsx` (owner): thresholds, minimum cash buffer, PO auto-approve limit, reminder auto-approval (off / polite first reminders only), approval timeout, users, and the Telegram link code.
 
 **Checkpoint**: All P1 stories are complete.
 
