@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+
+# Secrets and local config
+.env
+.env.*
+.claude/settings.local.json
+
+# Runtime data
+backend/var/
+*.db
+*.db-wal
+*.db-shm
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
