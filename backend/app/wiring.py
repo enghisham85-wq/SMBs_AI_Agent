@@ -11,6 +11,7 @@ MODULES: list[str] = [
     "app.seed.feed",
     "app.agents.stock.wiring",
     "app.agents.accountant.wiring",
+    "app.agents.cashflow.wiring",
 ]
 
 

@@ -85,7 +85,7 @@ async def precheck_node(state: ActionState) -> dict[str, Any]:
     for hook in PRECHECK_HOOKS:
         checks.extend(await hook(spec, ctx, state["inputs"]))
     results = [
-        {"name": c.name, "passed": c.passed, "details": jsonable(c.details), "ask": c.ask,
+        {"name": c.name, "passed": c.passed, "details": jsonable(c.details), "ask": c.ask, "cancel": c.cancel,
          "reason_en": c.reason_en, "reason_ar": c.reason_ar, "learned_rule_id": c.learned_rule_id}
         for c in checks
     ]
@@ -97,6 +97,8 @@ async def precheck_node(state: ActionState) -> dict[str, Any]:
     failed = [r for r in results if not r["passed"]]
     if not failed:
         route = "classify_risk"
+    elif any(r["cancel"] for r in failed):
+        route = "finalize"
     elif all(r["ask"] for r in failed):
         route = "hold"
     else:
@@ -104,6 +106,8 @@ async def precheck_node(state: ActionState) -> dict[str, Any]:
     await _stage(state, "prechecked", "stage:precheck", {"checks": results, "route": route},
                  verification="passed" if not failed else "failed")
     reason = "; ".join(r["reason_en"] or r["name"] for r in failed) or None
+    if route == "finalize":
+        return {"precheck_results": results, "route": route, "reason": reason, "outcome": "cancelled"}
     return {"precheck_results": results, "route": route, "reason": reason}
 
 
@@ -330,7 +334,7 @@ def build() -> StateGraph[Any]:
 
     g.add_edge(START, "plan")
     g.add_edge("plan", "precheck")
-    g.add_conditional_edges("precheck", _route, ["hold", "escalate", "classify_risk"])
+    g.add_conditional_edges("precheck", _route, ["hold", "escalate", "classify_risk", "finalize"])
     g.add_conditional_edges("hold", _route, ["hold", "classify_risk", "precheck", "execute", "finalize"])
     g.add_conditional_edges("classify_risk", _route, ["premortem_verify", "execute"])
     g.add_conditional_edges("premortem_verify", _route, ["approval_gate", "escalate"])

@@ -1673,6 +1673,330 @@
           }
         }
       }
+    },
+    "/api/v1/cash/position": {
+      "get": {
+        "tags": [
+          "cash"
+        ],
+        "summary": "Cash Position",
+        "operationId": "cash_position_api_v1_cash_position_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cash/forecast": {
+      "get": {
+        "tags": [
+          "cash"
+        ],
+        "summary": "Cash Forecast",
+        "operationId": "cash_forecast_api_v1_cash_forecast_get",
+        "parameters": [
+          {
+            "name": "horizon",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "30d",
+                "13w"
+              ],
+              "type": "string",
+              "default": "30d",
+              "title": "Horizon"
+            }
+          },
+          {
+            "name": "scenario",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scenario"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cash/shortfall-plan": {
+      "get": {
+        "tags": [
+          "cash"
+        ],
+        "summary": "Shortfall Plan",
+        "operationId": "shortfall_plan_api_v1_cash_shortfall_plan_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cash/shortfall-plan/actions/{action_id}/simulate": {
+      "post": {
+        "tags": [
+          "cash"
+        ],
+        "summary": "Simulate Action",
+        "operationId": "simulate_action_api_v1_cash_shortfall_plan_actions__action_id__simulate_post",
+        "parameters": [
+          {
+            "name": "action_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Action Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cash/receivables": {
+      "get": {
+        "tags": [
+          "cash"
+        ],
+        "summary": "Cash Receivables",
+        "operationId": "cash_receivables_api_v1_cash_receivables_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cash/payables": {
+      "get": {
+        "tags": [
+          "cash"
+        ],
+        "summary": "Cash Payables",
+        "operationId": "cash_payables_api_v1_cash_payables_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bank/statements": {
+      "post": {
+        "tags": [
+          "cash"
+        ],
+        "summary": "Upload Statement",
+        "operationId": "upload_statement_api_v1_bank_statements_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_statement_api_v1_bank_statements_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/obligations": {
+      "get": {
+        "tags": [
+          "cash"
+        ],
+        "summary": "List Obligations",
+        "operationId": "list_obligations_api_v1_obligations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "cash"
+        ],
+        "summary": "Create Obligation",
+        "operationId": "create_obligation_api_v1_obligations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObligationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/obligations/{ob_id}": {
+      "patch": {
+        "tags": [
+          "cash"
+        ],
+        "summary": "Update Obligation",
+        "operationId": "update_obligation_api_v1_obligations__ob_id__patch",
+        "parameters": [
+          {
+            "name": "ob_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ob Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObligationPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1769,6 +2093,43 @@
           "file"
         ],
         "title": "Body_upload_document_api_v1_documents_post"
+      },
+      "Body_upload_statement_api_v1_bank_statements_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mapping"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_statement_api_v1_bank_statements_post"
       },
       "BusinessPatch": {
         "properties": {
@@ -2055,6 +2416,154 @@
           "language"
         ],
         "title": "MePatch"
+      },
+      "ObligationIn": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "rent",
+              "salary",
+              "loan",
+              "tax",
+              "utility",
+              "subscription",
+              "other"
+            ],
+            "title": "Type"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Description"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Minor"
+          },
+          "next_due_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Next Due Date"
+          },
+          "recurrence": {
+            "type": "string",
+            "enum": [
+              "monthly",
+              "quarterly",
+              "annual",
+              "once"
+            ],
+            "title": "Recurrence"
+          },
+          "is_confirmed": {
+            "type": "boolean",
+            "title": "Is Confirmed",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "description",
+          "amount_minor",
+          "next_due_date",
+          "recurrence"
+        ],
+        "title": "ObligationIn"
+      },
+      "ObligationPatch": {
+        "properties": {
+          "type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "rent",
+                  "salary",
+                  "loan",
+                  "tax",
+                  "utility",
+                  "subscription",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "amount_minor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Minor"
+          },
+          "next_due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Due Date"
+          },
+          "recurrence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "monthly",
+                  "quarterly",
+                  "annual",
+                  "once"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recurrence"
+          },
+          "is_confirmed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Confirmed"
+          }
+        },
+        "type": "object",
+        "title": "ObligationPatch"
       },
       "POPatch": {
         "properties": {
