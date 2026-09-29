@@ -69,6 +69,8 @@ SETTING_DEFAULTS: dict[str, Any] = {
     "forecast_mape_threshold": 0.35,
     "confidence_high": 0.90,
     "confidence_low": 0.60,
+    # Cash-Flow Agent: yesterday's projected vs actual closing balance beyond this % is investigated.
+    "cash_variance_pct": 10,
 }
 
 

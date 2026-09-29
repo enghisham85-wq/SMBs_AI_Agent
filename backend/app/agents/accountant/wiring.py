@@ -110,11 +110,13 @@ async def telegram_document(user: User, data: bytes, mime: str, name: str, capti
 
 
 def register() -> None:
+    from app.agents.accountant import bank_import
     from app.approvals.telegram_bot import register_upload
     from app.seed.feed import register_bank_source
     from app.seed.sample_cafe import register_extension
 
     action_specs.register_specs()
+    bank_import.register_spec()
     graphs.register_graphs()
     register_extension(seed_books)
     register_bank_source(customer_payments)

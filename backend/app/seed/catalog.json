@@ -78,10 +78,10 @@
   ],
   "obligations": [
     {"type": "rent", "description": "Shop rent", "amount": "70000", "day": 1, "recurrence": "monthly"},
-    {"type": "salary", "description": "Staff salaries", "amount": "140000", "day": 28, "recurrence": "monthly"},
+    {"type": "salary", "description": "Staff salaries", "amount": "150000", "day": 28, "recurrence": "monthly"},
     {"type": "utility", "description": "Electricity and water", "amount": "10000", "day": 10, "recurrence": "monthly"},
     {"type": "subscription", "description": "POS and internet", "amount": "2000", "day": 15, "recurrence": "monthly"},
-    {"type": "other", "description": "Owner drawings", "amount": "53000", "day": 20, "recurrence": "monthly"}
+    {"type": "other", "description": "Owner drawings", "amount": "70000", "day": 20, "recurrence": "monthly"}
   ],
   "customers": [
     {"name": "Al Mazaya Offices", "contact": "accounts@almazaya.example", "on_time_probability": 0.4},

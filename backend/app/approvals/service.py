@@ -337,6 +337,34 @@ class _System:
     username = "system"
 
 
+async def withdraw(ref: str, reason: str) -> bool:
+    """Take back a pending request that is no longer needed; its paused graph resumes with effect `cancel`."""
+    req = await get(ref)
+    if req is None:
+        return False
+    now = clock_now()
+    async with write_session() as s:
+        res = await s.execute(
+            update(ApprovalRequest)
+            .where(ApprovalRequest.id == req.id, ApprovalRequest.status == "pending")
+            .values(status="superseded", resolved_option="cancel", resolved_via="system", resolved_at=now)
+        )
+        if res.rowcount != 1:  # type: ignore[attr-defined]
+            return False
+        add_audit(s, "approval_withdrawn", business_id=req.business_id, action_id=req.action_id,
+                  inputs={"request_id": req.id, "reason": reason})
+    fresh = await get(str(req.id))
+    assert fresh is not None
+    await _notify("resolved", to_dict(fresh))
+    if req.graph_name and req.graph_thread_id:
+        from app.graphs import runtime
+
+        await runtime.resume(req.graph_name, req.graph_thread_id,
+                             {"option_key": "cancel", "effect": "cancel", "edits": {}, "text": reason,
+                              "user_id": str(_System.id), "via": "system", "timed_out": False})
+    return True
+
+
 async def expire_due(business_id: uuid.UUID) -> int:
     """Apply the safe default to overdue requests (FR-011). Returns how many expired."""
     now = clock_now()

@@ -557,7 +557,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Tests for User Story 3
 
-- [ ] T084 [P] [US3] Write acceptance tests in `backend/tests/integration/test_us3_cash.py` for spec US3 scenarios 1–6:
+- [X] T084 [P] [US3] Write acceptance tests in `backend/tests/integration/test_us3_cash.py` for spec US3 scenarios 1–6:
   - 30-day projection with lowest point and date
   - gap size, date and days-to-act
   - ranked actions with impact, risk and simulated forecast
@@ -570,51 +570,51 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Implementation for User Story 3
 
-- [ ] T085 [P] [US3] Create cash models in `backend/app/models/cash.py`:
+- [X] T085 [P] [US3] Create cash models in `backend/app/models/cash.py`:
   - **CashForecastRun**: `generated_on`, `bank_data_as_of`, `low_confidence_reason?`, `lowest_balance`, `lowest_date`.
   - **CashForecast**: `scenario` enum `expected`/`pessimistic`/`optimistic`; `below_buffer`.
   - **ShortfallPlan** and **PlanAction**: `type` enum `chase_receivable`/`delay_payable`/`defer_po`/`move_expense`/`financing`; `rank`; `simulated_lowest_balance`.
   - **PurchasingBudget**: `week_start`, `amount`, `reason`, `tightened`.
   - **PaymentReminder**: `level` 1–3; `status` enum `scheduled`/`pending_approval`/`sent`/`cancelled_paid`/`cancelled_owner`.
   - **PaymentPromise**.
-- [ ] T086 [US3] Add the Alembic migration `backend/alembic/versions/0004_cash.py`.
-- [ ] T087 [P] [US3] Implement bank statement import in `backend/app/agents/accountant/bank_import.py`: CSV parser (date, description, amount or debit/credit, balance) with column mapping and currency check. It creates BankTransactions and a BankBalanceSnapshot, dedupes by (account, date, amount, description, external_ref), and publishes `customer_payment.received` when a matched receivable is paid.
-- [ ] T088 [P] [US3] Implement cash position in `backend/app/agents/cashflow/position.py`: per-account balances plus cash on hand, 7-day committed outflows, and freshness from the latest snapshot.
-- [ ] T089 [P] [US3] Implement projection in `backend/app/agents/cashflow/projection.py`:
+- [X] T086 [US3] Add the Alembic migration `backend/alembic/versions/0004_cash.py`.
+- [X] T087 [P] [US3] Implement bank statement import in `backend/app/agents/accountant/bank_import.py`: CSV parser (date, description, amount or debit/credit, balance) with column mapping and currency check. It creates BankTransactions and a BankBalanceSnapshot, dedupes by (account, date, amount, description, external_ref), and publishes `customer_payment.received` when a matched receivable is paid.
+- [X] T088 [P] [US3] Implement cash position in `backend/app/agents/cashflow/position.py`: per-account balances plus cash on hand, 7-day committed outflows, and freshness from the latest snapshot.
+- [X] T089 [P] [US3] Implement projection in `backend/app/agents/cashflow/projection.py`:
   - daily 30-day projection: opening + inflows − outflows
   - **Inflows**: Stock sales forecast × settlement lag per payment method; receivables by due date × on-time probability.
   - **Outflows**: payables per the recommended schedule; open and planned POs, deduplicated against invoices by `po_id`; obligations by recurrence.
   - Scenarios use P10/P50/P90 sales and pessimistic/expected receivable delays.
   - Outputs lowest balance and date, and below-buffer days.
-- [ ] T090 [P] [US3] Implement cash checks in `backend/app/agents/cashflow/checks.py`:
+- [X] T090 [P] [US3] Implement cash checks in `backend/app/agents/cashflow/checks.py`:
   - `forecast_vs_actual` (identifies the wrong inflow or outflow line)
   - `bank_freshness`
   - `missing_recurring_obligation` (expected but not in the forecast or not seen in the bank)
   - `double_counting`
   - `unrealistic_inflow` (above the historical P95, which makes pessimistic the primary scenario)
-- [ ] T091 [P] [US3] Implement the shortfall plan in `backend/app/agents/cashflow/plan.py`: `detect_shortfall(run)` returns gap, date and days_to_act. `build_plan(run)` produces candidate actions, re-simulates the projection with each one, and ranks by gap closed ÷ risk. Financing is always ranked last.
-- [ ] T092 [P] [US3] Implement payables, reminders and budget:
+- [X] T091 [P] [US3] Implement the shortfall plan in `backend/app/agents/cashflow/plan.py`: `detect_shortfall(run)` returns gap, date and days_to_act. `build_plan(run)` produces candidate actions, re-simulates the projection with each one, and ranks by gap closed ÷ risk. Financing is always ranked last.
+- [X] T092 [P] [US3] Implement payables, reminders and budget:
   - `backend/app/agents/cashflow/payables.py`: early for a discount, on time, or end of terms when tight. It never goes beyond terms without owner instruction.
   - `backend/app/agents/cashflow/reminders.py`: escalating levels 1–3, with earlier starts for customers with late history, and promise tracking.
   - `backend/app/agents/cashflow/budget.py`: weekly purchasing budget, tightened when the pessimistic scenario breaches the buffer.
-- [ ] T093 [US3] Implement cash-flow ActionSpecs in `backend/app/agents/cashflow/action_specs.py`:
+- [X] T093 [US3] Implement cash-flow ActionSpecs in `backend/app/agents/cashflow/action_specs.py`:
   - **`send_reminder`** (irreversible_external): the precondition re-checks the latest bank transactions and Accountant records. If paid, it cancels with `cancelled_paid` and informs the owner ("Customer Al Mazaya paid invoice INV-104 today, so I cancelled the reminder…"). Has a `verifier_packet`. `auto_approve` returns true only when `reminder_auto_approve = polite_only` and the reminder is level 1; otherwise the owner approves it. The paid-check precondition runs either way.
   - **`publish_budget`** (reversible): publishes `budget.updated`.
   - **`save_forecast_run`** (reversible).
-- [ ] T094 [US3] Build the cash graphs in `backend/app/agents/cashflow/graphs.py`:
+- [X] T094 [US3] Build the cash graphs in `backend/app/agents/cashflow/graphs.py`:
   - **`cash_forecast_graph`**: freshness check → project → checks → save.
   - **`shortfall_plan_graph`**: detect → plan → owner message via `interrupt()`, e.g. "Heads up: cash drops to EGP 12,000.00 on 28 Oct (buffer is EGP 50,000.00)…" with option buttons → publish `shortfall.predicted`.
   - **`balance_compare_graph`**.
   - **`reminders_graph`**.
   - Register into the daily_run slots `balance_compare`, `cash_forecast` and `reminders`.
-- [ ] T095 [US3] Implement cash endpoints in `backend/app/api/v1/cash.py`:
+- [X] T095 [US3] Implement cash endpoints in `backend/app/api/v1/cash.py`:
   - `GET /cash/position`
   - `GET /cash/forecast?horizon=30d&scenario=`, with the buffer line, lowest point and confidence
   - `GET /cash/shortfall-plan` and `POST /cash/shortfall-plan/actions/{id}/simulate`
   - `GET /cash/receivables` and `GET /cash/payables` (ageing and schedule)
   - `POST /bank/statements` (manager, multipart CSV)
   - `GET/POST/PATCH /obligations` (write: owner)
-- [ ] T096 [P] [US3] Build `frontend/src/pages/Cash.tsx` with `frontend/src/components/CashChart.tsx` and `frontend/src/components/ShortfallPlan.tsx`:
+- [X] T096 [P] [US3] Build `frontend/src/pages/Cash.tsx` with `frontend/src/components/CashChart.tsx` and `frontend/src/components/ShortfallPlan.tsx`:
   - 30-day chart with the buffer line and lowest-point marker
   - ranked actions with a "Simulate" toggle that overlays the post-action line
   - receivables and payables ageing tables
