@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.agents.cashflow import graphs as cash_graphs
 from app.agents.cashflow import payables as pay
 from app.agents.cashflow import projection
+from app.config import get_settings
 from app.core import clock, settings_store
 from app.db.engine import read_session, write_session
 from app.db.types import Money
@@ -25,7 +26,6 @@ from app.models.harness import Action, ApprovalRequest, AuditLogEntry, Incident
 from app.models.master import Supplier
 from app.models.purchasing import PurchaseOrder
 from app.seed.sample_cafe import PASSWORDS, seed
-from app.config import get_settings
 
 START = date(2026, 10, 4)  # the sample cafe's rent (1st) and salaries (28th) fall in the same week
 

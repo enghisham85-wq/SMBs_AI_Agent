@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 
 from app.api.common import J
-from app.core import clock, country_profiles, settings_store
+from app.core import clock, country_profiles
 from app.core.auth import CurrentUser, RequireManager, RequireOwner
 from app.core.errors import AppError
 from app.db.currencies import exponent
@@ -64,7 +64,7 @@ async def get_business(user: CurrentUser = RequireManager) -> Response:
     async with read_session() as s:
         b = await s.get(Business, user.business_id)
     assert b is not None
-    return J(_business_out(b))
+    return J({**_business_out(b), "currency_locked": await has_financial_records(user.business_id)})
 
 
 @router.get("/countries")
@@ -139,29 +139,3 @@ async def patch_business(body: BusinessPatch, user: CurrentUser = RequireOwner) 
                   outputs={"effective_from": clock.today()})
         out = _business_out(b)
     return J(out)
-
-
-@router.get("/settings")
-async def get_settings_endpoint(user: CurrentUser = RequireManager) -> Response:
-    return J({"settings": await settings_store.get_all(user.business_id)})
-
-
-class SettingsPatch(BaseModel):
-    values: dict[str, Any]
-
-
-@router.patch("/settings")
-async def patch_settings(body: SettingsPatch, user: CurrentUser = RequireOwner) -> Response:
-    from app.models.tenancy import SETTING_DEFAULTS
-
-    unknown = set(body.values) - set(SETTING_DEFAULTS)
-    if unknown:
-        raise AppError(422, "unknown_setting", message_en=f"Unknown settings: {sorted(unknown)}", message_ar="إعدادات غير معروفة.")
-    if "reminder_auto_approve" in body.values and body.values["reminder_auto_approve"] not in ("off", "polite_only"):
-        raise AppError(422, "invalid_setting", message_en="reminder_auto_approve must be off or polite_only",
-                       message_ar="قيمة غير صالحة.")
-    async with write_session() as s:
-        for k, v in body.values.items():
-            await settings_store.put(s, user.business_id, k, v)
-        add_audit(s, "setting_changed", business_id=user.business_id, user_id=user.id, inputs=body.values)
-    return J({"settings": await settings_store.get_all(user.business_id)})

@@ -71,6 +71,8 @@ SETTING_DEFAULTS: dict[str, Any] = {
     "confidence_low": 0.60,
     # Cash-Flow Agent: yesterday's projected vs actual closing balance beyond this % is investigated.
     "cash_variance_pct": 10,
+    # Harness: an agent whose daily share of failed actions exceeds this is degraded (FR-006).
+    "action_failure_threshold": 0.2,
 }
 
 

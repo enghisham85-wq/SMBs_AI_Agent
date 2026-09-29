@@ -633,7 +633,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Tests for User Story 4
 
-- [ ] T097 [P] [US4] Write acceptance tests in `backend/tests/integration/test_us4_harness.py` for spec US4 scenarios 1–8:
+- [X] T097 [P] [US4] Write acceptance tests in `backend/tests/integration/test_us4_harness.py` for spec US4 scenarios 1–8:
   - audit completeness
   - approval needed without an auto-approve rule
   - verifier disagreement escalates
@@ -645,27 +645,27 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Implementation for User Story 4
 
-- [ ] T098 [P] [US4] Implement self-calibration in `backend/app/harness/calibration.py`:
+- [X] T098 [P] [US4] Implement self-calibration in `backend/app/harness/calibration.py`:
   - `record(agent, metric, value)` and rolling window evaluation.
   - When over threshold: set `degraded`, raise the confidence thresholds, lower `auto_approve_limit`, set `method_override`, and open an incident with the suspected cause.
   - On recovery, restore in steps. A **healthy day** is a business day on which the metric's value for that day is within its threshold. Each consecutive healthy day moves the thresholds, auto-approve limit and method back 25% of the way to their normal values, so 4 consecutive healthy days fully restore them and clear `degraded`. Any unhealthy day during recovery restarts the count from the current (partly restored) values.
   - Writes AgentCalibrationHistory.
-- [ ] T099 [P] [US4] Implement incident analysis in `backend/app/harness/analysis.py`: on escalation or resolution, call `LLMClient.parse(role="incident", output_model=IncidentAnalysis)` then `RuleProposal`. Prompts are in `backend/app/llm/prompts/incident_analysis.md` and `backend/app/llm/prompts/rule_proposal.md`. The trigger is validated against per-kind JSON schemas in `backend/app/harness/rule_schemas.py`.
-- [ ] T100 [US4] Implement learned rules in `backend/app/harness/rules.py`:
+- [X] T099 [P] [US4] Implement incident analysis in `backend/app/harness/analysis.py`: on escalation or resolution, call `LLMClient.parse(role="incident", output_model=IncidentAnalysis)` then `RuleProposal`. Prompts are in `backend/app/llm/prompts/incident_analysis.md` and `backend/app/llm/prompts/rule_proposal.md`. The trigger is validated against per-kind JSON schemas in `backend/app/harness/rule_schemas.py`.
+- [X] T100 [US4] Implement learned rules in `backend/app/harness/rules.py`:
   - `propose(incident, proposal)` creates a `proposed` rule.
   - `approve`, `reject`, `edit` (new version) and `deactivate` are owner only.
   - `active_rules(agent, kind)` is cached and refreshed on `rule.activated`/`rule.deactivated`.
   - `apply_preconditions(spec, state)` is called by the `precheck` node in `harness/graph.py`.
   - `parsing_hint` rules (e.g. supplier date format DMY) feed the extraction prompt and `date_sanity`.
   - `times_applied` and `times_overridden` are counted.
-- [ ] T101 [US4] Wire rules and calibration into the harness:
+- [X] T101 [US4] Wire rules and calibration into the harness:
   - update `backend/app/harness/graph.py` so `precheck` runs active rules and `finalize` records calibration metrics and triggers analysis for escalated actions
   - update `backend/app/harness/confidence.py` to read the live thresholds
-- [ ] T102 [US4] Implement approval timeouts and the digest:
+- [X] T102 [US4] Implement approval timeouts and the digest:
   - `ApprovalService.expire_due()` in `backend/app/approvals/service.py`: marks `timed_out`, resumes the graph with the `safe_default` (never irreversible), and creates a new request with `urgency+1` and `reask_count+1`.
   - `backend/app/harness/digest.py` collects `act_flag` items for the daily digest message.
   - Register both in the daily_run slots `approval_timeouts` and `digest`.
-- [ ] T103 [US4] Implement harness and settings endpoints in `backend/app/api/v1/harness.py` and `backend/app/api/v1/settings.py`:
+- [X] T103 [US4] Implement harness and settings endpoints in `backend/app/api/v1/harness.py` and `backend/app/api/v1/settings.py`:
   - `GET /harness/actions?live=true`, `GET /harness/actions/{id}` and the SSE `/harness/stream`
   - `GET /harness/incidents`
   - `GET /harness/rules`
@@ -673,13 +673,13 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `GET /harness/calibration`
   - `GET /audit-log` (owner)
   - `GET/PATCH /settings` (write: owner, audited `setting_changed`)
-- [ ] T104 [P] [US4] Build `frontend/src/pages/Harness.tsx` with components:
+- [X] T104 [P] [US4] Build `frontend/src/pages/Harness.tsx` with components:
   - `frontend/src/components/PipelineView.tsx`: live node stages per action from `/harness/stream`.
   - `frontend/src/components/IncidentLog.tsx`: detection method and resolution.
   - `frontend/src/components/RulesPanel.tsx`: active and pending rules, with approve/edit/reject for the owner.
   - `frontend/src/components/CalibrationChart.tsx`: accuracy over time and current thresholds/limits.
   - An action detail drawer showing plan, checks, verifier verdict and audit trail.
-- [ ] T105 [P] [US4] Build `frontend/src/pages/Settings.tsx` (owner): country profile and currency (currency picker disabled with an explanation once financial records exist), VAT rate as a percentage input (e.g. "14 %") and filing period, weekend days, thresholds, minimum cash buffer, PO auto-approve limit, reminder auto-approval (off / polite first reminders only), approval timeout, users, and the Telegram link code.
+- [X] T105 [P] [US4] Build `frontend/src/pages/Settings.tsx` (owner): country profile and currency (currency picker disabled with an explanation once financial records exist), VAT rate as a percentage input (e.g. "14 %") and filing period, weekend days, thresholds, minimum cash buffer, PO auto-approve limit, reminder auto-approval (off / polite first reminders only), approval timeout, users, and the Telegram link code.
 
 **Checkpoint**: All P1 stories are complete.
 

@@ -70,6 +70,8 @@ async def _advance_until_milk_request(bid: uuid.UUID, max_days: int = 5) -> Appr
     for _ in range(max_days):
         await scheduler.advance(bid, days=1)
         for req in await _pending(bid, "approval"):
+            if "po_id" not in req.context:
+                continue  # e.g. a payment reminder waiting for approval
             async with read_session() as s:
                 po = await s.get(PurchaseOrder, uuid.UUID(req.context["po_id"]))
                 lines = (await s.execute(select(PurchaseOrderLine).where(PurchaseOrderLine.po_id == po.id))).scalars().all()

@@ -7,6 +7,10 @@ import importlib
 # Each module exposes `register()`. Order matters only for readability.
 MODULES: list[str] = [
     "app.harness.graph",
+    "app.harness.rules",
+    "app.harness.analysis",
+    "app.harness.calibration",
+    "app.harness.digest",
     "app.graphs.daily_run",
     "app.seed.feed",
     "app.agents.stock.wiring",

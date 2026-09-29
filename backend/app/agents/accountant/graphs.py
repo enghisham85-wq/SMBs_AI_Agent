@@ -25,7 +25,7 @@ from app.db.engine import read_session, write_session
 from app.db.types import Money
 from app.harness import rules
 from app.harness.action_spec import OwnerAsk
-from app.harness.confidence import band
+from app.harness.confidence import route as confidence_route
 from app.harness.graph import run_action
 from app.harness.incidents import open_incident
 from app.models.books import Document, Extraction, JournalEntry, JournalLine, PayableInvoice
@@ -182,12 +182,15 @@ async def validate_node(state: DocState) -> dict[str, Any]:
         n.invoice_date = corrected
         if dcheck.details.get("corrected"):
             warnings.append(dcheck.reason_en)
-            await open_incident(business_id=business.id, agent="accountant", type="date_format", detected_by="date_sanity",
+            inc_id = await open_incident(business_id=business.id, agent="accountant", type="date_format", detected_by="date_sanity",
                                 summary=f"{supplier.name_en if supplier else 'Supplier'}: {dcheck.reason_en}",
                                 refs={"supplier_id": str(supplier.id) if supplier else None, "format": fmt_used,
                                       "document_id": str(doc.id)},
                                 dedupe_key=f"date_format:{supplier.id if supplier else doc.id}",
                                 action_taken=f"read the date as {corrected.isoformat()}")
+            from app.harness.analysis import analyse_and_propose
+
+            await analyse_and_propose(inc_id)  # e.g. "Supplier X invoices use DD/MM format"
     elif not dcheck.passed:
         read_as = dcheck.details.get("read_as")
         opts = []
@@ -273,7 +276,11 @@ async def validate_node(state: DocState) -> dict[str, Any]:
             continue
         cls = await classification.classify(business.id, supplier.id if supplier else None, ln["description"])
         accounts.append({"account_code": cls.account_code, "account_source": cls.source, "account_confidence": cls.confidence})
-        if await band(business.id, "accountant", cls.confidence) == "ask":
+        if await confidence_route(
+                business.id, "accountant", cls.confidence,
+                f"Recorded “{ln['description']}” as account {cls.account_code} ({cls.confidence:.0%} sure)",
+                f"سُجّل «{ln['description']}» على الحساب {cls.account_code} (بثقة {cls.confidence:.0%})",
+                {"document_id": str(doc.id), "line": i}) == "ask":
             async with read_session() as s:
                 accts = {a.code: a for a in (await s.execute(select(Account).where(Account.business_id == business.id))).scalars()}
             choices = [cls.account_code] + [c for c in ALT_ACCOUNTS if c != cls.account_code][:2]

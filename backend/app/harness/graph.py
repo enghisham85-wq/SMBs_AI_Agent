@@ -21,6 +21,7 @@ from app.approvals import service as approvals
 from app.core import settings_store
 from app.core.i18n import AGENT_NAMES, both, option
 from app.db.engine import write_session
+from app.graphs.streaming import broker
 from app.harness.action_spec import ActionContext, ActionSpec, Check, OwnerAsk, VerifyOutcome, get_spec
 from app.harness.audit import add_audit, jsonable
 from app.harness.incidents import open_incident
@@ -64,6 +65,10 @@ async def _stage(state: ActionState, stage: str, event: str, outputs: dict[str, 
         add_audit(s, event, business_id=uuid.UUID(state["business_id"]), agent=spec.agent,
                   action_id=uuid.UUID(state["action_id"]), inputs={"spec": spec.name, "attempt": state.get("attempt", 1)},
                   outputs=outputs or {}, verification_result=verification)
+    # Live pipeline view (Harness page): one message per stage.
+    broker.publish("harness", {"kind": "stage", "business_id": state["business_id"], "action_id": state["action_id"],
+                               "agent": spec.agent, "type": spec.name, "stage": stage, "event": event,
+                               "attempt": state.get("attempt", 1), "verification": verification})
 
 
 def _title(spec: ActionSpec) -> tuple[str, str]:
@@ -127,6 +132,7 @@ async def hold_node(state: ActionState) -> dict[str, Any]:
     )
     reask = state.get("reask", 0)
     ask.urgency = min(3, ask.urgency + reask)
+    ask.reask = reask
     await _stage(state, "awaiting_approval", "stage:hold", {"failed": failed})
     answer = await approvals.ask_owner(
         business_id=ctx.business_id, graph_name=GRAPH, thread_id=state["action_id"],
@@ -136,6 +142,11 @@ async def hold_node(state: ActionState) -> dict[str, Any]:
     if effect == "reask":
         return {"route": "hold", "reask": reask + 1, "approval": answer}
     if effect in ("override", "approve", "continue"):
+        from app.harness import rules
+
+        for r in failed:
+            if r.get("learned_rule_id"):
+                await rules.mark_overridden(uuid.UUID(r["learned_rule_id"]))
         return {"route": "classify_risk", "approval": answer}
     if effect == "edit" and spec.on_option:
         out = await spec.on_option(ctx, state["inputs"], answer.get("option_key"), answer.get("edits") or {})
@@ -175,10 +186,15 @@ async def premortem_verify_node(state: ActionState) -> dict[str, Any]:
 async def approval_gate_node(state: ActionState) -> dict[str, Any]:
     spec = _spec(state)
     ctx = _ctx(state)
-    if spec.risk_class != "irreversible_external":
+    from app.harness import rules
+
+    policy = await rules.requires_approval(ctx.business_id, spec.name)  # an owner-approved learned rule
+    if spec.risk_class != "irreversible_external" and policy is None:
         return {"route": "execute"}
+    if policy is not None:
+        await rules.mark_applied(policy)
     settings = await settings_store.get_all(ctx.business_id)
-    if spec.auto_approve is not None and await spec.auto_approve(ctx, state["inputs"], settings):
+    if policy is None and spec.auto_approve is not None and await spec.auto_approve(ctx, state["inputs"], settings):
         await _stage(state, "executing", "auto_approved", {"rule": f"{spec.name}.auto_approve"})
         return {"route": "execute", "approval": {"effect": "approve", "via": "auto_approve"}}
 
@@ -195,7 +211,10 @@ async def approval_gate_node(state: ActionState) -> dict[str, Any]:
         )
     reask = state.get("reask", 0)
     ask.urgency = min(3, ask.urgency + reask)
-    await _stage(state, "awaiting_approval", "stage:approval_gate", {"reask": reask})
+    ask.reask = reask
+    if policy is not None:
+        ask.context = {**ask.context, "learned_rule_id": str(policy)}
+    await _stage(state, "awaiting_approval", "stage:approval_gate", {"reask": reask, "learned_rule_id": policy})
     answer = await approvals.ask_owner(
         business_id=ctx.business_id, graph_name=GRAPH, thread_id=state["action_id"],
         gate_key=f"approval:{state.get('attempt', 1)}:{reask}", ask=ask, action_id=ctx.action_id, agent=spec.agent,

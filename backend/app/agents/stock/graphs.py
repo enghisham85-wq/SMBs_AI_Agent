@@ -140,7 +140,8 @@ async def fc_evaluate(state: DayState) -> dict[str, Any]:
                 if ing is not None:
                     ing.safety_stock = (ing.safety_stock * Decimal("1.5")).quantize(Decimal("0.01"))
     agent_error = sum(errors) / len(errors) if errors else 0.0
-    cal = await calibration.record(bid, "stock", "forecast_mape", agent_error, d, threshold, safe_method="same_weekday_avg")
+    cal = await calibration.record(bid, "stock", "forecast_mape", agent_error, d, threshold, safe_method="same_weekday_avg",
+                                   open_incident=False)
     if switched or cal["state"] == "degraded":
         names_en = ", ".join(f"{sw['name_en']} ({sw['error'] * 100:.0f}%)" for sw in switched)
         names_ar = "، ".join(f"{sw['name_ar']} ({sw['error'] * 100:.0f}%)" for sw in switched)

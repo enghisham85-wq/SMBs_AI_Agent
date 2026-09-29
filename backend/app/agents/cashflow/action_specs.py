@@ -24,6 +24,7 @@ from app.models.cash import CashForecast, CashForecastRun, PaymentPromise, Payme
 from app.models.finance_master import BankAccount, BankTransaction, Obligation
 from app.models.tenancy import Business
 
+
 def precise_now() -> datetime:
     """Business-clock time with microseconds, so two runs on the same day keep their order."""
     return clock.clock_now().replace(microsecond=datetime.now().microsecond)
