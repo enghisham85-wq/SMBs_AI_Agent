@@ -35,5 +35,26 @@
     "methods_pay": { "cash": "نقداً", "card": "بطاقة", "transfer": "تحويل", "credit": "آجل" },
     "import_result": "تم استيراد {{imported}} صف؛ تم تخطي {{skipped}} مكرر.", "row_error": "الصف {{row}}: {{reason}}"
   },
+  "books": {
+    "tabs": { "inbox": "الفواتير", "review": "المراجعة", "reconciliation": "البنك", "pnl": "الأرباح والخسائر", "balance": "الميزانية", "receivables": "فواتير العملاء" },
+    "upload": "رفع فاتورة", "reading": "جارٍ القراءة…", "try_sample": "جرّب فاتورة نموذجية…",
+    "outcomes": { "posted": "تمت القراءة والترحيل.", "waiting": "تمت القراءة — أحتاج إجابتك (انظر السؤال).", "same_file_already_received": "تم استلام هذا الملف نفسه من قبل.", "done": "تم." },
+    "document": "المستند", "supplier": "المورد", "total": "الإجمالي", "state": "الحالة", "confidence": "الثقة",
+    "status": { "received": "مستلم", "extracting": "جارٍ القراءة", "extracted": "مقروء", "needs_review": "يحتاج إجابتك", "posted": "مُرحّل", "rejected": "مرفوض", "duplicate": "مكرر", "held": "معلّق", "draft": "مسودة", "paid": "مدفوع", "void": "ملغى" },
+    "sources": { "llm": "Claude", "offline": "بديل غير متصل", "refusal": "مرفوض", "unavailable": "القارئ غير متاح", "owner": "أنت" },
+    "read_by": "قرأها {{source}} · {{attempts}} محاولة · اللغة: {{language}}",
+    "date": "التاريخ", "due": "الاستحقاق", "vat_number": "رقم التسجيل الضريبي", "subtotal": "الإجمالي قبل الضريبة", "vat": "الضريبة", "line": "البند", "qty": "الكمية", "account": "الحساب",
+    "account_sources": { "stock": "صنف مخزون", "rule": "قاعدة مكتسبة", "history": "سجل المورد", "llm": "Claude", "offline": "كلمات مفتاحية", "owner": "إجابتك" },
+    "held": "الفاتورة {{number}} ({{total}}) معلّقة: {{reasons}}", "see_reconciliation": "{{count}} حركة بنكية لها مطابقة مقترحة في تبويب البنك.",
+    "matched": "تمت مطابقته", "bank_vs_ledger": "البنك {{bank}} · الدفاتر {{ledger}}", "description": "الوصف", "amount": "المبلغ", "suggestion": "المطابقة المقترحة",
+    "confirm": "تأكيد", "record": "تسجيل", "recent_matches": "آخر المطابقات",
+    "match_sources": { "auto": "تلقائي", "suggested_confirmed": "مقترح ومؤكد", "manual": "يدوي" },
+    "period": "من {{from}} إلى {{to}}", "income": "الإيرادات", "expenses": "المصروفات", "gross_profit": "مجمل الربح", "net_profit": "صافي الربح",
+    "as_of": "حتى {{date}}", "balances": "متوازنة", "does_not_balance": "غير متوازنة", "assets": "الأصول", "total_assets": "إجمالي الأصول",
+    "liabilities": "الالتزامات", "equity": "حقوق الملكية", "current_earnings": "أرباح الفترة", "total_liabilities_equity": "إجمالي الالتزامات وحقوق الملكية",
+    "number": "الرقم", "customer": "العميل", "outstanding": "المتبقي", "overdue": "متأخرة {{days}} يوم",
+    "rec_status": { "open": "مفتوحة", "partially_paid": "مدفوعة جزئياً", "paid": "مدفوعة", "void": "ملغاة" },
+    "void": "إلغاء", "new_invoice": "فاتورة عميل جديدة", "price": "السعر", "vat_rate": "الضريبة %", "add_line": "إضافة بند", "create": "إنشاء الفاتورة", "invoice_created": "تم إنشاء الفاتورة."
+  },
   "placeholder": { "coming": "هذه الشاشة قيد الإنشاء." }
 }

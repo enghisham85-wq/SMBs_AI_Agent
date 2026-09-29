@@ -2,28 +2,31 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import select
 
-from app.agents.accountant import graphs as acc_graphs, receivables, reports
+from app.agents.accountant import graphs as acc_graphs
+from app.agents.accountant import receivables, reports
 from app.agents.accountant.intake import UnsupportedFileError, submit
-from app.approvals import service as approvals
 from app.api.common import J, get_business, with_freshness
+from app.approvals import service as approvals
 from app.config import get_settings
 from app.core import clock
 from app.core.auth import CurrentUser, RequireManager
 from app.core.errors import AppError, not_found
+from app.db.currencies import exponent
 from app.db.engine import read_session
 from app.harness.graph import run_action
-from app.models.books import Document, Extraction, JournalEntry, PayableInvoice, ReceivableInvoice
+from app.models.books import Document, Extraction, PayableInvoice, ReceivableInvoice
 from app.models.finance_master import BankAccount, BankTransaction
 from app.models.harness import ApprovalRequest
 from app.models.master import Supplier
@@ -118,7 +121,7 @@ async def document_detail(doc_id: uuid.UUID, user: CurrentUser = RequireManager)
 async def get_file(file_id: uuid.UUID, user: CurrentUser = RequireManager) -> Response:
     async with read_session() as s:
         ref = await s.get(FileRef, file_id)
-    if ref is None or ref.business_id != user.business_id or not Path(ref.path).exists():
+    if ref is None or ref.business_id != user.business_id or not await asyncio.to_thread(Path(ref.path).exists):
         raise not_found("File")
     return FileResponse(ref.path, media_type=ref.mime, filename=ref.original_name)
 
@@ -160,7 +163,9 @@ async def reconciliation(user: CurrentUser = RequireManager) -> Response:
                   for t in txns if t.match_status in ("unmatched", "suggested")]
     recent = [{"id": t.id, "date": t.date, "amount": t.amount, "description": t.description, "matched_type": t.matched_type,
                "source": t.match_source, "confidence": t.match_confidence} for t in matched[:30]]
-    bank_vs_ledger = await acc_graphs.ledger_bank_balances(user.business_id)
+    cur = (await get_business(user.business_id)).currency
+    bank_vs_ledger = {name: {"ledger": _money(v["ledger_minor"], cur), "bank": _money(v["bank_minor"], cur)}
+                      for name, v in (await acc_graphs.ledger_bank_balances(user.business_id)).items()}
     return J(with_freshness({"percent_matched": pct, "total": len(txns), "matched": len(matched), "open": open_items,
                              "recent_matches": recent, "bank_vs_ledger": bank_vs_ledger}, {"bank": last_bank}))
 
@@ -205,7 +210,7 @@ async def pnl(from_: date | None = Query(default=None, alias="from"), to: date |
     end = to or clock.today()
     start = from_ or end.replace(day=1)
     data = await reports.pnl(user.business_id, start, end)
-    data["currency"] = b.currency
+    data["currency"], data["decimals"] = b.currency, exponent(b.currency)
     return J(with_freshness(data, {"books": clock.today()}))
 
 
@@ -213,7 +218,7 @@ async def pnl(from_: date | None = Query(default=None, alias="from"), to: date |
 async def balance_sheet(as_of: date | None = None, user: CurrentUser = RequireManager) -> Response:
     b = await get_business(user.business_id)
     data = await reports.balance_sheet(user.business_id, as_of or clock.today())
-    data["currency"] = b.currency
+    data["currency"], data["decimals"] = b.currency, exponent(b.currency)
     return J(with_freshness(data, {"books": clock.today()}))
 
 

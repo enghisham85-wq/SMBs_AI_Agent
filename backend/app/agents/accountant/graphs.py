@@ -7,6 +7,7 @@ issue is answered.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
@@ -79,7 +80,7 @@ async def extract_node(state: DocState) -> dict[str, Any]:
         ref = await s.get(FileRef, doc.file_id)
         sups = (await s.execute(select(Supplier).where(Supplier.business_id == business.id))).scalars().all()
     assert ref is not None
-    data = Path(ref.path).read_bytes()
+    data = await asyncio.to_thread(Path(ref.path).read_bytes)
     hints = [f"{sp.name_en} / {sp.name_ar} (tax no. {sp.vat_number})" for sp in sups]
     hints += [r.rule_text_en for r in await rules.active_rules(business.id, "accountant", "parsing_hint")]
     ext, source = await extraction.extract(data, doc.mime, doc.sha256, hints, attempt)
@@ -542,7 +543,7 @@ def build_reconciliation() -> StateGraph[Any]:
 
 # ============================================================ trial balance
 async def tb_check(state: DayState) -> dict[str, Any]:
-    bid, d = uuid.UUID(state["business_id"]), date.fromisoformat(state["date"])
+    bid = uuid.UUID(state["business_id"])
     async with read_session() as s:
         entries = (await s.execute(select(JournalEntry).where(JournalEntry.business_id == bid,
                                                               JournalEntry.status == "posted"))).scalars().all()
