@@ -35,5 +35,26 @@
     "methods_pay": { "cash": "Cash", "card": "Card", "transfer": "Transfer", "credit": "On account" },
     "import_result": "Imported {{imported}} row(s); {{skipped}} duplicate(s) skipped.", "row_error": "Row {{row}}: {{reason}}"
   },
+  "books": {
+    "tabs": { "inbox": "Invoices", "review": "Review", "reconciliation": "Bank", "pnl": "Profit & loss", "balance": "Balance sheet", "receivables": "Customer invoices" },
+    "upload": "Upload invoice", "reading": "Reading…", "try_sample": "Try a sample invoice…",
+    "outcomes": { "posted": "Read and posted.", "waiting": "Read — I need your answer (see the question).", "same_file_already_received": "This exact file was already received.", "done": "Done." },
+    "document": "Document", "supplier": "Supplier", "total": "Total", "state": "Status", "confidence": "Confidence",
+    "status": { "received": "Received", "extracting": "Reading", "extracted": "Read", "needs_review": "Needs your answer", "posted": "Posted", "rejected": "Rejected", "duplicate": "Duplicate", "held": "Held", "draft": "Draft", "paid": "Paid", "void": "Void" },
+    "sources": { "llm": "Claude", "offline": "offline stand-in", "refusal": "declined", "unavailable": "reader unavailable", "owner": "you" },
+    "read_by": "Read by {{source}} · {{attempts}} attempt(s) · language: {{language}}",
+    "date": "Date", "due": "Due", "vat_number": "Tax reg. no.", "subtotal": "Subtotal", "vat": "VAT", "line": "Line", "qty": "Qty", "account": "Account",
+    "account_sources": { "stock": "stock item", "rule": "learned rule", "history": "supplier history", "llm": "Claude", "offline": "keywords", "owner": "your answer" },
+    "held": "Invoice {{number}} ({{total}}) is held: {{reasons}}", "see_reconciliation": "{{count}} bank line(s) have a suggested match in the Bank tab.",
+    "matched": "Matched", "bank_vs_ledger": "Bank {{bank}} · Books {{ledger}}", "description": "Description", "amount": "Amount", "suggestion": "Suggested match",
+    "confirm": "Confirm", "record": "Record", "recent_matches": "Recent matches",
+    "match_sources": { "auto": "automatic", "suggested_confirmed": "suggested, confirmed", "manual": "manual" },
+    "period": "{{from}} to {{to}}", "income": "Income", "expenses": "Expenses", "gross_profit": "Gross profit", "net_profit": "Net profit",
+    "as_of": "As of {{date}}", "balances": "balances", "does_not_balance": "does not balance", "assets": "Assets", "total_assets": "Total assets",
+    "liabilities": "Liabilities", "equity": "Equity", "current_earnings": "Current earnings", "total_liabilities_equity": "Total liabilities and equity",
+    "number": "Number", "customer": "Customer", "outstanding": "Outstanding", "overdue": "{{days}} days overdue",
+    "rec_status": { "open": "Open", "partially_paid": "Part paid", "paid": "Paid", "void": "Void" },
+    "void": "Void", "new_invoice": "New customer invoice", "price": "Price", "vat_rate": "VAT %", "add_line": "Add line", "create": "Create invoice", "invoice_created": "Invoice created."
+  },
   "placeholder": { "coming": "This view is being built." }
 }

@@ -7,7 +7,19 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, Date, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Date,
+    Enum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.types import Base, Money, TenantMixin, money_col
