@@ -104,6 +104,10 @@ def to_dict(r: ApprovalRequest) -> dict[str, Any]:
     }
 
 
+UNSAFE_DEFAULT_EFFECTS = ("approve", "accept", "override", "continue")
+REASK_EFFECTS = ("reask",)
+
+
 def validate_ask(ask: OwnerAsk) -> None:
     """SC-005: every request is answerable in one tap (2-4 options) or one short reply."""
     if ask.kind == "alert":
@@ -118,6 +122,10 @@ def validate_ask(ask: OwnerAsk) -> None:
             raise InvalidRequestError("each option needs key, label_en, label_ar and effect")
     if not (ask.text_en and ask.text_ar):
         raise InvalidRequestError("requests need English and Arabic text")
+    # FR-011: a timeout never does anything irreversible.
+    default = next((o for o in ask.options if o["key"] == ask.safe_default), None)
+    if default is not None and default["effect"] in UNSAFE_DEFAULT_EFFECTS:
+        raise InvalidRequestError(f"safe default {ask.safe_default!r} would approve an action")
 
 
 async def _create(
@@ -167,6 +175,7 @@ async def _create(
             request_token=secrets.token_hex(8),
             context=context,
             agent=agent,
+            reask_count=ask.reask,
         )
         s.add(req)
         await s.flush()
@@ -366,7 +375,12 @@ async def withdraw(ref: str, reason: str) -> bool:
 
 
 async def expire_due(business_id: uuid.UUID) -> int:
-    """Apply the safe default to overdue requests (FR-011). Returns how many expired."""
+    """Apply the safe default to overdue requests (FR-011). Returns how many expired.
+
+    The request is marked `timed_out` and its graph resumes with the safe default, which is never
+    irreversible. When that default is "ask again" the question is re-sent with urgency + 1 and
+    reask_count + 1: a paused action's own graph re-asks at its gate; a standalone question is copied here.
+    """
     now = clock_now()
     async with read_session() as s:
         due = (
@@ -396,17 +410,35 @@ async def expire_due(business_id: uuid.UUID) -> int:
         fresh = await get(str(req.id))
         assert fresh is not None
         await _notify("resolved", to_dict(fresh))
+        effect = next((o["effect"] for o in req.options if o["key"] == req.safe_default), req.safe_default or "reask")
         if req.graph_name and req.graph_thread_id:
             from app.graphs import runtime
 
-            effect = next((o["effect"] for o in req.options if o["key"] == req.safe_default), req.safe_default or "reask")
             await runtime.resume(
                 req.graph_name,
                 req.graph_thread_id,
                 {"option_key": req.safe_default, "effect": effect, "edits": {}, "text": None,
                  "user_id": str(_System.id), "via": "system", "timed_out": True},
             )
+        elif effect in REASK_EFFECTS:
+            await _reask_standalone(req)
+        elif req.graph_thread_id and req.graph_thread_id.startswith("q:"):
+            kind = req.graph_thread_id[2:].split(":", 1)[0]
+            handler = QUESTION_HANDLERS.get(kind)
+            if handler is not None:
+                await handler({**to_dict(fresh), "effect": effect, "text": None, "edits": {}, "timed_out": True})
     return count
+
+
+async def _reask_standalone(req: ApprovalRequest) -> None:
+    """Re-send a question that is not tied to a paused graph, one level more urgent."""
+    ask = OwnerAsk(kind=req.kind, text_en=req.text_en, text_ar=req.text_ar, options=req.options,
+                   required_role=req.required_role, safe_default=req.safe_default, urgency=min(3, req.urgency + 1),
+                   context={k: v for k, v in (req.context or {}).items() if k != "allow_text"},
+                   allow_text=bool((req.context or {}).get("allow_text")), reask=req.reask_count + 1)
+    thread = f"{req.graph_thread_id}:r{req.reask_count + 1}" if req.graph_thread_id else None
+    await _create(business_id=req.business_id, ask=ask, graph_name=None, thread_id=thread,
+                  gate_key=req.gate_key, action_id=req.action_id, agent=req.agent)
 
 
 async def user_actor(user_id: uuid.UUID) -> Actor | None:

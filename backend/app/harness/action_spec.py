@@ -50,6 +50,7 @@ class OwnerAsk:
     urgency: int = 1
     context: dict[str, Any] = field(default_factory=dict)
     allow_text: bool = False
+    reask: int = 0  # how many times this question was re-sent after a timeout
 
 
 Fn = Callable[..., Awaitable[Any]]
