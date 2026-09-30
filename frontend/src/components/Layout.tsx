@@ -27,7 +27,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-2">
           <strong className="text-brand-700">{me?.business.name ?? t("app.title")}</strong>
-          <nav className="flex flex-1 flex-wrap gap-1" aria-label="main">
+          <nav className="flex flex-1 flex-wrap gap-1" aria-label={t("nav.main")}>
             {links.map((n) => (
               <NavLink
                 key={n.to}

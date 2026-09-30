@@ -98,19 +98,12 @@ async def cash_forecast(horizon: Literal["30d", "13w"] = "30d", scenario: str | 
             inp, fresh = await projection.load_inputs(s, user.business_id, today, horizon=91)
         projs = projection.project_all(inp)
         sc = scenario or "expected"
-        weeks: list[dict[str, Any]] = []
-        for d in projs[sc].days:
-            if not weeks or (d.date - weeks[-1]["week_start"]).days >= 7:
-                weeks.append({"week_start": d.date, "inflows": 0, "outflows": 0, "closing": 0, "below_buffer": False})
-            w = weeks[-1]
-            w["inflows"] += d.inflows
-            w["outflows"] += d.outflows
-            w["closing"] = d.closing
-            w["below_buffer"] = w["below_buffer"] or d.below_buffer
-        for w in weeks:
-            w["inflows"], w["outflows"], w["closing"] = _m(w["inflows"], cur), _m(w["outflows"], cur), _m(w["closing"], cur)
+        all_weeks = {name: [{"week_start": w.week_start, "inflows": _m(w.inflows, cur), "outflows": _m(w.outflows, cur),
+                             "closing": _m(w.closing, cur), "below_buffer": w.below_buffer}
+                            for w in projection.weekly(p)] for name, p in projs.items()}
         low = projs[sc].lowest
-        return J(with_freshness({"horizon": "13w", "scenario": sc, "weeks": weeks, "buffer": b.min_cash_buffer,
+        return J(with_freshness({"horizon": "13w", "scenario": sc, "weeks": all_weeks[sc], "scenarios": all_weeks,
+                                 "buffer": b.min_cash_buffer,
                                  "lowest": {"date": low.date, "balance": _m(low.closing, cur)},
                                  "confidence": {"low": fresh.low_confidence, "reason": fresh.reason_en()}},
                                 {"bank": fresh.bank_data_as_of}))

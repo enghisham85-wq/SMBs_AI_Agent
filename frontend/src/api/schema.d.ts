@@ -425,6 +425,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/suppliers/{supplier_id}/scorecard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Supplier Scorecard
+         * @description Stated vs observed lead time, delivery record, price changes and reliability (US8).
+         */
+        get: operations["supplier_scorecard_api_v1_suppliers__supplier_id__scorecard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sales/import": {
         parameters: {
             query?: never;
@@ -622,6 +642,29 @@ export interface paths {
         };
         /** Pnl */
         get: operations["pnl_api_v1_reports_pnl_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vat/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Vat Summary
+         * @description Input VAT, output VAT, net payable and the supporting invoices for a period (FR-053).
+         *
+         *     `period` is `2026-10` (monthly) or `2026-Q4` (quarterly); default: the current period. The figures
+         *     are reviewed by the independent second check (FR-003) before `status` becomes `ready`.
+         */
+        get: operations["vat_summary_api_v1_vat_summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2221,6 +2264,37 @@ export interface operations {
             };
         };
     };
+    supplier_scorecard_api_v1_suppliers__supplier_id__scorecard_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                supplier_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     import_csv_api_v1_sales_import_post: {
         parameters: {
             query?: never;
@@ -2575,6 +2649,37 @@ export interface operations {
             query?: {
                 from?: string | null;
                 to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    vat_summary_api_v1_vat_summary_get: {
+        parameters: {
+            query?: {
+                period?: string | null;
             };
             header?: never;
             path?: never;
