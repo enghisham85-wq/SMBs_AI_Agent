@@ -40,7 +40,7 @@ Seeded users: `owner / manager / staff` (demo passwords printed by the seed comm
 | `uv run pytest tests/integration -k roles` | role refusals are enforced and logged (SC-012) |
 | `uv run pytest tests/integration -k sample_metrics` | SC-002, SC-003, SC-004, SC-006, SC-009 on 3-month replay |
 | `uv run pytest tests/eval --llm-live` | SC-008 extraction accuracy per language group (spends API credit) |
-| `cd frontend; npm test; npx playwright test` | UI units; e2e approval flow, dashboard views, roles |
+| `cd frontend; npm test; npx playwright test` | UI units; e2e approval flow, dashboard views, roles (the e2e run seeds its own cafe in `backend/var/e2e` on ports 8765/5175; set `PW_CHANNEL=chrome` to use an installed browser when Playwright's cannot be downloaded) |
 
 ## Manual demo walkthrough (expected outcomes)
 

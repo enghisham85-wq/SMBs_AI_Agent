@@ -10,7 +10,7 @@ from fastapi import APIRouter, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 
-from app.api.common import J
+from app.api.common import J, with_freshness
 from app.core import clock, country_profiles
 from app.core.auth import CurrentUser, RequireManager, RequireOwner
 from app.core.errors import AppError
@@ -64,7 +64,8 @@ async def get_business(user: CurrentUser = RequireManager) -> Response:
     async with read_session() as s:
         b = await s.get(Business, user.business_id)
     assert b is not None
-    return J({**_business_out(b), "currency_locked": await has_financial_records(user.business_id)})
+    return J(with_freshness({**_business_out(b), "currency_locked": await has_financial_records(user.business_id)},
+                            {"settings": b.created_at}))
 
 
 @router.get("/countries")

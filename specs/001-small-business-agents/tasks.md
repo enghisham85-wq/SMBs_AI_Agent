@@ -776,7 +776,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Tests for User Story 7
 
-- [ ] T119 [P] [US7] Write Playwright e2e tests in `frontend/tests/e2e/dashboard.spec.ts`:
+- [X] T119 [P] [US7] Write Playwright e2e tests in `frontend/tests/e2e/dashboard.spec.ts`:
   - home health strip, decisions and alerts visible at 390×844
   - approve a PO from Home in one tap
   - every figure on Home, Stock, Cash and Books renders a FreshnessLabel
@@ -784,13 +784,13 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Implementation for User Story 7
 
-- [ ] T120 [US7] Implement `GET /home` in `backend/app/api/v1/home.py` (manager):
+- [X] T120 [US7] Implement `GET /home` in `backend/app/api/v1/home.py` (manager):
   - health strip: stock OK/warnings count; lowest cash point in 30 days with its date; % reconciled and review count
   - today's decisions (pending approvals for the caller's role)
   - alerts sorted by urgency
   - all with `data_as_of`
-- [ ] T121 [P] [US7] Build `frontend/src/pages/Home.tsx` with `frontend/src/components/HealthStrip.tsx` and `frontend/src/components/AlertList.tsx`: decisions as ApprovalCards, the chat panel docked on desktop and in a drawer on mobile, and the ClockControl for the owner.
-- [ ] T122 [US7] Add a response check in `backend/app/main.py` (dev and test only) that fails any figure-bearing response missing `data_as_of`. Add a contract test in `backend/tests/contract/test_freshness.py` iterating the manager-level GET endpoints.
+- [X] T121 [P] [US7] Build `frontend/src/pages/Home.tsx` with `frontend/src/components/HealthStrip.tsx` and `frontend/src/components/AlertList.tsx`: decisions as ApprovalCards, the chat panel docked on desktop and in a drawer on mobile, and the ClockControl for the owner.
+- [X] T122 [US7] Add a response check in `backend/app/main.py` (dev and test only) that fails any figure-bearing response missing `data_as_of`. Add a contract test in `backend/tests/contract/test_freshness.py` iterating the manager-level GET endpoints.
 
 **Checkpoint**: The dashboard is complete for the demo.
 
