@@ -821,7 +821,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
   Every refusal is audit-logged (SC-012).
 - [X] T128 [P] Write Playwright role tests in `frontend/tests/e2e/roles.spec.ts` (nav hides pages; forbidden actions are refused).
-- [ ] T129 [P] Write the sample metrics test in `backend/tests/integration/test_sample_metrics.py`. It replays 3 months with the simulated clock against a "no assistant" baseline and asserts the criteria below. The baseline (in `backend/tests/integration/baseline_policy.py`) runs on the same feed data, starting stock and supplier lead times:
+- [X] T129 [P] Write the sample metrics test in `backend/tests/integration/test_sample_metrics.py`. It replays 3 months with the simulated clock against a "no assistant" baseline and asserts the criteria below. The baseline (in `backend/tests/integration/baseline_policy.py`) runs on the same feed data, starting stock and supplier lead times:
   - every Sunday, order each item's average weekly consumption over the previous 4 weeks, from its preferred supplier
   - no forecast, no safety-stock adjustment, no expiry handling and no budget limits
   - stockouts and waste are counted the same way for both runs
