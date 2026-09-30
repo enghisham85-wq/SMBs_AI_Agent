@@ -101,7 +101,10 @@ def plan_item(p: ItemPlanInput, today: date, cal: Calendar | None = None) -> Pro
     lead = math.ceil(p.lead_time_days)
     window = trigger_window(p.lead_time_days)
     horizon = max(window, lead + REVIEW_DAYS) + REVIEW_DAYS
-    proj = projection(p.stock, p.daily_demand, p.incoming, today, horizon)
+    # Below zero means the shelf ran empty and those sales were lost (or recorded before a count); there is
+    # no backlog to refill, so plan from an empty shelf rather than ordering extra that would go to waste.
+    on_hand = max(p.stock, Decimal(0))
+    proj = projection(on_hand, p.daily_demand, p.incoming, today, horizon)
     stockout = next((d for d, lvl in proj if lvl < 0), None)
 
     safety = p.safety_stock
@@ -115,13 +118,13 @@ def plan_item(p: ItemPlanInput, today: date, cal: Calendar | None = None) -> Pro
         safety = safety * PEAK_SAFETY_MULTIPLIER  # raise safety stock ahead of known peaks
         raised = True
 
-    min_in_window = min((lvl for d, lvl in proj if (d - today).days < window), default=p.stock)
+    min_in_window = min((lvl for d, lvl in proj if (d - today).days < window), default=on_hand)
     short_soon = stockout is not None and (stockout - today).days < window
     below_safety = min_in_window < safety
     if not (short_soon or below_safety):
         return None
 
-    at_arrival = dict(proj).get(arrival - timedelta(days=1), p.stock) if lead > 0 else p.stock
+    at_arrival = dict(proj).get(arrival - timedelta(days=1), on_hand) if lead > 0 else on_hand
     at_arrival += p.incoming.get(arrival, Decimal(0))
     need = sum(p.daily_demand.get(d, Decimal(0)) for d in window_dates) + safety - at_arrival
     if need <= 0:
@@ -135,7 +138,7 @@ def plan_item(p: ItemPlanInput, today: date, cal: Calendar | None = None) -> Pro
             qty = max(capped, Decimal(0))
     if qty <= 0:
         return None
-    cover = days_of_cover(p.stock, p.daily_demand, today)
+    cover = days_of_cover(on_hand, p.daily_demand, today)
     reason = (f"runs out on {stockout.isoformat()}" if stockout else f"falls below safety stock ({safety} {p.unit})")
     return Proposal(item_id=p.item_id, name=p.name, supplier_id=p.supplier_id, qty=qty, unit=p.unit,
                     pack_size=p.pack_size, unit_price_minor=p.unit_price_minor, arrival=arrival,

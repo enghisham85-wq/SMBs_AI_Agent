@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
@@ -289,13 +290,17 @@ async def _send_packet(ctx: ActionContext, inputs: dict[str, Any], plan: dict[st
 
 
 async def _send_auto(ctx: ActionContext, inputs: dict[str, Any], settings: dict[str, Any]) -> bool:
-    limit = int(settings.get("po_auto_approve_limit") or 0)
-    if limit <= 0:
-        return False
-    limit = int(limit * await auto_approve_factor(ctx.business_id, "stock"))
+    """Auto-approve within the owner's limit from Settings, or within a routine-order rule the owner approved."""
+    from app.agents.stock.routine_orders import within_owner_rule
+
     async with read_session() as s:
         po = await s.get(PurchaseOrder, uuid.UUID(inputs["po_id"]))
-    return po is not None and 0 < po.total.amount_minor <= limit
+    if po is None:
+        return False
+    limit = int(settings.get("po_auto_approve_limit") or 0)
+    if limit > 0 and 0 < po.total.amount_minor <= int(limit * await auto_approve_factor(ctx.business_id, "stock")):
+        return True
+    return await within_owner_rule(ctx.business_id, po) is not None
 
 
 async def _send_request(ctx: ActionContext, inputs: dict[str, Any], plan: dict[str, Any]) -> OwnerAsk:
@@ -616,10 +621,16 @@ async def _resume_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[st
         prev = po.status
         if po.status == "on_hold":
             po.status = "draft"
+        # A deferred order goes out now: it can arrive no sooner than the supplier's lead time from today,
+        # otherwise it would count as late the moment it is sent.
+        sup = await s.get(Supplier, po.supplier_id)
+        earliest = clock.today() + timedelta(days=math.ceil(supplier_perf.lead_time(sup)) if sup else 1)
+        prev_expected = po.expected_date
+        po.expected_date = max(po.expected_date, earliest)
         notes = {k: v for k, v in (po.notes or {}).items() if k not in ("deferred_until", "deferred_reason")}
         notes["budget"] = {**notes.get("budget", {}), "status": inputs.get("decision", "proceed")}
         po.notes = notes
-        return {"po_id": str(po.id), "previous_status": prev}
+        return {"po_id": str(po.id), "previous_status": prev, "previous_expected": prev_expected.isoformat()}
 
 
 async def _resume_verify(ctx: ActionContext, inputs: dict[str, Any], result: dict[str, Any]) -> VerifyOutcome:

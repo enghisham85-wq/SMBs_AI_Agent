@@ -39,10 +39,14 @@ SCHEMAS: dict[str, dict[str, Any]] = {
         "required": ["supplier_id", "account_code"],
         "properties": {"supplier_id": {"type": "string"}, "account_code": {"type": "string"}},
     },
+    # Either turn auto-approval off for an action type (require_approval), or let routine orders from one
+    # supplier up to a limit go ahead without asking (auto_approve_up_to_minor).
     "policy": {
         "type": "object",
-        "required": ["action_type", "require_approval"],
-        "properties": {"action_type": {"type": "string"}, "require_approval": {"type": "boolean"}},
+        "required": ["action_type"],
+        "properties": {"action_type": {"type": "string"}, "require_approval": {"type": "boolean"},
+                       "auto_approve_up_to_minor": {"type": "number"}, "supplier_id": {"type": "string"}},
+        "any_of_required": [["require_approval"], ["auto_approve_up_to_minor", "supplier_id"]],
     },
 }
 

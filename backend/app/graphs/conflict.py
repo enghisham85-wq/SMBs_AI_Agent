@@ -81,8 +81,14 @@ async def gather(state: ConflictState) -> dict[str, Any]:
 
 
 async def recommend(state: ConflictState) -> dict[str, Any]:
+    """A critical item outranks the budget; so does an item that would run out before a deferred order could
+    arrive (deferring it only guarantees the stockout). Otherwise the Cash-Flow recommendation stands."""
+    from datetime import timedelta
+
     st = state["positions"]["stock"]
-    rec = "proceed" if st["critical"] else state["check"]["recommendation"]
+    needed_by = date.fromisoformat(st["needed_by"]) if st.get("needed_by") else None
+    runs_out_first = needed_by is not None and needed_by <= clock.today() + timedelta(days=DEFER_DAYS)
+    rec = "proceed" if st["critical"] or runs_out_first else state["check"]["recommendation"]
     return {"recommendation": rec}
 
 
