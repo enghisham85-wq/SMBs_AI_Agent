@@ -146,9 +146,12 @@ async def _outcome(inj_id: uuid.UUID, rec: _Recorder, ctx: Ctx, sc: Scenario) ->
     # Only the incidents this fault should cause count; a clock advance can surface unrelated ones.
     incidents = await linked_incidents(inj_id, sc.incident_types)
     inc_ids = {str(i.id) for i in incidents}
+    # Rules proposed from these incidents, or an existing rule for the same cause the analysis pointed to.
+    linked = [uuid.UUID(i.refs["rule_id"]) for i in incidents if i.refs.get("rule_id")]
     async with read_session() as s:
-        rules = list((await s.execute(select(LearnedRule).where(LearnedRule.source_incident_id.in_([i.id for i in incidents]))
-                                      .order_by(LearnedRule.created_at))).scalars()) if incidents else []
+        rules = list((await s.execute(select(LearnedRule).where(
+            LearnedRule.source_incident_id.in_([i.id for i in incidents]) | LearnedRule.id.in_(linked))
+            .order_by(LearnedRule.created_at))).scalars()) if incidents else []
     t_detect = rec.first(lambda ch, m: ch == "harness" and m.get("kind") == "incident.opened" and str(m.get("incident_id")) in inc_ids)
     if t_detect is None and incidents:
         t_detect = 0.0  # re-triggered an incident that was already open

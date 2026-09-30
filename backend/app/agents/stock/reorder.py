@@ -81,8 +81,14 @@ def days_of_cover(stock: Decimal, demand: dict[date, Decimal], start: date) -> f
     return float(stock / avg) if avg > 0 else math.inf
 
 
+# Days of margin on top of the warning target, so a forecast that runs a day short still warns in time.
+FORECAST_MARGIN_DAYS = 1
+
+
 def trigger_window(lead_time_days: float) -> int:
-    return max(math.ceil(lead_time_days) + BUFFER_DAYS, MIN_WARNING_DAYS) + 1
+    """Order when the projected stockout is closer than this many days. With a daily review the first warning
+    comes MIN_WARNING_DAYS + FORECAST_MARGIN_DAYS ahead (SC-002: at least 3 days' warning)."""
+    return max(math.ceil(lead_time_days) + BUFFER_DAYS, MIN_WARNING_DAYS + FORECAST_MARGIN_DAYS) + 1
 
 
 def _round_up(qty: Decimal, pack: Decimal) -> Decimal:
@@ -162,14 +168,20 @@ class SupplierOrder:
 
 
 def group_by_supplier(proposals: list[Proposal], budget_remaining_minor: int | None = None) -> list[SupplierOrder]:
-    """One order per supplier. With a budget, keep critical items first, then high-margin fast movers."""
+    """One order per supplier. With a budget, keep critical items first, then high-margin fast movers.
+
+    Only top-ups (an item dipping below safety stock) are held back for the budget. An item that will run
+    out is always drafted: if that goes over the budget, the Cash-Flow budget check puts the conflict to the
+    owner with both positions (FR-043) instead of the order being dropped silently.
+    """
     ranked = sorted(proposals, key=lambda p: (not p.is_critical, p.margin_class != "high",
                                               p.projected_stockout or date.max))
     orders: dict[uuid.UUID, SupplierOrder] = {}
     remaining = budget_remaining_minor
     for p in ranked:
         order = orders.setdefault(p.supplier_id, SupplierOrder(supplier_id=p.supplier_id))
-        if remaining is not None and not p.is_critical and p.total_minor > remaining:
+        if (remaining is not None and not p.is_critical and p.projected_stockout is None
+                and p.total_minor > remaining):
             order.deferred.append(p)
             continue
         order.lines.append(p)

@@ -236,17 +236,23 @@ async def analyse_and_propose(incident_id: uuid.UUID, *, resolve: bool = True) -
     rid = await rules.propose(business_id=inc.business_id, agent=inc.agent, kind=proposal.kind,
                               rule_text_en=proposal.rule_text_en, rule_text_ar=proposal.rule_text_ar, trigger=trigger,
                               source_incident_id=inc.id)
-    await _record_cause(inc, analysis, resolve, "proposed a rule")
+    await _record_cause(inc, analysis, resolve, "proposed a rule", rule_id=rid)
     return rid
 
 
-async def _record_cause(inc: Incident, analysis: IncidentAnalysis, resolve: bool, note: str | None = None) -> None:
+async def _record_cause(inc: Incident, analysis: IncidentAnalysis, resolve: bool, note: str | None = None,
+                        rule_id: uuid.UUID | None = None) -> None:
     from app.db.engine import write_session
     from app.harness.incidents import resolve_incident
 
     taken = inc.action_taken
     if note:
         taken = f"{taken}; {note}" if taken else note
+    if rule_id is not None:  # the rule may already exist from an earlier incident with the same cause
+        async with write_session() as s:
+            row = await s.get(Incident, inc.id)
+            if row is not None:
+                row.refs = {**row.refs, "rule_id": str(rule_id)}
     if resolve:
         await resolve_incident(inc.id, root_cause=analysis.root_cause, category=analysis.category, action_taken=taken)
         return

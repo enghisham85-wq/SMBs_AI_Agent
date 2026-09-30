@@ -93,3 +93,15 @@ async def test_inject_refused_outside_demo_mode(api: Any, cafe: dict[str, Any], 
     monkeypatch.setattr(get_settings(), "DEMO_MODE", False)
     r = await api.client.post("/api/v1/chaos/inject", json={"scenario": "price_spike"})
     assert r.status_code == 403 and r.json()["error"]["code"] == "chaos_disabled"
+
+
+async def test_repeat_fault_reports_the_rule_already_proposed(api: Any, cafe: dict[str, Any]) -> None:
+    first = await _inject(api, "price_spike")
+    again = await _inject(api, "price_spike")  # same supplier, same cause: no duplicate rule
+    assert again["detected"] is True and again["rule_id"] == first["rule_id"]
+
+
+async def test_paid_before_reminder_bills_a_customer_when_none_is_free(api: Any, cafe: dict[str, Any]) -> None:
+    body = await _inject(api, "paid_before_reminder", {"customer": "New Client Co"})
+    assert body["affected_refs"]["created_invoice"] and body["rule_id"]
+    assert body["outcome"]["evidence"]["reminder_status"] == "cancelled_paid"

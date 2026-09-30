@@ -6,6 +6,7 @@ import asyncio
 import json
 import uuid
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -245,10 +246,11 @@ async def balance_sheet(as_of: date | None = None, user: CurrentUser = RequireMa
 
 # ------------------------------------------------------------------ customer invoices
 class RecLine(BaseModel):
-    description: str = ""
-    qty: float = Field(gt=0)
-    unit_price: float = Field(ge=0)
-    vat_rate_percent: float | None = Field(default=None, ge=0, le=100)
+    # Decimals with bounds, never floats: money must be exact, and absurd values are a 422, not a crash.
+    description: str = Field(default="", max_length=300)
+    qty: Decimal = Field(gt=0, le=Decimal("1000000"), max_digits=12, decimal_places=3)
+    unit_price: Decimal = Field(ge=0, le=Decimal("1000000000"), max_digits=15, decimal_places=3)
+    vat_rate_percent: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
 
 
 class RecIn(BaseModel):
