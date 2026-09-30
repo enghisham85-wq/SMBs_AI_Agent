@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import timedelta
 from decimal import Decimal
 from typing import Any, Literal
 
 from fastapi import APIRouter, File, Form, Response, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 from sqlalchemy import func, select
 
 from app.agents.stock import checks, demand, reorder, waste
@@ -154,8 +153,13 @@ async def record_waste(body: WasteIn, user: CurrentUser = RequireStaff) -> Respo
     return J({"outcome": out["outcome"], "result": out["result"]}, 201)
 
 
+class CountLine(BaseModel):
+    item_id: uuid.UUID
+    counted_qty: Decimal = Field(ge=0)
+
+
 class CountIn(BaseModel):
-    counts: list[dict[str, Any]]  # [{item_id, counted_qty}]
+    counts: list[CountLine]
 
 
 @router.post("/stock/counts", status_code=201)
@@ -163,8 +167,7 @@ async def record_counts(body: CountIn, user: CurrentUser = RequireManager) -> Re
     tolerance = float(await settings_store.get(user.business_id, "stock_variance_pct"))
     results = []
     for c in body.counts:
-        item_id = uuid.UUID(str(c["item_id"]))
-        counted = Decimal(str(c["counted_qty"]))
+        item_id, counted = c.item_id, c.counted_qty
         async with read_session() as s:
             item = await s.get(Item, item_id)
             lvl = (await s.execute(select(StockLevel).where(StockLevel.item_id == item_id))).scalar_one_or_none()
@@ -256,6 +259,15 @@ async def patch_po(po_id: uuid.UUID, body: POPatch, user: CurrentUser = RequireM
     return J(out)
 
 
+class DeliveryLineIn(BaseModel):
+    item_id: uuid.UUID
+    qty_received: Decimal = Field(ge=0, le=Decimal("1000000"))
+    unit_price_minor: int | None = Field(default=None, ge=0, le=10**15)
+
+
+_DELIVERY_LINES = TypeAdapter(list[DeliveryLineIn])
+
+
 @router.post("/purchase-orders/{po_id}/deliveries", status_code=201)
 async def record_delivery(po_id: uuid.UUID, lines: str = Form(...), photo: UploadFile | None = File(None),
                           user: CurrentUser = RequireStaff) -> Response:
@@ -265,9 +277,10 @@ async def record_delivery(po_id: uuid.UUID, lines: str = Form(...), photo: Uploa
     if po is None or po.business_id != user.business_id:
         raise not_found("Purchase order")
     try:
-        parsed = json.loads(lines)
-    except json.JSONDecodeError as exc:
-        raise AppError(422, "invalid_lines", message_en="Lines must be JSON.", message_ar="يجب أن تكون البنود بصيغة JSON.") from exc
+        parsed = [ln.model_dump(mode="json", exclude_none=True) for ln in _DELIVERY_LINES.validate_json(lines)]
+    except ValidationError as exc:
+        raise AppError(422, "invalid_lines", message_en="Lines must be a JSON list of {item_id, qty_received}.",
+                       message_ar="يجب أن تكون البنود قائمة JSON من {item_id, qty_received}.") from exc
     photo_id = po.notes.get("pending_photo_file_id")
     if photo is not None:
         ref = await save_upload(user.business_id, await photo.read(), photo.content_type or "image/jpeg",

@@ -268,7 +268,7 @@ RECURRENCES = Literal["monthly", "quarterly", "annual", "once"]
 class ObligationIn(BaseModel):
     type: OB_TYPES
     description: str = Field(min_length=1, max_length=200)
-    amount_minor: int = Field(gt=0)
+    amount_minor: int = Field(gt=0, le=10**15)
     next_due_date: date
     recurrence: RECURRENCES
     is_confirmed: bool = True
@@ -277,7 +277,7 @@ class ObligationIn(BaseModel):
 class ObligationPatch(BaseModel):
     type: OB_TYPES | None = None
     description: str | None = Field(None, min_length=1, max_length=200)
-    amount_minor: int | None = Field(None, gt=0)
+    amount_minor: int | None = Field(None, gt=0, le=10**15)
     next_due_date: date | None = None
     recurrence: RECURRENCES | None = None
     is_confirmed: bool | None = None

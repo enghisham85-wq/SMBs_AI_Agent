@@ -70,4 +70,4 @@ markers = [
     "llm_live: calls the live Anthropic API and spends credit (run explicitly)",
     "slow: long-running replay or metrics tests",
 ]
-addopts = "-m 'not llm_live'"
+addopts = "-m 'not llm_live and not slow'"

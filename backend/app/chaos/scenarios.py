@@ -338,20 +338,12 @@ async def paid_before_reminder(ctx: Ctx) -> None:
     from app.agents.cashflow.graphs import step_reminders
 
     today = clock.today()
+    inv_id, used = await _free_invoice(ctx)
+    if inv_id is None:
+        inv_id, used = await _overdue_invoice(ctx), set()
     async with write_session() as s:
-        q = select(ReceivableInvoice).where(ReceivableInvoice.business_id == ctx.bid,
-                                            ReceivableInvoice.status.in_(("open", "partially_paid")))
-        if ctx.params.get("customer"):
-            q = q.where(ReceivableInvoice.customer_name == ctx.params["customer"])
-        invs = (await s.execute(q.order_by(ReceivableInvoice.due_date))).scalars().all()
-        inv = None
-        for cand in invs:
-            rows = (await s.execute(select(PaymentReminder).where(PaymentReminder.receivable_invoice_id == cand.id))).scalars().all()
-            if not any(r.status in ("scheduled", "pending_approval") for r in rows) and len({r.level for r in rows}) < 3:
-                inv, used = cand, {r.level for r in rows}
-                break
-        if inv is None:
-            raise ChaosError("no open customer invoice is free for a reminder")
+        inv = await s.get(ReceivableInvoice, inv_id)
+        assert inv is not None
         level = min(lv for lv in (1, 2, 3) if lv not in used)
         owed = Money(inv.total.amount_minor - inv.amount_paid_minor, inv.total.currency)
         # A reminder is due this morning ...
@@ -374,6 +366,35 @@ async def paid_before_reminder(ctx: Ctx) -> None:
         status = (await s.get(PaymentReminder, rid)).status  # type: ignore[union-attr]
     ctx.affected.update({"reminder_id": str(rid), "receivable_invoice_id": str(inv_id), "customer": customer})
     ctx.evidence["reminder_status"] = status
+
+
+async def _free_invoice(ctx: Ctx) -> tuple[uuid.UUID | None, set[int]]:
+    """An open customer invoice with no reminder waiting and a reminder level left (its id, levels used)."""
+    async with read_session() as s:
+        q = select(ReceivableInvoice).where(ReceivableInvoice.business_id == ctx.bid,
+                                            ReceivableInvoice.status.in_(("open", "partially_paid")))
+        if ctx.params.get("customer"):
+            q = q.where(ReceivableInvoice.customer_name == ctx.params["customer"])
+        for cand in (await s.execute(q.order_by(ReceivableInvoice.due_date))).scalars():
+            rows = (await s.execute(select(PaymentReminder).where(PaymentReminder.receivable_invoice_id == cand.id))).scalars().all()
+            if not any(r.status in ("scheduled", "pending_approval") for r in rows) and len({r.level for r in rows}) < 3:
+                return cand.id, {r.level for r in rows}
+    return None, set()
+
+
+async def _overdue_invoice(ctx: Ctx) -> uuid.UUID:
+    """Every open invoice already has its reminders: bill a customer through the Accountant's normal action."""
+    from app.harness.graph import run_action
+
+    today = clock.today()
+    out = await run_action("create_receivable", {
+        "customer_name": str(ctx.params.get("customer") or "Zamalek Events"), "source": "manual",
+        "invoice_date": (today - timedelta(days=20)).isoformat(), "due_date": (today - timedelta(days=5)).isoformat(),
+        "lines": [{"description": "Catering order", "qty": 1, "unit_price": 2500 + ctx.seq}]}, ctx.bid)
+    if out["outcome"] != "completed":
+        raise ChaosError("could not create a customer invoice for the scenario")
+    ctx.affected["created_invoice"] = out["result"]["invoice_id"]
+    return uuid.UUID(out["result"]["invoice_id"])
 
 
 # ------------------------------------------------------------------ 6

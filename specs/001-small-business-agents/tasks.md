@@ -813,14 +813,14 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 **Purpose**: Success-criteria verification, security, demo readiness
 
-- [ ] T127 [P] Write role tests in `backend/tests/integration/test_roles.py`:
+- [X] T127 [P] Write role tests in `backend/tests/integration/test_roles.py`:
   - staff can record deliveries and waste
   - staff get 403 on money endpoints, and money fields are absent from staff responses
   - a manager can approve a PO but cannot approve a rule, change settings or change users
   - a Telegram answer from a staff user is refused
 
   Every refusal is audit-logged (SC-012).
-- [ ] T128 [P] Write Playwright role tests in `frontend/tests/e2e/roles.spec.ts` (nav hides pages; forbidden actions are refused).
+- [X] T128 [P] Write Playwright role tests in `frontend/tests/e2e/roles.spec.ts` (nav hides pages; forbidden actions are refused).
 - [ ] T129 [P] Write the sample metrics test in `backend/tests/integration/test_sample_metrics.py`. It replays 3 months with the simulated clock against a "no assistant" baseline and asserts the criteria below. The baseline (in `backend/tests/integration/baseline_policy.py`) runs on the same feed data, starting stock and supplier lead times:
   - every Sunday, order each item's average weekly consumption over the previous 4 weeks, from its preferred supplier
   - no forecast, no safety-stock adjustment, no expiry handling and no budget limits
@@ -834,11 +834,11 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - SC-004: shortfalls flagged ≥ 14 days ahead in ≥ 90% of cases
   - SC-006: ≤ 15 minutes and ≤ 25 taps/replies per simulated week, excluding chaos
   - SC-009: ≥ 85% of bank transactions auto-matched with zero incorrect auto-matches
-- [ ] T130 [P] Write REST contract tests with schemathesis in `backend/tests/contract/test_openapi.py`, run against `/api/v1/openapi.json` with seeded auth.
-- [ ] T131 [P] Write the safety guard test in `backend/tests/unit/test_no_money_movement.py`. It asserts that no module calls a payment or bank write API, that bank credentials are not stored in any model (FR-047, FR-048), and that only `irreversible_external` specs can send outside the system.
+- [X] T130 [P] Write REST contract tests with schemathesis in `backend/tests/contract/test_openapi.py`, run against `/api/v1/openapi.json` with seeded auth.
+- [X] T131 [P] Write the safety guard test in `backend/tests/unit/test_no_money_movement.py`. It asserts that no module calls a payment or bank write API, that bank credentials are not stored in any model (FR-047, FR-048), and that only `irreversible_external` specs can send outside the system.
 - [ ] T132 Record LLM replay fixtures for every demo path (`LLM_MODE=record`, running quickstart steps 2–8) into `backend/tests/fixtures/llm/`. Document re-recording in `backend/tests/fixtures/llm/README.md`.
-- [ ] T133 [P] Performance check in `backend/tests/integration/test_performance.py`: a one-day advance takes < 10 s excluding LLM; main GET endpoints respond < 2 s on seeded data.
-- [ ] T134 [P] Write the root `README.md`: overview, architecture diagram (LangGraph harness + agent subgraphs + outbox events), setup, and a link to quickstart.md.
+- [X] T133 [P] Performance check in `backend/tests/integration/test_performance.py`: a one-day advance takes < 10 s excluding LLM; main GET endpoints respond < 2 s on seeded data.
+- [X] T134 [P] Write the root `README.md`: overview, architecture diagram (LangGraph harness + agent subgraphs + outbox events), setup, and a link to quickstart.md.
 - [ ] T135 Run the quickstart.md validation end to end (automated commands, then the manual walkthrough steps 1–8) and fix any gaps found.
 
 ---
