@@ -4,6 +4,7 @@ from app.db.types import Base
 from app.models import (  # noqa: F401
     books,
     cash,
+    chaos,
     clock,
     events,
     finance_master,

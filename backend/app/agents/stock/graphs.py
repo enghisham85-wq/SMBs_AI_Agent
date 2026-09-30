@@ -150,6 +150,9 @@ async def fc_evaluate(state: DayState) -> dict[str, Any]:
             summary=f"Forecast error jumped for {names_en or 'several items'}",
             refs={"items": switched, "agent_error": agent_error}, dedupe_key=f"forecast_accuracy:{d.isoformat()}",
             action_taken="lowered confidence, switched to the 4-same-weekday average, raised safety stock")
+        from app.harness.analysis import analyse_and_propose
+
+        await analyse_and_propose(inc)
         await approvals.post_alert(
             business_id=bid, agent="stock", urgency=2, dedupe_key=f"forecast_accuracy:{d.isoformat()}",
             context={"incident_id": str(inc)},

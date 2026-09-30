@@ -30,7 +30,14 @@ from app.harness.audit import jsonable
 from app.harness.graph import run_action
 from app.harness.incidents import open_incident, resolve_incident
 from app.models.books import ReceivableInvoice
-from app.models.cash import CashForecastRun, PaymentPromise, PaymentReminder, PlanAction, ShortfallPlan
+from app.models.cash import (
+    CashForecastRun,
+    PaymentPromise,
+    PaymentReminder,
+    PlanAction,
+    PurchasingBudget,
+    ShortfallPlan,
+)
 from app.models.finance_master import BankTransaction
 from app.models.harness import ApprovalRequest, CheckResult, Incident
 from app.models.tenancy import Business
@@ -75,7 +82,8 @@ async def _business(bid: uuid.UUID) -> Business:
 
 async def _resolve_open(bid: uuid.UUID, prefix: str, root_cause: str, action_taken: str) -> None:
     async with read_session() as s:
-        incs = (await s.execute(select(Incident).where(Incident.business_id == bid, Incident.status == "open",
+        incs = (await s.execute(select(Incident).where(Incident.business_id == bid,
+                                                       Incident.status.in_(("open", "investigating")),
                                                        Incident.dedupe_key.like(f"{prefix}%")))).scalars().all()
     for inc in incs:
         await resolve_incident(inc.id, root_cause=root_cause, category="data_gap", action_taken=action_taken)
@@ -95,10 +103,15 @@ async def cf_freshness(state: DayState) -> dict[str, Any]:
     c = checks.bank_freshness(fresh)
     await _store_checks(bid, [c])
     if not c.passed:
-        key = f"bank_freshness:{fresh.last_bank_date.isoformat() if fresh.last_bank_date else 'none'}"
+        # One incident per gap: a missed day stays in the check window for a week as later days arrive.
+        key = (f"bank_freshness:missing:{fresh.missing_dates[0].isoformat()}" if fresh.missing_dates else
+               f"bank_freshness:{fresh.last_bank_date.isoformat() if fresh.last_bank_date else 'none'}")
         inc = await open_incident(business_id=bid, agent="cashflow", type="bank_freshness", detected_by="bank_freshness",
                                   summary=c.reason_en, refs=jsonable(c.details), dedupe_key=key,
                                   action_taken="marked the forecast low confidence and asked for a statement")
+        from app.harness.analysis import analyse_and_propose
+
+        await analyse_and_propose(inc, resolve=False)  # stays open until the statement arrives
         await approvals.post_alert(business_id=bid, agent="cashflow", urgency=2, dedupe_key=key,
                                    text_en=c.reason_en + ".", text_ar=c.reason_ar + ".",
                                    context={"incident_id": str(inc), "upload": "bank_statement"})
@@ -310,6 +323,23 @@ async def sp_publish(state: PlanState) -> dict[str, Any]:
         if row is not None:
             row.status = "presented"
             row.graph_thread_id = state["thread_id"]
+    gap = Money(int(sf["gap_minor"]), cur)
+    async with read_session() as s:
+        latest = (await s.execute(select(PurchasingBudget).where(PurchasingBudget.business_id == bid)
+                                  .order_by(PurchasingBudget.created_at.desc()).limit(1))).scalars().first()
+    tightened = latest is not None and latest.tightened
+    inc = await open_incident(
+        business_id=bid, agent="cashflow", type="shortfall_predicted", detected_by="shortfall_detection",
+        summary=f"Cash is projected to fall {gap.to_display()} below the buffer on {sf['first_below']}, "
+                f"{sf['days_to_act']} days from now",
+        refs={"gap_minor": sf["gap_minor"], "gap_date": sf["first_below"], "days_to_act": sf["days_to_act"],
+              "plan_id": state.get("plan_id")},
+        dedupe_key=f"shortfall:{sf['first_below']}",
+        action_taken=("tightened the purchasing budget and presented a ranked action plan" if tightened
+                      else "presented a ranked action plan"))
+    from app.harness.analysis import analyse_and_propose
+
+    await analyse_and_propose(inc)
     return {}
 
 
@@ -486,9 +516,13 @@ async def rm_send(state: DayState) -> dict[str, Any]:
                                                              PaymentReminder.status == "scheduled",
                                                              PaymentReminder.scheduled_for <= d)
                                .order_by(PaymentReminder.scheduled_for))).scalars().all()
+        customers = {i.id: i.customer_name for i in (await s.execute(select(ReceivableInvoice).where(
+            ReceivableInvoice.id.in_([r.receivable_invoice_id for r in due])))).scalars()}
     results = []
     for rem in due:
-        out = await run_action("send_reminder", {"reminder_id": str(rem.id)}, bid)
+        # The customer is part of the inputs so learned rules about a customer can apply.
+        out = await run_action("send_reminder", {"reminder_id": str(rem.id),
+                                                 "customer": customers.get(rem.receivable_invoice_id)}, bid)
         results.append({"reminder_id": str(rem.id), "outcome": "awaiting_approval" if out["interrupted"] else out["outcome"]})
     return {"notes": {**state.get("notes", {}), "sent": results}}
 
@@ -528,7 +562,8 @@ async def chase_now(bid: uuid.UUID, invoice_id: uuid.UUID, d: date) -> dict[str,
             s.add(rem)
             await s.flush()
             rid = rem.id
-    out = await run_action("send_reminder", {"reminder_id": str(rid)}, bid)
+        customer = inv.customer_name
+    out = await run_action("send_reminder", {"reminder_id": str(rid), "customer": customer}, bid)
     return {"reminder_id": str(rid), "outcome": "awaiting_approval" if out["interrupted"] else out["outcome"]}
 
 

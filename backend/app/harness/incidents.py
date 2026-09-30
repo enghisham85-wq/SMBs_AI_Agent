@@ -49,6 +49,8 @@ def add_incident(
 async def open_incident(**kwargs: Any) -> uuid.UUID:
     """Open an incident unless an open one with the same dedupe_key exists. Returns its id."""
     dedupe = kwargs.get("dedupe_key")
+    from app.chaos.context import current_injection
+
     async with write_session() as s:
         if dedupe:
             existing = (
@@ -61,10 +63,10 @@ async def open_incident(**kwargs: Any) -> uuid.UUID:
                 )
             ).scalar_one_or_none()
             if existing is not None:
+                if existing.chaos_injection_id is None:  # a Chaos fault re-triggered an open incident
+                    existing.chaos_injection_id = kwargs.get("chaos_injection_id") or current_injection()
                 return existing.id
         if kwargs.get("chaos_injection_id") is None:
-            from app.chaos.context import current_injection
-
             kwargs["chaos_injection_id"] = current_injection()
         inc = add_incident(s, **kwargs)
         await s.flush()

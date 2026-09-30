@@ -30,7 +30,7 @@ from app.harness.graph import run_action
 from app.harness.incidents import open_incident
 from app.models.books import Document, Extraction, JournalEntry, JournalLine, PayableInvoice
 from app.models.finance_master import Account, BankAccount, BankBalanceSnapshot, BankTransaction
-from app.models.harness import CheckResult
+from app.models.harness import CheckResult, Incident
 from app.models.master import Supplier
 from app.models.tenancy import Business, FileRef
 
@@ -112,6 +112,7 @@ async def validate_node(state: DocState) -> dict[str, Any]:
     issues: list[dict[str, Any]] = []
     warnings: list[str] = list(state.get("warnings") or [])
     found: list[Any] = []
+    detected_tw: dict[str, Any] | None = None
 
     # Apply the owner's earlier answers.
     for k in ("total_minor", "subtotal_minor", "vat_minor"):
@@ -219,6 +220,17 @@ async def validate_node(state: DocState) -> dict[str, Any]:
                 [{"key": "discard", "label_en": "Yes, discard", "label_ar": "نعم، تجاهلها", "effect": "discard_duplicate"},
                  {"key": "both_valid", "label_en": "No, both valid", "label_ar": "لا، كلتاهما صحيحة", "effect": "both_valid"}],
                 existing=str(dup.details.get("existing_invoice_id"))))
+            inc_id = await open_incident(
+                business_id=business.id, agent="accountant", type="duplicate_invoice", detected_by="duplicate_invoice",
+                summary=f"{sup_en or 'A supplier'} sent invoice {n.invoice_number} again ({doc.original_name})",
+                refs={"supplier_id": str(supplier.id) if supplier else None, "supplier_en": sup_en,
+                      "supplier_ar": supplier.name_ar if supplier else "", "invoice_number": n.invoice_number,
+                      "document_id": str(doc.id), "existing_invoice_id": str(dup.details.get("existing_invoice_id"))},
+                dedupe_key=f"duplicate_invoice:{doc.id}",
+                action_taken="blocked the second posting and asked the owner; the payment is counted once")
+            from app.harness.analysis import analyse_and_propose
+
+            await analyse_and_propose(inc_id, resolve=False)
 
     # Stock lines and three-way match
     async with read_session() as s:
@@ -241,6 +253,8 @@ async def validate_node(state: DocState) -> dict[str, Any]:
                      {"key": "post_invoiced", "label_en": "Post as invoiced", "label_ar": "رحّل كما في الفاتورة", "effect": "post_invoiced"},
                      {"key": "hold", "label_en": "Keep on hold", "label_ar": "أبقِها معلقة", "effect": "hold"}],
                     po_id=str(po_id), differences=[{**d, "item_id": str(d["item_id"])} for d in tw.details["differences"]]))
+                detected_tw = {"po_id": str(po_id), "po_number": tw.details["po_number"],
+                               "differences": [{**d, "item_id": str(d["item_id"])} for d in tw.details["differences"]]}
         elif ov.get("three_way"):
             po_id = uuid.UUID(ov["po_id"]) if ov.get("po_id") else None
     if ov.get("three_way") == "post_delivered":
@@ -290,7 +304,10 @@ async def validate_node(state: DocState) -> dict[str, Any]:
                 [{"key": f"account:{c}", "label_en": f"{accts[c].name_en} ({c})", "label_ar": f"{accts[c].name_ar} ({c})",
                   "effect": "account"} for c in choices if c in accts],
                 line=i, suggested=cls.account_code))
-    return await _save(state, business, n, supplier, issues, warnings, found, po_id, accounts)
+    saved = await _save(state, business, n, supplier, issues, warnings, found, po_id, accounts)
+    if detected_tw is not None and saved.get("invoice_id"):
+        await _three_way_incident({**state, "invoice_id": saved["invoice_id"]}, detected_tw, None)
+    return saved
 
 
 async def _save(state: DocState, business: Business, n: extraction.Normalised, supplier: Supplier | None,
@@ -411,8 +428,9 @@ async def ask_node(state: DocState) -> dict[str, Any]:
     return {"overrides": ov, "route": "validate", "asked": asked + 1}
 
 
-async def _three_way_incident(state: DocState, data: dict[str, Any], decision: str) -> None:
-    """The owner resolved an invoice that did not match its delivery: log it and propose a rule."""
+async def _three_way_incident(state: DocState, data: dict[str, Any], decision: str | None) -> None:
+    """An invoice did not match its delivery: log it when held (decision None) and propose a rule; the
+    owner's decision later completes the same incident."""
     from app.harness.analysis import analyse_and_propose
 
     bid = uuid.UUID(state["business_id"])
@@ -428,8 +446,16 @@ async def _three_way_incident(state: DocState, data: dict[str, Any], decision: s
                               summary=summary, refs={"supplier_id": str(sup.id), "supplier_en": sup.name_en,
                                                      "supplier_ar": sup.name_ar, "invoice_id": str(inv.id),
                                                      "po_id": data.get("po_id"), "differences": diffs, "decision": decision},
-                              dedupe_key=f"three_way:{inv.id}", action_taken=f"held the invoice; owner chose '{decision}'")
-    await analyse_and_propose(inc)
+                              dedupe_key=f"three_way:{inv.id}",
+                              action_taken="held the invoice and asked the owner" if decision is None
+                              else f"held the invoice; owner chose '{decision}'")
+    if decision is not None:
+        async with write_session() as s:
+            row = await s.get(Incident, inc)
+            if row is not None:
+                row.action_taken = f"held the invoice; owner chose '{decision}'"
+                row.refs = {**row.refs, "decision": decision}
+    await analyse_and_propose(inc, resolve=decision is not None)
 
 
 async def _delivery_confirmed(invoice_id: str) -> tuple[str | None, bool]:
@@ -473,7 +499,8 @@ async def post_node(state: DocState) -> dict[str, Any]:
         inv_id = state["invoice_id"]
         await approvals.post_alert(business_id=bid, agent="accountant", text_en="Note on a posted invoice: " + "; ".join(state["warnings"]) + ".",
                                    text_ar="ملاحظة على فاتورة مُرحّلة: " + "؛ ".join(state["warnings"]) + ".",
-                                   dedupe_key=f"invoice_warning:{inv_id}")
+                                   dedupe_key=f"invoice_warning:{inv_id}",
+                                   context={"invoice_id": inv_id, "document_id": state["document_id"]})
     return {"outcome": "posted" if out["outcome"] == "completed" else out["outcome"] or "awaiting_review"}
 
 

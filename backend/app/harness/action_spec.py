@@ -19,7 +19,9 @@ class ActionContext:
 @dataclass
 class Check:
     """Outcome of one precondition. `ask=True` holds the action and asks the owner instead of failing;
-    `cancel=True` means the action is no longer needed (e.g. the invoice was paid) and ends it quietly."""
+    `cancel=True` means the action is no longer needed (e.g. the invoice was paid) and ends it quietly.
+    `incident=True` records a failure as an incident (with root cause and a proposed rule): a fault the
+    agent caught, not just a routine question."""
 
     name: str
     passed: bool
@@ -29,6 +31,7 @@ class Check:
     reason_en: str = ""
     reason_ar: str = ""
     learned_rule_id: str | None = None
+    incident: bool = False
 
 
 @dataclass
