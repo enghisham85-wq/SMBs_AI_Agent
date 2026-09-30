@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_engine()
     await upgrade_head()
     await runtime.init()
+    # Graphs, action specs, daily steps and every agent's event handlers (agents/*/handlers.py).
     wiring.register_all()
     tasks: list[asyncio.Task[Any]] = []
     bid = await first_business_id()

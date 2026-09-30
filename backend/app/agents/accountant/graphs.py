@@ -334,7 +334,8 @@ async def _save(state: DocState, business: Business, n: extraction.Normalised, s
             doc.document_confidence = n.document_confidence
         if issues and not held_published:
             publish(s, "invoice.held", {"invoice_id": inv.id, "reason": [i["code"] for i in issues],
-                                        "po_id": po_id}, producer="accountant", business_id=business.id)
+                                        "po_id": po_id, "supplier_id": inv.supplier_id, "total": inv.total},
+                    producer="accountant", business_id=business.id)
             held_published = True
         inv_id = str(inv.id)
     return {"norm": n.to_json(), "issues": issues, "invoice_id": inv_id, "route": "ask" if issues else "post",
@@ -394,6 +395,7 @@ async def ask_node(state: DocState) -> dict[str, Any]:
         ov["three_way"] = effect
         ov["po_id"] = data.get("po_id")
         ov["three_way_differences"] = data.get("differences", [])
+        await _three_way_incident(state, data, effect)
     elif code.startswith("classify:"):
         chosen = key.split(":", 1)[1]
         ov.setdefault("accounts", {})[str(data["line"])] = chosen
@@ -407,6 +409,41 @@ async def ask_node(state: DocState) -> dict[str, Any]:
         await _close(state, "rejected")
         return {"route": "end", "outcome": "rejected", "asked": asked + 1}
     return {"overrides": ov, "route": "validate", "asked": asked + 1}
+
+
+async def _three_way_incident(state: DocState, data: dict[str, Any], decision: str) -> None:
+    """The owner resolved an invoice that did not match its delivery: log it and propose a rule."""
+    from app.harness.analysis import analyse_and_propose
+
+    bid = uuid.UUID(state["business_id"])
+    async with read_session() as s:
+        inv = await s.get(PayableInvoice, uuid.UUID(state["invoice_id"])) if state.get("invoice_id") else None
+        sup = await s.get(Supplier, inv.supplier_id) if inv and inv.supplier_id else None
+    if inv is None or sup is None:
+        return
+    diffs = data.get("differences", [])
+    qty = [f"{d.get('invoiced')} invoiced vs {d.get('delivered')} delivered" for d in diffs if d.get("kind") == "quantity"]
+    summary = f"{sup.name_en} invoice {inv.invoice_number} did not match what was delivered ({'; '.join(qty) or 'price'})"
+    inc = await open_incident(business_id=bid, agent="accountant", type="three_way_mismatch", detected_by="three_way_match",
+                              summary=summary, refs={"supplier_id": str(sup.id), "supplier_en": sup.name_en,
+                                                     "supplier_ar": sup.name_ar, "invoice_id": str(inv.id),
+                                                     "po_id": data.get("po_id"), "differences": diffs, "decision": decision},
+                              dedupe_key=f"three_way:{inv.id}", action_taken=f"held the invoice; owner chose '{decision}'")
+    await analyse_and_propose(inc)
+
+
+async def _delivery_confirmed(invoice_id: str) -> tuple[str | None, bool]:
+    """(supplier id, whether the invoice's order has a recorded delivery)."""
+    from app.models.purchasing import Delivery
+
+    async with read_session() as s:
+        inv = await s.get(PayableInvoice, uuid.UUID(invoice_id))
+        if inv is None:
+            return None, False
+        delivered = False
+        if inv.purchase_order_id:
+            delivered = (await s.execute(select(Delivery.id).where(Delivery.po_id == inv.purchase_order_id).limit(1))).first() is not None
+    return (str(inv.supplier_id) if inv.supplier_id else None), delivered
 
 
 async def _close(state: DocState, outcome: str) -> None:
@@ -423,7 +460,10 @@ async def _close(state: DocState, outcome: str) -> None:
 # ------------------------------------------------------------------ post
 async def post_node(state: DocState) -> dict[str, Any]:
     bid = uuid.UUID(state["business_id"])
-    out = await run_action("post_invoice", {"invoice_id": state["invoice_id"],
+    supplier_id, delivered = await _delivery_confirmed(state["invoice_id"])
+    # supplier_id and delivery_confirmed let learned rules such as "wait for delivery confirmation" apply.
+    out = await run_action("post_invoice", {"invoice_id": state["invoice_id"], "supplier_id": supplier_id,
+                                            "delivery_confirmed": delivered,
                                             "dup_ok": bool((state.get("overrides") or {}).get("dup_ok"))}, bid)
     async with write_session() as s:
         doc = await s.get(Document, uuid.UUID(state["document_id"]))
@@ -586,11 +626,33 @@ async def ledger_bank_balances(business_id: uuid.UUID) -> dict[str, dict[str, in
     return out
 
 
+async def tb_valuation(state: DayState) -> dict[str, Any]:
+    """Stock valuation agreement: a mismatch is published so the Stock Agent opens a joint incident."""
+    bid = uuid.UUID(state["business_id"])
+    start = await books_start(bid)
+    if start is None:
+        return {}
+    tolerance = float(await settings_store.get(bid, "stock_variance_pct"))
+    async with write_session() as s:
+        c = await checks.stock_valuation(s, bid, tolerance)
+        s.add(CheckResult(business_id=bid, check_name=c.name, passed=c.passed, details=c.details))
+        if not c.passed and c.details["currency"]:
+            cur = c.details["currency"]
+            publish(s, "stock_valuation.mismatch", {
+                "ledger_value": Money(c.details["ledger_minor"], cur), "stock_value": Money(c.details["stock_value_minor"], cur),
+                "difference": Money(c.details["difference_minor"], cur),
+                "received_not_invoiced": Money(c.details["received_not_invoiced_minor"], cur)},
+                producer="accountant", business_id=bid)
+    return {"notes": {**state.get("notes", {}), "stock_valuation": c.passed}}
+
+
 def build_trial_balance() -> StateGraph[Any]:
     g: StateGraph[Any] = StateGraph(DayState)
     g.add_node("check", tb_check)
+    g.add_node("valuation", tb_valuation)
     g.add_edge(START, "check")
-    g.add_edge("check", END)
+    g.add_edge("check", "valuation")
+    g.add_edge("valuation", END)
     return g
 
 

@@ -12,6 +12,7 @@ from app.core.clock import clock_now
 from app.core.events import publish
 from app.db.engine import write_session
 from app.graphs.streaming import broker
+from app.harness.audit import jsonable
 from app.models.harness import Incident
 
 
@@ -35,7 +36,7 @@ def add_incident(
         type=type,
         detected_by=detected_by,
         summary=summary,
-        refs=refs or {},
+        refs=jsonable(refs or {}),
         action_id=action_id,
         action_taken=action_taken,
         chaos_injection_id=chaos_injection_id,

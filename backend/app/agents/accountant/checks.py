@@ -199,3 +199,47 @@ async def three_way_match(s: AsyncSession, business_id: uuid.UUID, supplier_id: 
     return Check("missing_po_or_delivery", False, {"note": "no matching purchase order"},
                  reason_en="this invoice has no matching purchase order or delivery",
                  reason_ar="لا يوجد أمر شراء أو توريد مطابق لهذه الفاتورة"), None
+
+
+VALUATION_MIN_MINOR_UNITS = 1000  # ignore differences below 10.00 in a 2-decimal currency
+
+
+async def stock_valuation(s: AsyncSession, business_id: uuid.UUID, tolerance_pct: float) -> Check:
+    """Inventory account vs the Stock Agent's valuation (quantity x unit cost).
+
+    Goods delivered but not yet invoiced are not in the ledger yet, so they are taken out of the
+    comparison. A difference above `tolerance_pct` of the stock value fails.
+    """
+    from app.models.books import JournalEntry, JournalLine
+    from app.models.finance_master import Account
+    from app.models.stock_ops import StockLevel
+
+    accts = [a.id for a in (await s.execute(select(Account).where(Account.business_id == business_id,
+                                                                   Account.is_inventory.is_(True)))).scalars()]
+    rows = (await s.execute(select(JournalLine).join(JournalEntry, JournalEntry.id == JournalLine.entry_id).where(
+        JournalLine.account_id.in_(accts), JournalEntry.status.in_(("posted", "reversed"))))).scalars().all() if accts else []
+    ledger = sum(r.debit_minor - r.credit_minor for r in rows)
+    items = {i.id: i for i in (await s.execute(select(Item).where(Item.business_id == business_id))).scalars()}
+    stock_value = 0
+    currency = None
+    for lvl in (await s.execute(select(StockLevel).where(StockLevel.business_id == business_id))).scalars():
+        item = items.get(lvl.item_id)
+        if item is not None and lvl.quantity > 0:
+            stock_value += item.unit_cost.times(lvl.quantity).amount_minor
+            currency = item.unit_cost.currency
+    invoiced = {i.purchase_order_id for i in (await s.execute(select(PayableInvoice).where(
+        PayableInvoice.business_id == business_id, PayableInvoice.status.in_(("posted", "paid"))))).scalars()}
+    grni = 0
+    for dl, ln in (await s.execute(select(Delivery, DeliveryLine).join(DeliveryLine, DeliveryLine.delivery_id == Delivery.id)
+                                   .where(Delivery.business_id == business_id))).all():
+        if dl.po_id not in invoiced:
+            grni += ln.unit_price_on_note.times(ln.qty_received).amount_minor
+    expected_ledger = stock_value - grni
+    diff = ledger - expected_ledger
+    limit = max(VALUATION_MIN_MINOR_UNITS, int(abs(stock_value) * tolerance_pct / 100))
+    passed = abs(diff) <= limit
+    return Check("stock_valuation", passed, {"ledger_minor": ledger, "stock_value_minor": stock_value,
+                                             "received_not_invoiced_minor": grni, "difference_minor": diff,
+                                             "limit_minor": limit, "currency": currency},
+                 reason_en="" if passed else "the inventory account does not agree with the stock records",
+                 reason_ar="" if passed else "حساب المخزون لا يتفق مع سجلات المخزون")

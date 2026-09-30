@@ -87,12 +87,13 @@ async def _late_answer(req: dict[str, Any]) -> None:
 
 
 def register() -> None:
-    from app.agents.stock import sales_import
+    from app.agents.stock import handlers, sales_import
     from app.approvals.service import register_question_handler
     from app.seed.sample_cafe import register_extension
 
     action_specs.register_specs()
     sales_import.register_spec()
+    handlers.register()
     graphs.register_graphs()
     register_extension(seed_opening_stock)
     register_question_handler("late", _late_answer)

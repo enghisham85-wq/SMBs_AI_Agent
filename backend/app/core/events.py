@@ -38,6 +38,7 @@ REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "rule.activated": ("rule_id", "agent", "kind", "trigger"),
     "rule.deactivated": ("rule_id", "agent", "kind", "trigger"),
     "receivable.created": ("receivable_invoice_id", "total", "due_date"),
+    "budget.conflict_resolved": ("po_id", "decision", "recommendation", "decided_by"),
 }
 
 Handler = Callable[[dict[str, Any]], Awaitable[None]]
@@ -134,7 +135,10 @@ async def dispatch_pending() -> int:
                     }
                     status, error = "handled", None
                     try:
-                        await handler(envelope)
+                        from app.core.ownership import acting_as
+
+                        with acting_as(consumer.split(":", 1)[0]):  # a handler acts as its consuming agent
+                            await handler(envelope)
                     except Exception as exc:  # a failing consumer must not block the others
                         log.exception("event handler %s failed for %s", consumer, ev.type)
                         status, error = "failed", repr(exc)

@@ -704,31 +704,31 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Tests for User Story 5
 
-- [ ] T106 [P] [US5] Write event contract tests in `backend/tests/contract/test_events.py`. Every event type in contracts/events.md is published with its required payload fields and envelope; handlers are idempotent on re-dispatch.
-- [ ] T107 [P] [US5] Write the milk end-to-end test in `backend/tests/integration/test_milk_e2e.py`, covering the spec "End-to-end example" steps 1–7 and asserting the state of all three agents after each step.
+- [X] T106 [P] [US5] Write event contract tests in `backend/tests/contract/test_events.py`. Every event type in contracts/events.md is published with its required payload fields and envelope; handlers are idempotent on re-dispatch.
+- [X] T107 [P] [US5] Write the milk end-to-end test in `backend/tests/integration/test_milk_e2e.py`, covering the spec "End-to-end example" steps 1–7 and asserting the state of all three agents after each step.
 
 ### Implementation for User Story 5
 
-- [ ] T108 [P] [US5] Implement cash-flow event handlers in `backend/app/agents/cashflow/handlers.py`:
+- [X] T108 [P] [US5] Implement cash-flow event handlers in `backend/app/agents/cashflow/handlers.py`:
   - `po.drafted`: budget check → publish `budget.check_result`, and add a committed outflow
   - `po.approved_sent`: schedule the outflow
   - `invoice.posted`: replace the PO commitment and schedule payment
   - `invoice.held`: keep the PO amount
   - `customer_payment.received`: cancel reminders and re-forecast
-- [ ] T109 [P] [US5] Implement stock event handlers in `backend/app/agents/stock/handlers.py`:
+- [X] T109 [P] [US5] Implement stock event handlers in `backend/app/agents/stock/handlers.py`:
   - `budget.check_result`: proceed, defer or reduce, or open a conflict
   - `budget.updated` and `shortfall.predicted`: defer non-critical orders; prioritise `is_critical`, then `margin_class=high` fast movers
   - `invoice.posted`: update `unit_cost`, and publish `price.changed` when the change exceeds the threshold
   - `invoice.held`: note the supplier issue and lower reliability
   - `stock_valuation.mismatch`: open a joint incident
-- [ ] T110 [P] [US5] Implement accountant event handlers in `backend/app/agents/accountant/handlers.py`:
+- [X] T110 [P] [US5] Implement accountant event handlers in `backend/app/agents/accountant/handlers.py`:
   - `po.approved_sent`: make the open PO available for matching
   - `delivery.received`: store delivery data for the three-way match
   - `price.changed`: update the cost context
 
   Add a stock valuation agreement check (inventory account vs Stock valuation) in `backend/app/agents/accountant/checks.py` that publishes `stock_valuation.mismatch`.
-- [ ] T111 [US5] Build `conflict_graph` in `backend/app/graphs/conflict.py`. It gathers both agents' positions with figures (e.g. Stock: order needed by date X; Cash-Flow: budget remaining Y) and computes a recommendation. A critical item's stockout outranks the budget, and the owner is notified. It then calls `interrupt()` for the owner's choice and publishes the outcome. Register it and start it from the `budget.check_result` handler when `conflict` is set.
-- [ ] T112 [US5] Register all handlers in `backend/app/main.py` lifespan. Add a guard test in `backend/tests/unit/test_ownership.py` asserting that each agent package writes only its own tables (the written-by column in data-model.md). Method: a table `OWNERSHIP = {model_class: owning_agent}` in the test; the test parses every module under `backend/app/agents/<agent>/` with Python's `ast` and fails if a module other than `handlers.py` imports a model class owned by another agent. It also fails at runtime if a harness run started by one agent flushes an INSERT/UPDATE/DELETE on another agent's table (checked with a SQLAlchemy `before_flush` listener in the test).
+- [X] T111 [US5] Build `conflict_graph` in `backend/app/graphs/conflict.py`. It gathers both agents' positions with figures (e.g. Stock: order needed by date X; Cash-Flow: budget remaining Y) and computes a recommendation. A critical item's stockout outranks the budget, and the owner is notified. It then calls `interrupt()` for the owner's choice and publishes the outcome. Register it and start it from the `budget.check_result` handler when `conflict` is set.
+- [X] T112 [US5] Register all handlers in `backend/app/main.py` lifespan. Add a guard test in `backend/tests/unit/test_ownership.py` asserting that each agent package writes only its own tables (the written-by column in data-model.md). Method: a table `OWNERSHIP = {model_class: owning_agent}` in the test; the test parses every module under `backend/app/agents/<agent>/` with Python's `ast` and fails if a module other than `handlers.py` imports a model class owned by another agent. It also fails at runtime if a harness run started by one agent flushes an INSERT/UPDATE/DELETE on another agent's table (checked with a SQLAlchemy `before_flush` listener in the test).
 
 **Checkpoint**: The three agents cooperate through logged events only.
 

@@ -46,6 +46,23 @@ def _recurring(inc: Incident) -> tuple[IncidentAnalysis, RuleProposal]:
     )
 
 
+@template("three_way_mismatch")
+def _three_way(inc: Incident) -> tuple[IncidentAnalysis, RuleProposal] | None:
+    r = inc.refs
+    if not r.get("supplier_id"):
+        return None
+    return (
+        IncidentAnalysis(root_cause=f"{r['supplier_en']} invoiced the full order before the delivery was checked; "
+                                    "the delivery was short.", category="external"),
+        RuleProposal(rule_text_en=f"Always wait for delivery confirmation before posting invoices from {r['supplier_en']}",
+                     rule_text_ar=f"انتظر دائماً تأكيد الاستلام قبل ترحيل فواتير {r.get('supplier_ar') or r['supplier_en']}",
+                     kind="precondition",
+                     trigger={"action_type": "post_invoice", "field": "delivery_confirmed", "op": "eq", "value": True,
+                              "when": {"supplier_id": r["supplier_id"]}},
+                     expected_effect="invoices from this supplier wait until the delivery is recorded"),
+    )
+
+
 @template("date_format")
 def _date_format(inc: Incident) -> tuple[IncidentAnalysis, RuleProposal] | None:
     r = inc.refs

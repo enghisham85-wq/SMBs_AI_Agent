@@ -196,8 +196,6 @@ async def _match_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str
             ob = await s.get(Obligation, uuid.UUID(c["ref"]))
             code = c.get("extra", {}).get("account_code", "5900")
             draft = posting.bank_expense(txn.date, str(txn.id), f"{ob.type if ob else ''} {ob.description if ob else ''}", code, amt, bank)
-            if ob is not None:
-                ob.last_seen_transaction_id = txn.id
         elif kind == "supplier_invoice":
             inv = await s.get(PayableInvoice, uuid.UUID(c["ref"]))
             assert inv is not None
