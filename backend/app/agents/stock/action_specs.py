@@ -72,7 +72,13 @@ async def _draft_checks(ctx: ActionContext, inputs: dict[str, Any]) -> list[Chec
             history = await checks.price_history(s, supplier_id, item.id, today)
             # The current list price is part of the history; compare the proposed price against earlier ones.
             prior = history[1:] if history and price is not None and history[0] == int(ln["unit_price_minor"]) else history
-            out.append(checks.price_sanity(item, int(ln["unit_price_minor"]), prior, pct))
+            price_check = checks.price_sanity(item, int(ln["unit_price_minor"]), prior, pct)
+            if not price_check.passed:  # a supplier price jump is a fault to learn from, not only a question
+                sup = await s.get(Supplier, supplier_id)
+                price_check.incident = True
+                price_check.details.update({"supplier_id": str(supplier_id), "supplier_en": sup.name_en if sup else "",
+                                            "supplier_ar": sup.name_ar if sup else "", "item_en": item.name_en})
+            out.append(price_check)
             out.append(checks.unit_mismatch(item, ln["unit"], _dec(ln.get("pack_size", 1)), price))
     return out
 

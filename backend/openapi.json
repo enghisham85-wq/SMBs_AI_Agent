@@ -2578,6 +2578,105 @@
           }
         }
       }
+    },
+    "/api/v1/chaos/scenarios": {
+      "get": {
+        "tags": [
+          "chaos"
+        ],
+        "summary": "List Scenarios",
+        "operationId": "list_scenarios_api_v1_chaos_scenarios_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chaos/inject": {
+      "post": {
+        "tags": [
+          "chaos"
+        ],
+        "summary": "Inject",
+        "operationId": "inject_api_v1_chaos_inject_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InjectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chaos/injections/{injection_id}": {
+      "get": {
+        "tags": [
+          "chaos"
+        ],
+        "summary": "Get Injection",
+        "operationId": "get_injection_api_v1_chaos_injections__injection_id__get",
+        "parameters": [
+          {
+            "name": "injection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Injection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2842,6 +2941,31 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "InjectIn": {
+        "properties": {
+          "scenario": {
+            "type": "string",
+            "title": "Scenario"
+          },
+          "params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Params"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scenario"
+        ],
+        "title": "InjectIn"
       },
       "LoginIn": {
         "properties": {

@@ -262,7 +262,7 @@ async def test_stale_bank_data_marks_low_confidence_and_asks_for_statement(api: 
         inc = (await s.execute(select(Incident).where(Incident.business_id == bid, Incident.type == "bank_freshness"))).scalar_one()
         alert = (await s.execute(select(ApprovalRequest).where(ApprovalRequest.kind == "alert",
                                                                ApprovalRequest.agent == "cashflow"))).scalars().all()
-    assert inc.status == "open" and any("fresh statement" in a.text_en for a in alert)
+    assert inc.status in ("open", "investigating") and any("fresh statement" in a.text_en for a in alert)
     # The owner uploads a statement for the missing days: the forecast is confident again.
     csv = "date,description,amount,reference\n" + "".join(
         f"{(START + timedelta(days=i)).strftime('%d/%m/%Y')},Card settlement,1000.00,r{i}\n" for i in range(4))

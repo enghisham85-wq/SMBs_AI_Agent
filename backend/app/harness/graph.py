@@ -91,7 +91,8 @@ async def precheck_node(state: ActionState) -> dict[str, Any]:
         checks.extend(await hook(spec, ctx, state["inputs"]))
     results = [
         {"name": c.name, "passed": c.passed, "details": jsonable(c.details), "ask": c.ask, "cancel": c.cancel,
-         "reason_en": c.reason_en, "reason_ar": c.reason_ar, "learned_rule_id": c.learned_rule_id}
+         "reason_en": c.reason_en, "reason_ar": c.reason_ar, "learned_rule_id": c.learned_rule_id,
+         "incident": c.incident}
         for c in checks
     ]
     async with write_session() as s:
@@ -111,9 +112,27 @@ async def precheck_node(state: ActionState) -> dict[str, Any]:
     await _stage(state, "prechecked", "stage:precheck", {"checks": results, "route": route},
                  verification="passed" if not failed else "failed")
     reason = "; ".join(r["reason_en"] or r["name"] for r in failed) or None
+    for r in failed:
+        if r["incident"]:
+            await _check_incident(state, spec, r, route)
     if route == "finalize":
         return {"precheck_results": results, "route": route, "reason": reason, "outcome": "cancelled"}
     return {"precheck_results": results, "route": route, "reason": reason}
+
+
+async def _check_incident(state: ActionState, spec: ActionSpec, check: dict[str, Any], route: str) -> None:
+    """A precondition caught a fault: log it as an incident, then find the cause and propose a rule (FR-007)."""
+    from app.harness.analysis import analyse_and_propose
+
+    taken = {"finalize": "cancelled the action", "hold": "held the action and asked the owner"}.get(
+        route, "stopped and escalated to the owner")
+    incident_id = await open_incident(
+        business_id=uuid.UUID(state["business_id"]), agent=spec.agent, type=check["name"], detected_by=check["name"],
+        summary=check["reason_en"] or check["name"], action_id=uuid.UUID(state["action_id"]), action_taken=taken,
+        refs={**check["details"], "action_type": spec.name, "action_id": state["action_id"]},
+        dedupe_key=f"{check['name']}:{state['action_id']}")
+    # A cancelled action is fully handled; a held one stays open until the owner answers.
+    await analyse_and_propose(incident_id, resolve=route == "finalize")
 
 
 async def hold_node(state: ActionState) -> dict[str, Any]:

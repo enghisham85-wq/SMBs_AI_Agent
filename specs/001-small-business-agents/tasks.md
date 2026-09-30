@@ -742,12 +742,12 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 
 ### Tests for User Story 6
 
-- [ ] T113 [P] [US6] Write parametrised acceptance tests for the 8 scenarios in `backend/tests/integration/test_chaos.py`. Each asserts `detected=True`, an incident with its detection method, an owner explanation, the correction or rollback applied, a proposed rule, and `elapsed_seconds < 120` (SC-001, SC-011). Scenario 3 additionally re-injects after rule approval and asserts no owner question is asked.
+- [X] T113 [P] [US6] Write parametrised acceptance tests for the 8 scenarios in `backend/tests/integration/test_chaos.py`. Each asserts `detected=True`, an incident with its detection method, an owner explanation, the correction or rollback applied, a proposed rule, and `elapsed_seconds < 120` (SC-001, SC-011). Scenario 3 additionally re-injects after rule approval and asserts no owner question is asked.
 
 ### Implementation for User Story 6
 
-- [ ] T114 [P] [US6] Create the ChaosInjection model in `backend/app/models/chaos.py` (`scenario` enum of the 8 spec scenarios, `parameters`, `affected refs`, `outcome` with detected, incident_id, rule_id, elapsed_seconds) and the migration `backend/alembic/versions/0005_chaos.py`.
-- [ ] T115 [P] [US6] Implement injectors in `backend/app/chaos/scenarios.py`, each mutating data (scenarios 4, 6 and 8 by writing a `FeedOverride` for the affected dates via T044, rather than editing rows directly) and then running the normal graph:
+- [X] T114 [P] [US6] Create the ChaosInjection model in `backend/app/models/chaos.py` (`scenario` enum of the 8 spec scenarios, `parameters`, `affected refs`, `outcome` with detected, incident_id, rule_id, elapsed_seconds) and the migration `backend/alembic/versions/0005_chaos.py`.
+- [X] T115 [P] [US6] Implement injectors in `backend/app/chaos/scenarios.py`, each mutating data (scenarios 4, 6 and 8 by writing a `FeedOverride` for the affected dates via T044, rather than editing rows directly) and then running the normal graph:
   1. duplicate supplier invoice
   2. supplier price spike (+25%)
   3. DD/MM date-format invoice
@@ -756,9 +756,13 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   6. missing bank feed day
   7. short delivery vs full invoice
   8. cash crunch (large unplanned outflow ~3 weeks out)
-- [ ] T116 [US6] Implement the chaos service in `backend/app/chaos/service.py`: `inject(scenario, params)` is allowed only when `DEMO_MODE`. It links resulting incidents via `chaos_injection_id` and measures elapsed seconds until a rule is proposed.
-- [ ] T117 [US6] Implement chaos endpoints in `backend/app/api/v1/chaos.py` (owner, demo only): `GET /chaos/scenarios`, `POST /chaos/inject`, `GET /chaos/injections/{id}`.
-- [ ] T118 [P] [US6] Build `frontend/src/pages/Chaos.tsx`: scenario cards with an Inject button, a live timeline (injection → detection → explanation → correction → rule) from `/harness/stream`, and an outcome badge with elapsed time.
+
+  Note: scenario 8 registers the one-off payment through the Cash-Flow Agent's `save_obligation` action instead of a
+  `FeedOverride`: the forecast only sees known obligations, and the demo feed already pays an obligation on its due
+  date, so an `extra_outflow` override as well would pay it twice.
+- [X] T116 [US6] Implement the chaos service in `backend/app/chaos/service.py`: `inject(scenario, params)` is allowed only when `DEMO_MODE`. It links resulting incidents via `chaos_injection_id` and measures elapsed seconds until a rule is proposed.
+- [X] T117 [US6] Implement chaos endpoints in `backend/app/api/v1/chaos.py` (owner, demo only): `GET /chaos/scenarios`, `POST /chaos/inject`, `GET /chaos/injections/{id}`.
+- [X] T118 [P] [US6] Build `frontend/src/pages/Chaos.tsx`: scenario cards with an Inject button, a live timeline (injection → detection → explanation → correction → rule) from `/harness/stream`, and an outcome badge with elapsed time.
 
 **Checkpoint**: All 8 scenarios can be demoed on stage.
 

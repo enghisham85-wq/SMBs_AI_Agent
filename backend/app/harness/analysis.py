@@ -81,6 +81,101 @@ def _date_format(inc: Incident) -> tuple[IncidentAnalysis, RuleProposal] | None:
     )
 
 
+@template("duplicate_invoice")
+def _duplicate_invoice(inc: Incident) -> tuple[IncidentAnalysis, RuleProposal] | None:
+    r = inc.refs
+    if not r.get("supplier_id"):
+        return None
+    name, name_ar = r.get("supplier_en") or "This supplier", r.get("supplier_ar") or r.get("supplier_en") or "هذا المورد"
+    return (
+        IncidentAnalysis(root_cause=f"{name} sent invoice {r.get('invoice_number')} a second time (another copy of the "
+                                    "same invoice); posting it would have doubled the payable and the payment.",
+                         category="duplicate"),
+        RuleProposal(rule_text_en=f"{name} sometimes re-sends invoices as a new copy; match the invoice number "
+                                  "before reading it as new",
+                     rule_text_ar=f"قد يعيد {name_ar} إرسال الفواتير كنسخة جديدة؛ طابق رقم الفاتورة قبل اعتبارها جديدة",
+                     kind="parsing_hint",
+                     trigger={"supplier_id": r["supplier_id"],
+                              "hint": "re-sends invoices; check the invoice number against earlier invoices first"},
+                     expected_effect="repeat copies from this supplier are recognised as duplicates immediately"),
+    )
+
+
+@template("price_sanity")
+def _price_spike(inc: Incident) -> tuple[IncidentAnalysis, RuleProposal] | None:
+    r = inc.refs
+    if not r.get("supplier_id"):
+        return None
+    name, name_ar = r.get("supplier_en") or "this supplier", r.get("supplier_ar") or r.get("supplier_en") or "هذا المورد"
+    return (
+        IncidentAnalysis(root_cause=f"{name} raised the price of {r.get('item_en') or 'an item'} by "
+                                    f"{float(r.get('change_pct') or 0):+.0f}% compared with its usual price.",
+                         category="pricing"),
+        RuleProposal(rule_text_en=f"Hold orders from {name} for my review while its prices are rising",
+                     rule_text_ar=f"أوقف طلبات الشراء من {name_ar} لمراجعتي ما دامت أسعاره ترتفع",
+                     kind="precondition",
+                     trigger={"action_type": "draft_po", "field": "supplier_id", "op": "ne", "value": r["supplier_id"]},
+                     expected_effect="orders to this supplier wait for the owner instead of going ahead"),
+    )
+
+
+@template("forecast_accuracy")
+def _demand_spike(inc: Incident) -> tuple[IncidentAnalysis, RuleProposal]:
+    names = ", ".join(i.get("name_en", "") for i in inc.refs.get("items", [])) or "several items"
+    return (
+        IncidentAnalysis(root_cause=f"Sales of {names} were far above the forecast, most likely an unusual event "
+                                    "nearby; the usual forecasting method did not expect it.", category="external"),
+        RuleProposal(rule_text_en="While demand is unusual, never send purchase orders without asking me",
+                     rule_text_ar="ما دام الطلب غير معتاد، لا ترسل أوامر شراء دون سؤالي",
+                     kind="policy", trigger={"action_type": "send_po", "require_approval": True},
+                     expected_effect="orders are not auto-approved until the forecast is reliable again"),
+    )
+
+
+@template("invoice_still_unpaid")
+def _paid_before_reminder(inc: Incident) -> tuple[IncidentAnalysis, RuleProposal] | None:
+    customer = inc.refs.get("customer")
+    if not customer:
+        return None
+    return (
+        IncidentAnalysis(root_cause=f"{customer} paid invoice {inc.refs.get('invoice')} shortly before its reminder "
+                                    "was due; the payment was in the bank but not yet matched.", category="external"),
+        RuleProposal(rule_text_en=f"Ask me before sending payment reminders to {customer}; they often pay just in time",
+                     rule_text_ar=f"اسألني قبل إرسال تذكيرات الدفع إلى {customer}؛ فهم غالباً يدفعون في الوقت المناسب",
+                     kind="precondition",
+                     trigger={"action_type": "send_reminder", "field": "customer", "op": "ne", "value": customer},
+                     expected_effect="reminders to this customer wait for the owner"),
+    )
+
+
+@template("bank_freshness")
+def _bank_gap(inc: Incident) -> tuple[IncidentAnalysis, RuleProposal]:
+    missing = inc.refs.get("missing_dates") or []
+    what = f"no bank data arrived for {', '.join(missing)}" if missing else "the bank feed stopped updating"
+    return (
+        IncidentAnalysis(root_cause=f"{what[0].upper()}{what[1:]}, so balances for those days are unknown; "
+                                    "guessing them could hide a real payment.", category="data_gap"),
+        RuleProposal(rule_text_en="When bank data is missing, ask me before changing the purchasing budget",
+                     rule_text_ar="عند نقص بيانات البنك، اسألني قبل تغيير ميزانية الشراء",
+                     kind="policy", trigger={"action_type": "publish_budget", "require_approval": True},
+                     expected_effect="the budget is not changed on a low-confidence forecast without the owner"),
+    )
+
+
+@template("shortfall_predicted")
+def _shortfall(inc: Incident) -> tuple[IncidentAnalysis, RuleProposal]:
+    r = inc.refs
+    return (
+        IncidentAnalysis(root_cause=f"Known payments due around {r.get('gap_date')} are larger than the cash expected "
+                                    "by then, so the balance falls below the minimum buffer.", category="external"),
+        RuleProposal(rule_text_en="While cash is heading below the buffer, ask me before ordering anything that is not critical",
+                     rule_text_ar="ما دام النقد يتجه تحت الحد الأدنى، اسألني قبل طلب أي صنف غير حرج",
+                     kind="precondition",
+                     trigger={"action_type": "draft_po", "field": "is_critical", "op": "eq", "value": True},
+                     expected_effect="non-critical orders wait for the owner; critical items are still ordered"),
+    )
+
+
 def _escalated(inc: Incident) -> tuple[IncidentAnalysis, RuleProposal]:
     action = inc.type.removesuffix(".escalated")
     title = action.replace("_", " ")

@@ -95,7 +95,9 @@ async def _rem_checks(ctx: ActionContext, inputs: dict[str, Any]) -> list[Check]
     async with read_session() as s:
         paid = await paid_status(s, inv)
     if paid is not None:
-        return [Check("invoice_still_unpaid", False, {"invoice": inv.number, **paid}, cancel=True,
+        # Caught just before sending: logged as an incident so a rule can be learned about this customer.
+        return [Check("invoice_still_unpaid", False, {"invoice": inv.number, "customer": inv.customer_name, **paid},
+                      cancel=True, incident=True,
                       reason_en=f"{inv.customer_name} already paid {inv.number}",
                       reason_ar=f"دفع {inv.customer_name} الفاتورة {inv.number} بالفعل")]
     return [Check("invoice_still_unpaid", True, {"invoice": inv.number, "outstanding_minor": inv.total.amount_minor - inv.amount_paid_minor})]
