@@ -73,6 +73,11 @@ def create_app() -> FastAPI:
             status_code=422,
         )
 
+    if get_settings().APP_ENV != "prod":  # FR-046 guard: figures without data_as_of fail loudly
+        from app.core.freshness import FreshnessCheck
+
+        app.add_middleware(FreshnessCheck)
+
     from app.api import router as api_router
 
     app.include_router(api_router, prefix="/api/v1")

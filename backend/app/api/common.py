@@ -19,9 +19,9 @@ def J(data: Any, status: int = 200) -> JSONResponse:
     return JSONResponse(jsonable(data), status_code=status)
 
 
-def with_freshness(data: dict[str, Any], sources: dict[str, datetime | date | None]) -> dict[str, Any]:
+def with_freshness(data: dict[str, Any], sources: dict[str, datetime | date | str | None]) -> dict[str, Any]:
     """Attach `data_as_of` (FR-046): when each source behind the figures was last updated."""
-    data["data_as_of"] = {k: (v.isoformat() if v is not None else None) for k, v in sources.items()}
+    data["data_as_of"] = {k: (v.isoformat() if isinstance(v, date | datetime) else v) for k, v in sources.items()}
     return data
 
 

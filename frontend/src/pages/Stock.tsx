@@ -82,10 +82,11 @@ function ItemsTab() {
 
 function OrdersTab() {
   const { t, i18n } = useTranslation();
-  const orders = useQuery({ queryKey: ["stock", "pos"], queryFn: () => api.get<{ purchase_orders: PO[] }>("/purchase-orders") });
+  const orders = useQuery({ queryKey: ["stock", "pos"], queryFn: () => api.get<{ purchase_orders: PO[]; data_as_of: DataAsOf }>("/purchase-orders") });
   const ar = i18n.language === "ar";
   return (
     <div className="flex flex-col gap-3">
+      <FreshnessLabel asOf={orders.data?.data_as_of} />
       {(orders.data?.purchase_orders ?? []).map((po) => (
         <article key={po.id} className="card">
           <div className="flex flex-wrap items-center justify-between gap-2">

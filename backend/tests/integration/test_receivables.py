@@ -118,7 +118,7 @@ async def test_books_endpoints(api: Any, cafe: dict[str, Any]) -> None:
     f = await api.client.get(detail["document"]["file_url"])
     assert f.status_code == 200 and f.headers["content-type"] == "application/pdf"
     rq = (await api.client.get("/api/v1/review-queue")).json()
-    assert set(rq) == {"questions", "held_invoices", "suggested_matches"}
+    assert set(rq) == {"questions", "held_invoices", "suggested_matches", "data_as_of"}
     rec = (await api.client.get("/api/v1/reconciliation")).json()
     assert "percent_matched" in rec and "data_as_of" in rec
     pnl = (await api.client.get(f"/api/v1/reports/pnl?from={START - timedelta(days=5)}&to={clock.today()}")).json()

@@ -89,8 +89,9 @@ async def list_products(user: CurrentUser = RequireStaff) -> Response:
         rows = (await s.execute(select(Item).where(Item.business_id == user.business_id, Item.is_sold.is_(True))
                                 .order_by(Item.name_en))).scalars().all()
     show = can(user.role, "manager")
-    return J({"products": [{"id": i.id, "name_en": i.name_en, "name_ar": i.name_ar,
-                            **({"sale_price": i.sale_price} if show else {})} for i in rows]})
+    return J(with_freshness({"products": [{"id": i.id, "name_en": i.name_en, "name_ar": i.name_ar,
+                                           **({"sale_price": i.sale_price} if show else {})} for i in rows]},
+                            {"catalog": max((i.updated_at for i in rows), default=None)}))
 
 
 @router.get("/stock/items/{item_id}/forecast")
@@ -218,7 +219,7 @@ async def list_pos(status: str | None = None, user: CurrentUser = RequireStaff) 
             for ln in po["lines"]:
                 ln.pop("unit_price", None)
                 ln.pop("line_total", None)
-    return J({"purchase_orders": out})
+    return J(with_freshness({"purchase_orders": out}, {"orders": max((po.updated_at for po in rows), default=None)}))
 
 
 class POPatch(BaseModel):

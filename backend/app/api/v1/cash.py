@@ -300,7 +300,8 @@ async def list_obligations(user: CurrentUser = RequireManager) -> Response:
     async with read_session() as s:
         rows = (await s.execute(select(Obligation).where(Obligation.business_id == user.business_id)
                                 .order_by(Obligation.next_due_date))).scalars().all()
-    return J({"obligations": [_ob_out(o) for o in rows]})
+    return J(with_freshness({"obligations": [_ob_out(o) for o in rows]},
+                            {"obligations": max((o.updated_at for o in rows), default=None)}))
 
 
 async def _save_obligation(bid: uuid.UUID, fields: dict[str, Any], ob_id: uuid.UUID | None = None) -> Obligation:

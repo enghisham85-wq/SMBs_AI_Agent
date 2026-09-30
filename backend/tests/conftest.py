@@ -14,6 +14,7 @@ import pytest_asyncio
 os.environ.setdefault("LLM_MODE", "offline")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "")
 os.environ.setdefault("DEMO_MODE", "true")
+os.environ.setdefault("APP_ENV", "test")
 
 from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 

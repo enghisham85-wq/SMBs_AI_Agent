@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     CHECKPOINT_DB_PATH: str = "./var/checkpoints.db"
     SQLITE_BUSY_TIMEOUT_MS: int = 5000
 
+    # dev and test turn on extra response checks (every figure-bearing response carries data_as_of).
+    APP_ENV: Literal["dev", "test", "prod"] = "dev"
     DEMO_MODE: bool = True
     # offline = deterministic stand-ins, no API calls (default until an API key and fixtures exist)
     LLM_MODE: Literal["live", "record", "replay", "offline"] = "offline"

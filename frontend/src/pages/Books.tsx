@@ -48,7 +48,7 @@ function Inbox() {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const docs = useQuery({ queryKey: ["books", "documents"], queryFn: () => api.get<{ documents: any[] }>("/documents") });
+  const docs = useQuery({ queryKey: ["books", "documents"], queryFn: () => api.get<{ documents: any[]; data_as_of: DataAsOf }>("/documents") });
   const samples = useQuery({ queryKey: ["books", "samples"], queryFn: () => api.get<{ samples: any[] }>("/documents/samples") });
   const done = (r: any) => {
     setMsg(t(`books.outcomes.${r.outcome ?? (r.waiting_for_owner ? "waiting" : "done")}`, { defaultValue: r.outcome }));
@@ -87,6 +87,7 @@ function Inbox() {
         )}
         {msg && <span className="text-sm text-ink-700" role="status">{msg}</span>}
       </div>
+      <FreshnessLabel asOf={docs.data?.data_as_of} />
       <div className="card overflow-x-auto p-0">
         <table className="table">
           <thead>
@@ -114,11 +115,12 @@ function Review() {
   const { t, i18n } = useTranslation();
   const q = useQuery({
     queryKey: ["books", "review"],
-    queryFn: () => api.get<{ questions: ApprovalRequest[]; held_invoices: any[]; suggested_matches: any[] }>("/review-queue"),
+    queryFn: () => api.get<{ questions: ApprovalRequest[]; held_invoices: any[]; suggested_matches: any[]; data_as_of: DataAsOf }>("/review-queue"),
   });
   const d = q.data;
   return (
     <div className="flex flex-col gap-3">
+      <FreshnessLabel asOf={d?.data_as_of} />
       {d && d.questions.length + d.held_invoices.length + d.suggested_matches.length === 0 && <p className="text-sm text-ink-500">{t("chat.empty")}</p>}
       {d?.questions.map((r) => <ApprovalCard key={r.id} request={r} />)}
       {d?.held_invoices.map((i) => (
@@ -214,6 +216,7 @@ function Pnl() {
   return (
     <div className="card overflow-x-auto">
       <p className="mb-2 text-sm text-ink-500">{t("books.period", { from: d.from, to: d.to })}</p>
+      <FreshnessLabel asOf={d.data_as_of as DataAsOf} />
       <table className="table">
         <tbody>
           <Section title={t("books.income")} rows={d.income} currency={d.currency} decimals={d.decimals} lang={i18n.language} />
@@ -235,6 +238,7 @@ function Balance() {
   return (
     <div className="card overflow-x-auto">
       <p className="mb-2 text-sm text-ink-500">{t("books.as_of", { date: d.as_of })} · {d.balanced ? t("books.balances") : t("books.does_not_balance")}</p>
+      <FreshnessLabel asOf={d.data_as_of as DataAsOf} />
       <table className="table">
         <tbody>
           <Section title={t("books.assets")} rows={d.assets} currency={d.currency} decimals={d.decimals} lang={i18n.language} />
@@ -254,7 +258,7 @@ interface Line { description: string; qty: string; unit_price: string; vat_rate_
 function Receivables() {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
-  const list = useQuery({ queryKey: ["books", "receivables"], queryFn: () => api.get<{ receivables: any[] }>("/receivables") });
+  const list = useQuery({ queryKey: ["books", "receivables"], queryFn: () => api.get<{ receivables: any[]; data_as_of: DataAsOf }>("/receivables") });
   const biz = useQuery({ queryKey: ["business"], queryFn: () => api.get<any>("/business") });
   const rate = String(biz.data?.vat_rate_percent ?? "14");
   const today = new Date().toISOString().slice(0, 10);
@@ -296,6 +300,9 @@ function Receivables() {
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
       <div className="card overflow-x-auto p-0">
+        <div className="px-3 pt-2">
+          <FreshnessLabel asOf={list.data?.data_as_of} />
+        </div>
         <table className="table">
           <thead><tr><th>{t("books.number")}</th><th>{t("books.customer")}</th><th>{t("books.due")}</th><th>{t("books.outstanding")}</th><th>{t("books.state")}</th><th /></tr></thead>
           <tbody>

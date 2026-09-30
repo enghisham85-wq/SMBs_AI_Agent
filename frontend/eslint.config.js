@@ -14,4 +14,9 @@ export default tseslint.config(
       "@typescript-eslint/no-explicit-any": "off",
     },
   },
+  {
+    // Node-side test tooling (the e2e backend launcher).
+    files: ["tests/e2e/**/*.mjs"],
+    languageOptions: { globals: { process: "readonly" } },
+  },
 );

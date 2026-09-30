@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Response
 from pydantic import BaseModel
 
-from app.api.common import J
+from app.api.common import J, with_freshness
 from app.chaos import service
 from app.chaos.scenarios import ChaosError
 from app.config import get_settings
@@ -21,8 +21,9 @@ router = APIRouter(tags=["chaos"])
 @router.get("/chaos/scenarios")
 async def list_scenarios(user: CurrentUser = RequireOwner) -> Response:
     recent = await service.recent(user.business_id)
-    return J({"demo_mode": get_settings().DEMO_MODE, "scenarios": service.scenarios(),
-              "recent": [service.to_json(r) for r in recent]})
+    return J(with_freshness({"demo_mode": get_settings().DEMO_MODE, "scenarios": service.scenarios(),
+                             "recent": [service.to_json(r) for r in recent]},
+                            {"chaos": max((r.updated_at for r in recent), default=None)}))
 
 
 class InjectIn(BaseModel):
@@ -50,4 +51,4 @@ async def get_injection(injection_id: uuid.UUID, user: CurrentUser = RequireOwne
     row = await service.get(user.business_id, injection_id)
     if row is None:
         raise not_found("Injection")
-    return J(service.to_json(row))
+    return J(with_freshness(service.to_json(row), {"chaos": row.updated_at}))

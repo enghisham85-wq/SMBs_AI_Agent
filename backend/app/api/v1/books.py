@@ -89,7 +89,7 @@ async def list_documents(status: str | None = None, user: CurrentUser = RequireM
                     "invoice": {"id": inv.id, "number": inv.invoice_number, "status": inv.status, "total": inv.total,
                                 "supplier_en": sp.name_en if sp else None, "supplier_ar": sp.name_ar if sp else None,
                                 "hold_reason": inv.hold_reason} if inv else None})
-    return J({"documents": out})
+    return J(with_freshness({"documents": out}, {"books": max((d.updated_at for d in docs), default=None)}))
 
 
 @router.get("/documents/{doc_id}")
@@ -103,7 +103,7 @@ async def document_detail(doc_id: uuid.UUID, user: CurrentUser = RequireManager)
         sp = await s.get(Supplier, inv.supplier_id) if inv and inv.supplier_id else None
         pending = (await s.execute(select(ApprovalRequest).where(ApprovalRequest.graph_thread_id == d.graph_thread_id,
                                                                  ApprovalRequest.status == "pending"))).scalars().all() if d.graph_thread_id else []
-    return J({
+    return J(with_freshness({
         "document": {"id": d.id, "name": d.original_name, "mime": d.mime, "status": d.status, "channel": d.channel,
                      "language": d.language_detected, "confidence": d.document_confidence, "file_url": f"/api/v1/files/{d.file_id}"},
         "extractions": [{"attempt": e.attempt, "source": e.source, "document_confidence": e.document_confidence,
@@ -114,7 +114,7 @@ async def document_detail(doc_id: uuid.UUID, user: CurrentUser = RequireManager)
                     "hold_reason": inv.hold_reason, "match_result": inv.match_result,
                     "supplier_vat_number": inv.supplier_vat_number} if inv else None,
         "questions": [approvals.to_dict(r) for r in pending],
-    })
+    }, {"books": inv.updated_at if inv else d.updated_at}))
 
 
 @router.get("/files/{file_id}")
@@ -137,12 +137,14 @@ async def review_queue(user: CurrentUser = RequireManager) -> Response:
                                                              PayableInvoice.status == "held"))).scalars().all()
         suggested = (await s.execute(select(BankTransaction).where(BankTransaction.business_id == user.business_id,
                                                                    BankTransaction.match_status == "suggested"))).scalars().all()
-    return J({"questions": [approvals.to_dict(q) for q in qs],
+    return J(with_freshness({"questions": [approvals.to_dict(q) for q in qs],
               "held_invoices": [{"id": i.id, "number": i.invoice_number, "total": i.total, "hold_reason": i.hold_reason}
                                 for i in held],
               "suggested_matches": [{"id": t.id, "date": t.date, "amount": t.amount, "description": t.description,
                                      "confidence": t.match_confidence, "suggestion": (t.meta or {}).get("suggestion")}
-                                    for t in suggested]})
+                                    for t in suggested]},
+                            {"books": max([*(q.updated_at for q in qs), *(i.updated_at for i in held),
+                                           *(t.updated_at for t in suggested)], default=None)}))
 
 
 @router.get("/reconciliation")
@@ -277,7 +279,7 @@ async def list_receivables(status: str | None = None, overdue: bool | None = Non
     out = [_rec_out(r, today) for r in rows]
     if overdue:
         out = [r for r in out if r["days_overdue"] > 0]
-    return J({"receivables": out})
+    return J(with_freshness({"receivables": out}, {"books": max((r.updated_at for r in rows), default=None)}))
 
 
 @router.get("/receivables/{rec_id}")
@@ -300,7 +302,7 @@ async def get_receivable(rec_id: uuid.UUID, user: CurrentUser = RequireManager) 
     out = _rec_out(r, clock.today())
     out.update({"payments": [{"date": p.date, "amount": p.amount, "description": p.description} for p in payments],
                 "reminders": reminders, "promises": promises})
-    return J(out)
+    return J(with_freshness(out, {"books": r.updated_at, "bank": max((p.created_at for p in payments), default=None)}))
 
 
 class VoidIn(BaseModel):

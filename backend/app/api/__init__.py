@@ -11,6 +11,7 @@ from app.api.v1 import (
     chaos,
     clock,
     harness,
+    home,
     sales,
     settings,
     stock,
@@ -18,5 +19,5 @@ from app.api.v1 import (
 )
 
 router = APIRouter()
-for module in (auth, users, clock, business, settings, approvals, stock, sales, books, cash, harness, chaos):
+for module in (auth, users, clock, business, settings, approvals, stock, sales, books, cash, harness, chaos, home):
     router.include_router(module.router)
