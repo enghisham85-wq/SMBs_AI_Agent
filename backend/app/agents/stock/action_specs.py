@@ -350,6 +350,8 @@ async def apply_po_edits(po_id: uuid.UUID, edits: dict[str, Any]) -> bool:
 
 
 async def _send_on_option(ctx: ActionContext, inputs: dict[str, Any], option_key: str, edits: dict[str, Any]) -> dict[str, Any]:
+    if option_key == "cancel":  # the request was withdrawn (e.g. the order was deferred for the budget)
+        return {"next": "finalize", "outcome": "cancelled"}
     if option_key == "edit":
         if edits and await apply_po_edits(uuid.UUID(inputs["po_id"]), edits):
             return {"next": "execute"}  # the edited order counts as approved
@@ -552,7 +554,124 @@ async def _forecast_compensate(ctx: ActionContext, inputs: dict[str, Any], resul
                                                      DemandForecast.generated_on == date.fromisoformat(inputs["date"])))
 
 
+# =========================================================================== defer / resume / resize (budget)
+async def _open_requests_for(po_id: str) -> list[str]:
+    from app.models.harness import ApprovalRequest
+
+    async with read_session() as s:
+        reqs = (await s.execute(select(ApprovalRequest).where(ApprovalRequest.status == "pending",
+                                                              ApprovalRequest.agent == "stock"))).scalars().all()
+    return [str(r.id) for r in reqs if (r.context or {}).get("po_id") == po_id]
+
+
+async def _defer_checks(ctx: ActionContext, inputs: dict[str, Any]) -> list[Check]:
+    async with read_session() as s:
+        po = await s.get(PurchaseOrder, uuid.UUID(inputs["po_id"]))
+    ok = po is not None and po.status in ("draft", "pending_approval", "approved", "on_hold")
+    return [Check("po_not_sent", ok, {"status": po.status if po else None}, cancel=not ok,
+                  reason_en="the order was already sent or closed")]
+
+
+async def _defer_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
+    from app.approvals import service as approvals
+
+    for rid in await _open_requests_for(inputs["po_id"]):  # take back the waiting approval
+        await approvals.withdraw(rid, "order deferred to stay within the purchasing budget")
+    until = clock.today() + timedelta(days=int(inputs.get("days", 5)))
+    async with write_session() as s:
+        po = await s.get(PurchaseOrder, uuid.UUID(inputs["po_id"]))
+        assert po is not None
+        prev = po.status
+        po.status = "on_hold"
+        po.notes = {**(po.notes or {}), "deferred_until": until.isoformat(), "deferred_reason": inputs.get("reason", ""),
+                    "budget": {**(po.notes or {}).get("budget", {}), "status": "deferred"}}
+        return {"po_id": str(po.id), "previous_status": prev, "deferred_until": until.isoformat()}
+
+
+async def _defer_verify(ctx: ActionContext, inputs: dict[str, Any], result: dict[str, Any]) -> VerifyOutcome:
+    async with read_session() as s:
+        po = await s.get(PurchaseOrder, uuid.UUID(inputs["po_id"]))
+    ok = po is not None and po.status == "on_hold" and po.notes.get("deferred_until") == result["deferred_until"]
+    return VerifyOutcome(ok, {"status": po.status if po else None})
+
+
+async def _defer_compensate(ctx: ActionContext, inputs: dict[str, Any], result: dict[str, Any]) -> None:
+    async with write_session() as s:
+        po = await s.get(PurchaseOrder, uuid.UUID(inputs["po_id"]))
+        if po is not None and result.get("previous_status"):
+            po.status = "draft" if result["previous_status"] in ("pending_approval", "approved") else result["previous_status"]
+            po.notes = {k: v for k, v in (po.notes or {}).items() if k not in ("deferred_until", "deferred_reason")}
+
+
+async def _resume_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
+    async with write_session() as s:
+        po = await s.get(PurchaseOrder, uuid.UUID(inputs["po_id"]))
+        assert po is not None
+        prev = po.status
+        if po.status == "on_hold":
+            po.status = "draft"
+        notes = {k: v for k, v in (po.notes or {}).items() if k not in ("deferred_until", "deferred_reason")}
+        notes["budget"] = {**notes.get("budget", {}), "status": inputs.get("decision", "proceed")}
+        po.notes = notes
+        return {"po_id": str(po.id), "previous_status": prev}
+
+
+async def _resume_verify(ctx: ActionContext, inputs: dict[str, Any], result: dict[str, Any]) -> VerifyOutcome:
+    async with read_session() as s:
+        po = await s.get(PurchaseOrder, uuid.UUID(inputs["po_id"]))
+    return VerifyOutcome(po is not None and po.status in ("draft", "pending_approval", "approved"),
+                         {"status": po.status if po else None})
+
+
+async def _resize_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
+    """Scale an order down to fit `max_total_minor` (the budget left), keeping every line."""
+    cap = int(inputs["max_total_minor"])
+    async with write_session() as s:
+        po = await s.get(PurchaseOrder, uuid.UUID(inputs["po_id"]))
+        assert po is not None
+        lines = (await s.execute(select(PurchaseOrderLine).where(PurchaseOrderLine.po_id == po.id))).scalars().all()
+        before = {str(ln.id): str(ln.qty) for ln in lines}
+        factor = Decimal(cap) / Decimal(po.total.amount_minor) if po.total.amount_minor else Decimal(1)
+        factor = min(Decimal(1), factor)
+        for ln in lines:
+            qty = (ln.qty * factor).quantize(Decimal("0.01"), rounding="ROUND_FLOOR")
+            if ln.pack_size and ln.pack_size > 0:
+                qty = (qty // ln.pack_size) * ln.pack_size
+            ln.qty = max(qty, Decimal(0))
+            ln.line_total = ln.unit_price.times(ln.qty)
+        po.total = Money(sum(ln.line_total.amount_minor for ln in lines), po.total.currency)
+        return {"po_id": str(po.id), "before": before, "total_minor": po.total.amount_minor}
+
+
+async def _resize_verify(ctx: ActionContext, inputs: dict[str, Any], result: dict[str, Any]) -> VerifyOutcome:
+    async with read_session() as s:
+        po = await s.get(PurchaseOrder, uuid.UUID(inputs["po_id"]))
+    ok = po is not None and po.total.amount_minor <= int(inputs["max_total_minor"]) and po.total.amount_minor > 0
+    return VerifyOutcome(ok, {"total_minor": po.total.amount_minor if po else None})
+
+
+async def _resize_compensate(ctx: ActionContext, inputs: dict[str, Any], result: dict[str, Any]) -> None:
+    async with write_session() as s:
+        po = await s.get(PurchaseOrder, uuid.UUID(inputs["po_id"]))
+        if po is None:
+            return
+        lines = (await s.execute(select(PurchaseOrderLine).where(PurchaseOrderLine.po_id == po.id))).scalars().all()
+        for ln in lines:
+            if str(ln.id) in result.get("before", {}):
+                ln.qty = Decimal(result["before"][str(ln.id)])
+                ln.line_total = ln.unit_price.times(ln.qty)
+        po.total = Money(sum(ln.line_total.amount_minor for ln in lines), po.total.currency)
+
+
 def register_specs() -> None:
+    register(ActionSpec(name="defer_po", agent="stock", risk_class="reversible", execute=_defer_execute,
+                        title_en="Defer purchase order", title_ar="تأجيل أمر الشراء", preconditions=_defer_checks,
+                        verify=_defer_verify, compensate=_defer_compensate))
+    register(ActionSpec(name="resume_po", agent="stock", risk_class="reversible", execute=_resume_execute,
+                        title_en="Resume purchase order", title_ar="استئناف أمر الشراء", verify=_resume_verify))
+    register(ActionSpec(name="resize_po", agent="stock", risk_class="reversible", execute=_resize_execute,
+                        title_en="Reduce purchase order to budget", title_ar="تخفيض أمر الشراء حسب الميزانية",
+                        verify=_resize_verify, compensate=_resize_compensate))
     register(ActionSpec(name="draft_po", agent="stock", risk_class="reversible", execute=_draft_execute,
                         title_en="Draft purchase order", title_ar="مسودة أمر شراء", plan=_draft_plan,
                         preconditions=_draft_checks, verify=_draft_verify, compensate=_draft_compensate,

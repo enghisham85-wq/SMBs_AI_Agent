@@ -336,20 +336,26 @@ def _route(state: ActionState) -> str:
     return state["route"]
 
 
+def _as_agent(fn: Callable[[ActionState], Awaitable[dict[str, Any]]]) -> Callable[[ActionState], Awaitable[dict[str, Any]]]:
+    """Run a node as the action's agent, so writes can be checked against table ownership (FR-044)."""
+    from app.core.ownership import acting_as
+
+    async def node(state: ActionState) -> dict[str, Any]:
+        with acting_as(_spec(state).agent):
+            return await fn(state)
+
+    node.__name__ = fn.__name__
+    return node
+
+
 def build() -> StateGraph[Any]:
     g: StateGraph[Any] = StateGraph(ActionState)
-    g.add_node("plan", plan_node)
-    g.add_node("precheck", precheck_node)
-    g.add_node("hold", hold_node)
-    g.add_node("classify_risk", classify_risk_node)
-    g.add_node("premortem_verify", premortem_verify_node)
-    g.add_node("approval_gate", approval_gate_node)
-    g.add_node("execute", execute_node)
-    g.add_node("post_verify", post_verify_node)
-    g.add_node("rollback", rollback_node)
-    g.add_node("retry", retry_node)
-    g.add_node("escalate", escalate_node)
-    g.add_node("finalize", finalize_node)
+    for name, fn in (("plan", plan_node), ("precheck", precheck_node), ("hold", hold_node),
+                     ("classify_risk", classify_risk_node), ("premortem_verify", premortem_verify_node),
+                     ("approval_gate", approval_gate_node), ("execute", execute_node), ("post_verify", post_verify_node),
+                     ("rollback", rollback_node), ("retry", retry_node), ("escalate", escalate_node),
+                     ("finalize", finalize_node)):
+        g.add_node(name, _as_agent(fn))  # type: ignore[arg-type]
 
     g.add_edge(START, "plan")
     g.add_edge("plan", "precheck")

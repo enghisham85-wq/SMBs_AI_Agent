@@ -8,7 +8,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.agents.cashflow import action_specs, graphs, projection
+from app.agents.cashflow import action_specs, graphs, handlers, projection
 from app.db.engine import read_session, write_session
 from app.db.types import Money
 from app.models.finance_master import BankAccount, BankBalanceSnapshot
@@ -60,12 +60,11 @@ async def _budget_provider(business_id: uuid.UUID, d: date) -> int | None:
 def register() -> None:
     from app.agents.stock.graphs import BUDGET_PROVIDER
     from app.approvals.service import register_question_handler
-    from app.core.events import subscribe
     from app.seed.sample_cafe import register_extension
 
     action_specs.register_specs()
     graphs.register_graphs()
-    subscribe("customer_payment.received", "cashflow", graphs.on_customer_payment)
+    handlers.register()
     register_question_handler("obligation", graphs.on_obligation_answer)
     if _budget_provider not in BUDGET_PROVIDER:
         BUDGET_PROVIDER.append(_budget_provider)

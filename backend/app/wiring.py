@@ -12,6 +12,7 @@ MODULES: list[str] = [
     "app.harness.calibration",
     "app.harness.digest",
     "app.graphs.daily_run",
+    "app.graphs.conflict",
     "app.seed.feed",
     "app.agents.stock.wiring",
     "app.agents.accountant.wiring",

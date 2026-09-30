@@ -503,6 +503,8 @@ async def load_inputs(s: AsyncSession, business_id: uuid.UUID, today: date, hori
         owed = inv.total.amount_minor - inv.amount_paid_minor
         if owed <= 0:
             continue
+        if inv.status == "held" and inv.purchase_order_id:
+            continue  # invoice.held: keep counting the order's amount until the owner resolves it
         sup = suppliers.get(inv.supplier_id) if inv.supplier_id else None
         payables.append(Payable(str(inv.id), f"{sup.name_en if sup else 'supplier'} {inv.invoice_number}", owed,
                                 terms_for(sup, inv.invoice_date, inv.due_date),

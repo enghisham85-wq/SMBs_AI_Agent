@@ -304,10 +304,38 @@ async def ro_order(state: DayState) -> dict[str, Any]:
         drafted = await run_action("draft_po", inputs, bid)
         entry = {"supplier_id": str(order.supplier_id), "draft": drafted["outcome"], "interrupted": drafted["interrupted"]}
         if drafted["outcome"] == "completed" and drafted["result"]:
-            sent = await run_action("send_po", {"po_id": drafted["result"]["po_id"]}, bid, parent_action_id=drafted["action_id"])
-            entry["send"] = "awaiting_approval" if sent["interrupted"] else sent["outcome"]
+            if await budget_decision_pending(uuid.UUID(drafted["result"]["po_id"])):
+                entry["send"] = "waiting_for_budget_decision"  # conflict_graph asks the owner first
+            else:
+                sent = await run_action("send_po", {"po_id": drafted["result"]["po_id"]}, bid,
+                                        parent_action_id=drafted["action_id"])
+                entry["send"] = "awaiting_approval" if sent["interrupted"] else sent["outcome"]
         results.append(entry)
     return {"notes": {**state.get("notes", {}), "orders": results}}
+
+
+async def budget_decision_pending(po_id: uuid.UUID) -> bool:
+    async with read_session() as s:
+        po = await s.get(PurchaseOrder, po_id)
+    return po is not None and (po.notes or {}).get("budget", {}).get("status") == "conflict"
+
+
+async def ro_deferred(state: DayState) -> dict[str, Any]:
+    """Orders deferred for the budget go ahead when their date comes (through the normal approval)."""
+    bid, d = _ids(state)
+    async with read_session() as s:
+        held = (await s.execute(select(PurchaseOrder).where(PurchaseOrder.business_id == bid,
+                                                            PurchaseOrder.status == "on_hold"))).scalars().all()
+    resumed = []
+    for po in held:
+        until = (po.notes or {}).get("deferred_until")
+        if not until or date.fromisoformat(until) > d:
+            continue
+        out = await run_action("resume_po", {"po_id": str(po.id), "decision": "resumed"}, bid)
+        if out["outcome"] == "completed":
+            await run_action("send_po", {"po_id": str(po.id)}, bid, parent_action_id=out["action_id"])
+            resumed.append(po.number)
+    return {"notes": {**state.get("notes", {}), "resumed": resumed}}
 
 
 async def ro_expiry(state: DayState) -> dict[str, Any]:
@@ -334,10 +362,12 @@ async def ro_expiry(state: DayState) -> dict[str, Any]:
 def build_reorder() -> StateGraph[Any]:
     g: StateGraph[Any] = StateGraph(DayState)
     g.add_node("late_deliveries", ro_late)
+    g.add_node("deferred", ro_deferred)
     g.add_node("order", ro_order)
     g.add_node("expiry", ro_expiry)
     g.add_edge(START, "late_deliveries")
-    g.add_edge("late_deliveries", "order")
+    g.add_edge("late_deliveries", "deferred")
+    g.add_edge("deferred", "order")
     g.add_edge("order", "expiry")
     g.add_edge("expiry", END)
     return g

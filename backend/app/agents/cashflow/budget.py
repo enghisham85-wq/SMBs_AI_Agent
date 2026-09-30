@@ -49,8 +49,10 @@ def compute(d: date, usual_weekly_minor: int, pessimistic_gap_minor: int, weeks_
                   f"تم التخفيض بنسبة {cut * 100:.0f}%: التوقع المتشائم أقل من الحد الأدنى بمقدار {gap.to_display('ar')}")
 
 
-async def remaining(s: AsyncSession, business_id: uuid.UUID, d: date) -> int | None:
-    """What is left of this week's budget after orders already drafted this week (None = no budget)."""
+async def remaining(s: AsyncSession, business_id: uuid.UUID, d: date, exclude_po: uuid.UUID | None = None) -> int | None:
+    """What is left of this week's budget after orders drafted this week (None = no budget).
+
+    Cancelled, rejected and deferred (on hold) orders do not use the budget."""
     from app.models.cash import PurchasingBudget
     from app.models.purchasing import PurchaseOrder
 
@@ -61,5 +63,6 @@ async def remaining(s: AsyncSession, business_id: uuid.UUID, d: date) -> int | N
         return None
     orders = (await s.execute(select(PurchaseOrder).where(
         PurchaseOrder.business_id == business_id, PurchaseOrder.created_at >= datetime.combine(ws, time.min),
-        PurchaseOrder.status.not_in(("cancelled", "rejected"))))).scalars().all()
-    return max(0, row.amount.amount_minor - sum(po.total.amount_minor for po in orders))
+        PurchaseOrder.status.not_in(("cancelled", "rejected", "on_hold"))))).scalars().all()
+    spent = sum(po.total.amount_minor for po in orders if po.id != exclude_po)
+    return max(0, row.amount.amount_minor - spent)
