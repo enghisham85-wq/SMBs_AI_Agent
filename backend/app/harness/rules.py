@@ -260,6 +260,16 @@ async def requires_approval(business_id: uuid.UUID, action_type: str) -> uuid.UU
     return None
 
 
+async def auto_approval(business_id: uuid.UUID, action_type: str, supplier_id: str) -> LearnedRule | None:
+    """An owner-approved policy that lets routine actions of this type for this supplier go ahead unasked."""
+    for rule in await active_rules(business_id, kind="policy"):
+        t = rule.trigger
+        if (t.get("action_type") == action_type and t.get("auto_approve_up_to_minor") is not None
+                and str(t.get("supplier_id")) == str(supplier_id)):
+            return rule
+    return None
+
+
 def register() -> None:
     from app.core.events import subscribe
     from app.harness.graph import PRECHECK_HOOKS

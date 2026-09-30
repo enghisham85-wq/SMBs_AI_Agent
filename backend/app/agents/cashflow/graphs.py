@@ -43,7 +43,8 @@ from app.models.harness import ApprovalRequest, CheckResult, Incident
 from app.models.tenancy import Business
 
 PLAN_GRAPH = "shortfall_plan"
-REASK_GAP_CHANGE = 0.2  # re-present a plan when the gap moves by more than 20% or the date changes
+REASK_GAP_CHANGE = 0.2  # re-present a plan when the gap grows by more than 20% ...
+SAME_SHORTFALL_DAYS = 3  # ... or its first day below the buffer moves by more than this
 
 
 class DayState(TypedDict, total=False):
@@ -282,11 +283,14 @@ async def sp_plan(state: PlanState) -> dict[str, Any]:
     assert sf is not None
     built = plan.build_plan(inp, base, sf)
     async with read_session() as s:
+        # The last plan the owner saw, whether still open, acted on or dismissed.
         current = (await s.execute(select(ShortfallPlan).where(ShortfallPlan.business_id == bid,
-                                                               ShortfallPlan.status == "presented")
+                                                               ShortfallPlan.status.in_(("presented", "accepted", "dismissed")))
                                    .order_by(ShortfallPlan.created_at.desc()).limit(1))).scalars().first()
-    present = (current is None or current.gap_date != sf.first_below
-               or abs(sf.gap_minor - current.gap_amount.amount_minor) > REASK_GAP_CHANGE * max(1, current.gap_amount.amount_minor))
+    # Ask again only about a different shortfall (its date moved by more than a few days: while cash stays
+    # below the buffer, each day's forecast says "first below tomorrow") or one that got materially worse.
+    present = (current is None or abs((sf.first_below - current.gap_date).days) > SAME_SHORTFALL_DAYS
+               or sf.gap_minor > (1 + REASK_GAP_CHANGE) * max(1, current.gap_amount.amount_minor))
     actions = []
     for c in built.actions:
         assert c.simulated is not None
@@ -300,7 +304,7 @@ async def sp_plan(state: PlanState) -> dict[str, Any]:
                                                    "combined_lowest_minor": built.combined_lowest_minor,
                                                    "actions": actions}, bid)
     plan_id = (out.get("result") or {}).get("plan_id") if out["outcome"] == "completed" else None
-    if plan_id and not present and current is not None:
+    if plan_id and not present and current is not None and current.status == "presented":
         async with write_session() as s:  # the owner already has this shortfall in front of them
             row = await s.get(ShortfallPlan, uuid.UUID(plan_id))
             if row is not None:

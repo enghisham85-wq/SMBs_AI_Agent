@@ -6,8 +6,9 @@ safety stock, no expiry handling, no budget.
 
 Both runs are scored by `simulate_stock` on the same demand (the day's sales turned into ingredient
 use by the recipes), the same opening stock, and the same rules: each day the day's use comes out
-after that morning's deliveries (a level below zero is a stockout day for that item), and stock older than
-its shelf life expires first-in-first-out as waste at unit cost.
+after that morning's deliveries; use the shelf cannot cover is a lost sale and makes it a stockout day for
+that item (there is no backlog: a café cannot sell yesterday's missing croissant tomorrow), and stock older
+than its shelf life expires first-in-first-out as waste at unit cost.
 """
 
 from __future__ import annotations
@@ -86,14 +87,13 @@ def baseline_orders(usage: dict[date, dict[uuid.UUID, Decimal]], items: list[Ite
 class Shelf:
     """Stock by delivery date (first in, first out), stepped one day at a time.
 
-    Each day: stock older than its shelf life expires (waste), that morning's deliveries arrive and cover
-    any shortfall first, then the day's use comes out; use that stock cannot cover is a stockout.
+    Each day: stock older than its shelf life expires (waste), that morning's deliveries arrive, then the
+    day's use comes out; use that stock cannot cover is lost (a stockout day), not carried forward.
     """
 
     def __init__(self, opening: dict[uuid.UUID, Decimal], items: dict[uuid.UUID, Item], start: date) -> None:
         self.items = items
         self.lots: dict[uuid.UUID, list[list[Any]]] = {iid: [[start - timedelta(days=1), q]] for iid, q in opening.items() if q > 0}
-        self.deficit: dict[uuid.UUID, Decimal] = {iid: -q for iid, q in opening.items() if q < 0}
         self.short: set[uuid.UUID] = set()
         self.result = StockResult()
 
@@ -110,14 +110,8 @@ class Shelf:
                 res.waste_qty[iid] = res.waste_qty.get(iid, Decimal(0)) + q
                 res.waste_minor += int((Decimal(self.items[iid].unit_cost.amount_minor) * q).to_integral_value())
         for e in deliveries:
-            q = e.qty
-            owed = self.deficit.get(e.item_id, Decimal(0))
-            if owed > 0:
-                paid = min(owed, q)
-                self.deficit[e.item_id] = owed - paid
-                q -= paid
-            if q > 0:
-                self.lots.setdefault(e.item_id, []).append([d, q])
+            if e.qty > 0:
+                self.lots.setdefault(e.item_id, []).append([d, e.qty])
         for iid, q in usage.items():
             if iid not in self.items or not self.items[iid].is_ingredient:
                 continue
@@ -129,16 +123,14 @@ class Shelf:
                 need -= take
                 if item_lots[0][1] <= 0:
                     item_lots.pop(0)
-            if need > 0 or self.deficit.get(iid, Decimal(0)) > 0:
-                self.deficit[iid] = self.deficit.get(iid, Decimal(0)) + need
+            if need > 0:  # lost sales
                 res.stockout_days += 1
                 res.stockout_days_by_item[iid] = res.stockout_days_by_item.get(iid, 0) + 1
                 if iid not in self.short:
                     res.stockout_episodes.append((iid, d))
                     self.short.add(iid)
-        for iid in list(self.short):
-            if self.deficit.get(iid, Decimal(0)) <= 0 and self.lots.get(iid):
-                self.short.discard(iid)
+            elif iid in self.short:
+                self.short.discard(iid)  # a full day's use was met: the episode is over
         return expired
 
 

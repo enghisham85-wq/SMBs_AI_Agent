@@ -2,8 +2,9 @@
 assistants with a "no assistant" baseline on the same demand, opening stock and lead times.
 
 People are simulated the simple way: staff record each delivery on its expected day (as ordered), and
-the owner answers every open request once a day (approve orders and reminders; otherwise the safe
-default). Each answer is one tap; reading an alert counts only towards time.
+the owner answers every open request once a day, following the assistants' advice (approve orders and
+reminders, take the recommended option, act on the top plan step, accept offers to stop asking about routine
+orders; otherwise the safe default). Each answer is one tap; reading an alert counts only towards time.
 
 Writes backend/var/reports/sample_metrics.json and asserts SC-002, SC-003, SC-004, SC-006 and SC-009.
 Run it explicitly: `uv run pytest -m slow tests/integration/test_sample_metrics.py` (about 10 minutes).
@@ -32,11 +33,12 @@ from app.approvals import service as approvals
 from app.config import get_settings
 from app.core import clock, scheduler, settings_store
 from app.db.engine import read_session
+from app.harness import rules
 from app.harness.graph import run_action
 from app.models.books import ReceivableInvoice
 from app.models.cash import ShortfallPlan
 from app.models.finance_master import BankTransaction, Sale
-from app.models.harness import ApprovalRequest
+from app.models.harness import ApprovalRequest, LearnedRule
 from app.models.master import Item, RecipeLine, Supplier
 from app.models.purchasing import PurchaseOrder, PurchaseOrderLine
 from app.models.stock_ops import StockMovement
@@ -95,6 +97,14 @@ async def _owner_round(bid: uuid.UUID, owner: Owner, seen_alerts: set[uuid.UUID]
                                                                  ApprovalRequest.status == "pending")
                                    .order_by(ApprovalRequest.created_at))).scalars().all()
     answers = alerts = 0
+    # The Stock Agent's offers to stop asking about routine orders: the owner accepts (one tap each).
+    async with read_session() as s:
+        offers = [r for r in (await s.execute(select(LearnedRule).where(
+            LearnedRule.business_id == bid, LearnedRule.kind == "policy", LearnedRule.status == "proposed"))).scalars()
+            if r.trigger.get("auto_approve_up_to_minor") is not None]
+    for rule in offers:
+        await rules.approve(rule.id, bid, owner.id)
+        answers += 1
     for req in pending:
         if req.kind == "alert":
             if req.id not in seen_alerts:
@@ -132,7 +142,7 @@ def _names(counts: dict[uuid.UUID, int], items: dict[uuid.UUID, Item]) -> dict[s
 
 async def _staff_spoilage(bid: uuid.UUID, d: date, shelf: Shelf, items: dict[uuid.UUID, Item],
                           recipes: list[RecipeLine]) -> None:
-    """Staff throw out what went off this morning and record it as spoilage (the normal waste action)."""
+    """Staff throw out what went off this morning (recorded as spoilage) and count sold-out items as zero."""
     async with read_session() as s:
         sales = list((await s.execute(select(Sale).where(Sale.business_id == bid, Sale.date == d))).scalars())
         arrived = list((await s.execute(select(StockMovement).where(
@@ -145,6 +155,11 @@ async def _staff_spoilage(bid: uuid.UUID, d: date, shelf: Shelf, items: dict[uui
         if on_hand > 0:
             await run_action("adjust_stock", {"item_id": str(iid), "qty_delta": str(-min(qty, on_hand)), "type": "spoilage",
                                               "reason": "past its shelf life, thrown away", "source": "user:staff"}, bid)
+    # Sold out: the shelf is empty, not in debt. Staff count it as zero (the lost sales are not owed).
+    for iid, on_hand in levels.items():
+        if on_hand < 0:
+            await run_action("adjust_stock", {"item_id": str(iid), "qty_delta": str(-on_hand), "type": "count_correction",
+                                              "reason": "counted after selling out", "source": "user:staff"}, bid)
 
 
 async def _total_balance(bid: uuid.UUID, d: date) -> int:

@@ -97,6 +97,7 @@ def register() -> None:
     graphs.register_graphs()
     register_extension(seed_opening_stock)
     register_question_handler("late", _late_answer)
-    from app.agents.stock import telegram_handlers
+    from app.agents.stock import routine_orders, telegram_handlers
 
     telegram_handlers.register()
+    routine_orders.register()
