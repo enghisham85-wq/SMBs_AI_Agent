@@ -707,3 +707,6 @@ def register_graphs() -> None:
     runtime.register("trial_balance", build_trial_balance)
     register_step("reconcile", "reconciliation_graph", step_reconcile)
     register_step("trial_balance", "trial_balance_graph", step_trial_balance)
+    from app.agents.accountant.vat import step_period_reminder
+
+    register_step("trial_balance", "vat_period_reminder", step_period_reminder)

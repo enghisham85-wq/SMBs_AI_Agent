@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 
 from app.agents.stock import checks, demand, reorder, waste
 from app.agents.stock import graphs as stock_graphs
+from app.agents.stock import supplier as supplier_perf
 from app.agents.stock.action_specs import apply_po_edits
 from app.api.common import J, with_freshness
 from app.core import clock, settings_store
@@ -292,3 +293,50 @@ async def suppliers(user: CurrentUser = RequireManager) -> Response:
                                  "observed_lead_time_days": sp.observed_lead_time_days,
                                  "payment_terms_days": sp.payment_terms_days, "reliability_score": sp.reliability_score}
                                 for sp in rows]})
+
+
+@router.get("/suppliers/{supplier_id}/scorecard")
+async def supplier_scorecard(supplier_id: uuid.UUID, user: CurrentUser = RequireManager) -> Response:
+    """Stated vs observed lead time, delivery record, price changes and reliability (US8)."""
+    async with read_session() as s:
+        sp = await s.get(Supplier, supplier_id)
+        if sp is None or sp.business_id != user.business_id:
+            raise not_found("Supplier")
+        pos = {po.id: po for po in (await s.execute(select(PurchaseOrder).where(
+            PurchaseOrder.business_id == user.business_id, PurchaseOrder.supplier_id == supplier_id))).scalars()}
+        deliveries = (await s.execute(select(Delivery).where(Delivery.po_id.in_(list(pos))).order_by(Delivery.received_on))
+                      ).scalars().all() if pos else []
+        prices = (await s.execute(select(SupplierPrice).where(SupplierPrice.supplier_id == supplier_id)
+                                  .order_by(SupplierPrice.valid_from, SupplierPrice.created_at))).scalars().all()
+        items = {i.id: i for i in (await s.execute(select(Item).where(Item.business_id == user.business_id))).scalars()}
+    record: list[dict[str, Any]] = []
+    for dl in deliveries:
+        po = pos[dl.po_id]
+        record.append({"po": po.number, "sent_on": po.sent_at.date() if po.sent_at else None, "expected": po.expected_date,
+                       "received_on": dl.received_on,
+                       "lead_days": (dl.received_on - po.sent_at.date()).days if po.sent_at else None,
+                       "on_time": dl.received_on <= po.expected_date,
+                       "complete": not any(d.get("kind") in ("quantity", "missing") for d in dl.discrepancies or []),
+                       "price_ok": not any(d.get("kind") == "price" for d in dl.discrepancies or [])})
+    history: dict[uuid.UUID, list[dict[str, Any]]] = {}
+    for p in prices:
+        rows = history.setdefault(p.item_id, [])
+        prev = rows[-1]["price"].amount_minor if rows else None
+        change = round((p.price.amount_minor - prev) / prev * 100, 1) if prev else None
+        rows.append({"valid_from": p.valid_from, "price": p.price, "unit": p.unit, "change_pct": change})
+    leads: list[int] = [r["lead_days"] for r in record if r["lead_days"] is not None]
+    return J(with_freshness({
+        "supplier": {"id": sp.id, "name_en": sp.name_en, "name_ar": sp.name_ar, "payment_terms_days": sp.payment_terms_days},
+        "lead_time": {"stated_days": sp.stated_lead_time_days, "observed_days": sp.observed_lead_time_days,
+                      "average_actual_days": round(sum(leads) / len(leads), 1) if leads else None,
+                      "planning_days": supplier_perf.lead_time(sp)},
+        "reliability_score": sp.reliability_score,
+        "deliveries": {"count": len(record), "on_time": sum(1 for r in record if r["on_time"]),
+                       "complete": sum(1 for r in record if r["complete"]), "recent": record[-10:][::-1]},
+        "orders": {"count": len(pos), "open": sum(1 for po in pos.values() if po.status in OPEN_STATUSES)},
+        "prices": [{"item_id": iid, "name_en": items[iid].name_en if iid in items else "",
+                    "name_ar": items[iid].name_ar if iid in items else "", "history": rows,
+                    "latest_change_pct": next((r["change_pct"] for r in reversed(rows) if r["change_pct"] is not None), None)}
+                   for iid, rows in history.items()],
+    }, {"orders": max((dl.created_at for dl in deliveries), default=None),
+        "prices": max((p.created_at for p in prices), default=None)}))

@@ -362,6 +362,9 @@ async def _void_verify(ctx: ActionContext, inputs: dict[str, Any], result: dict[
 
 
 def register_specs() -> None:
+    from app.agents.accountant import vat
+
+    vat.register_spec()
     register(ActionSpec(name="post_invoice", agent="accountant", risk_class="reversible", execute=_post_invoice_execute,
                         title_en="Post supplier invoice", title_ar="ترحيل فاتورة مورد", preconditions=_post_invoice_checks,
                         verify=_post_invoice_verify, compensate=_post_invoice_compensate, verifier_packet=_post_invoice_packet))

@@ -359,6 +359,31 @@ def project_all(inp: Inputs) -> dict[str, Projection]:
     return out
 
 
+@dataclass
+class Week:
+    week_start: date
+    inflows: int = 0
+    outflows: int = 0
+    closing: int = 0  # balance at the end of the week's last day
+    below_buffer: bool = False
+
+
+def weekly(p: Projection, weeks: int = 13) -> list[Week]:
+    """The 13-week view (horizon="13w"): daily projection summed into 7-day buckets from its first day."""
+    out: list[Week] = []
+    for d in p.days:
+        if not out or (d.date - out[-1].week_start).days >= 7:
+            if len(out) == weeks:
+                break
+            out.append(Week(d.date))
+        w = out[-1]
+        w.inflows += d.inflows
+        w.outflows += d.outflows
+        w.closing = d.closing
+        w.below_buffer = w.below_buffer or d.below_buffer
+    return out
+
+
 # ------------------------------------------------------------------ loading
 async def _sales_inputs(s: AsyncSession, business_id: uuid.UUID, start: date, end: date,
                         today: date) -> tuple[dict[date, tuple[int, int, int]], dict[date, dict[str, int]],

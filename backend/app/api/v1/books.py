@@ -216,6 +216,25 @@ async def pnl(from_: date | None = Query(default=None, alias="from"), to: date |
     return J(with_freshness(data, {"books": clock.today()}))
 
 
+@router.get("/vat/summary")
+async def vat_summary(period: str | None = None, user: CurrentUser = RequireManager) -> Response:
+    """Input VAT, output VAT, net payable and the supporting invoices for a period (FR-053).
+
+    `period` is `2026-10` (monthly) or `2026-Q4` (quarterly); default: the current period. The figures
+    are reviewed by the independent second check (FR-003) before `status` becomes `ready`.
+    """
+    from app.agents.accountant import vat
+
+    b = await get_business(user.business_id)
+    period = period or vat.period_for(clock.today(), b.vat_period)
+    try:
+        data = await vat.summary_with_status(user.business_id, period)
+    except vat.PeriodError as exc:
+        raise AppError(422, "invalid_period", message_en=str(exc), message_ar="صيغة الفترة غير صحيحة، مثل 2026-10 أو 2026-Q4.") from exc
+    data["currency"], data["decimals"] = b.currency, exponent(b.currency)
+    return J(with_freshness(data, {"books": clock.today()}))
+
+
 @router.get("/reports/balance-sheet")
 async def balance_sheet(as_of: date | None = None, user: CurrentUser = RequireManager) -> Response:
     b = await get_business(user.business_id)

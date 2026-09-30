@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../api/client";
 import type { DataAsOf, Money } from "../api/types";
-import { CashChart, type CashPoint } from "../components/CashChart";
+import { CashChart, type CashPoint, type Horizon, type WeekPoint } from "../components/CashChart";
 import { FreshnessLabel } from "../components/FreshnessLabel";
 import { ShortfallPlan, type PlanOut } from "../components/ShortfallPlan";
 import { formatMoney } from "../lib/money";
@@ -35,6 +35,12 @@ export function Cash() {
   const lang = i18n.language;
   const [scenario, setScenario] = useState<string | null>(null);
   const [simulating, setSimulating] = useState<string | null>(null);
+  const [horizon, setHorizon] = useState<Horizon>("30d");
+  const weekly = useQuery({
+    queryKey: ["cash", "forecast", "13w"],
+    enabled: horizon === "13w",
+    queryFn: () => api.get<{ scenarios: Record<string, WeekPoint[]>; data_as_of: DataAsOf }>("/cash/forecast?horizon=13w"),
+  });
   const position = useQuery({ queryKey: ["cash", "position"], queryFn: () => api.get<Position>("/cash/position") });
   const forecast = useQuery({
     queryKey: ["cash", "forecast", scenario],
@@ -94,7 +100,18 @@ export function Cash() {
       </div>
       <FreshnessLabel asOf={f?.data_as_of} />
 
-      {f && <CashChart series={f.series} buffer={f.buffer} lowest={f.lowest} simulated={simulating ? sim.data?.simulated ?? null : null} />}
+      {f && (
+        <CashChart
+          series={f.series}
+          buffer={f.buffer}
+          lowest={f.lowest}
+          simulated={simulating ? sim.data?.simulated ?? null : null}
+          horizon={horizon}
+          onHorizonChange={setHorizon}
+          weekly={weekly.data?.scenarios ?? null}
+        />
+      )}
+      {horizon === "13w" && weekly.data && <FreshnessLabel asOf={weekly.data.data_as_of} />}
       {plan.data?.plan && <ShortfallPlan plan={plan.data.plan} simulating={simulating} onSimulate={setSimulating} />}
       {plan.data && !plan.data.plan && f && !f.first_below_buffer && <p className="text-sm text-good-700">{t("cash.no_shortfall")}</p>}
 

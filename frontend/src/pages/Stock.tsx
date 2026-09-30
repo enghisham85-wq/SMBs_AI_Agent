@@ -6,6 +6,7 @@ import type { DataAsOf, Money } from "../api/types";
 import { ForecastChart, type ForecastPoint } from "../components/ForecastChart";
 import { FreshnessLabel } from "../components/FreshnessLabel";
 import { StockTable, type StockItem } from "../components/StockTable";
+import { SupplierScorecard } from "../components/SupplierScorecard";
 import { useAuth } from "../hooks/useAuth";
 import { formatMoney } from "../lib/money";
 
@@ -21,13 +22,15 @@ interface PO {
   deliveries: { id: string; received_on: string; discrepancies: any[] }[];
 }
 
-type Tab = "items" | "orders" | "delivery" | "waste" | "sales";
+type Tab = "items" | "orders" | "delivery" | "waste" | "sales" | "suppliers";
 
 export function Stock() {
   const { t, i18n } = useTranslation();
   const { can } = useAuth();
   const [tab, setTab] = useState<Tab>("items");
-  const tabs: Tab[] = can("manager") ? ["items", "orders", "delivery", "waste", "sales"] : ["items", "delivery", "waste"];
+  const tabs: Tab[] = can("manager")
+    ? ["items", "orders", "delivery", "waste", "sales", "suppliers"]
+    : ["items", "delivery", "waste"];
 
   return (
     <div className="flex flex-col gap-4">
@@ -46,6 +49,7 @@ export function Stock() {
       {tab === "delivery" && <DeliveryTab />}
       {tab === "waste" && <WasteTab />}
       {tab === "sales" && <SalesTab lang={i18n.language} />}
+      {tab === "suppliers" && <SupplierScorecard />}
     </div>
   );
 }
