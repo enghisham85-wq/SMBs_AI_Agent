@@ -10,7 +10,7 @@
 
 Build a hackathon-MVP web application in which three assistants (Stock, Cash-Flow, Accountant) share one database and run every action through a common harness pipeline (plan → precondition check → risk class → independent verifier → execute → read-back verify → rollback/retry/escalate → audit log), with incidents, owner-approved learned rules and self-calibration. The owner interacts through a React dashboard (with an in-app chat panel) and a Telegram bot, both backed by one approval service. A presenter-controlled business clock drives daily jobs so a demo can cover weeks in minutes, and a Chaos panel injects the 8 fault scenarios.
 
-Technical approach (from [research.md](./research.md)): Python 3.12 + FastAPI backend, **LangGraph** as the agent runtime (the harness lifecycle, every agent workflow and the daily run are LangGraph state graphs; owner approvals are checkpointed `interrupt()` pauses resumed by the approval service — research R17), SQLite via SQLAlchemy, deterministic code for all maths and checks, and Claude (`claude-opus-5`, structured outputs) only for reading invoices (English, bilingual, Arabic), independent verification, expense classification, message wording and rule proposals.
+Technical approach (from [research.md](./research.md)): Python 3.12 + FastAPI backend, **LangGraph** as the agent runtime (the harness lifecycle, every agent workflow and the daily run are LangGraph state graphs; owner approvals are checkpointed `interrupt()` pauses resumed by the approval service — research R17), SQLite via SQLAlchemy, deterministic code for all maths and checks, and Claude (`claude-opus-5-5`, structured outputs) only for reading invoices (English, bilingual, Arabic), independent verification, expense classification, message wording and rule proposals.
 
 ## Technical Context
 
@@ -18,7 +18,7 @@ Technical approach (from [research.md](./research.md)): Python 3.12 + FastAPI ba
 
 **Primary Dependencies**: LangGraph 1.x + `langgraph-checkpoint-sqlite` (agent orchestration, required), FastAPI, Uvicorn, Pydantic v2, SQLAlchemy 2 + Alembic, `anthropic` SDK, `python-telegram-bot` v21, `statsmodels` + `pandas` (forecasting), `hijridate` (Ramadan), `argon2-cffi`; Vite, TanStack Query, Recharts, Tailwind CSS, i18next
 
-**Storage**: SQLite (WAL) for demo, PostgreSQL-compatible schema; LangGraph checkpoints in the same database via `AsyncSqliteSaver` (swap to the Postgres saver with the schema); uploaded documents on local disk under `backend/var/files` (sha256-named)
+**Storage**: SQLite (WAL) for demo, PostgreSQL-compatible schema; LangGraph checkpoints via `AsyncSqliteSaver` in a separate file `var/checkpoints.db` (swap to the Postgres saver with the schema); SQLite busy timeout 5 s plus one process-wide write lock so concurrent writers never hit "database is locked"; uploaded documents on local disk under `backend/var/files` (sha256-named)
 
 **Testing**: pytest (+ pytest-asyncio, httpx, schemathesis), graphs compiled with `InMemorySaver` and interrupts resumed via `Command(resume=...)`, LLM record/replay fixtures, separate live eval suite; Vitest + Testing Library; Playwright e2e
 
@@ -28,7 +28,7 @@ Technical approach (from [research.md](./research.md)): Python 3.12 + FastAPI ba
 
 **Performance Goals**: dashboard views < 2 s; one simulated day of jobs < 10 s excluding LLM calls; invoice extraction < 30 s; any Chaos scenario end to end < 2 min (SC-011)
 
-**Constraints**: no agent moves money (FR-047); no bank credentials stored (FR-048); money in integer minor units with 3-decimal OMR (FR-051); all "now" comes from the business clock (FR-012a); demo must run offline from the LLM using replay mode
+**Constraints**: no agent moves money (FR-047); no bank credentials stored (FR-048); money in integer minor units with per-currency decimals, and country, currency, VAT, weekend and holidays read from a configurable country profile, default Egypt/EGP (FR-051, research R18); all "now" comes from the business clock (FR-012a); demo must run offline from the LLM using replay mode
 
 **Scale/Scope**: 1 business, ≤ 50 users, 20 seeded items (≤ 500 supported), 5 suppliers, 3 months of sales (≤ 100k lines), 8 Chaos scenarios, ~6 dashboard views
 
@@ -88,7 +88,8 @@ backend/
 │   │   ├── scheduler.py        # advance loop: invokes daily_run_graph per skipped day
 │   │   ├── events.py           # outbox + dispatcher (handlers start graph runs)
 │   │   ├── auth.py             # sessions, roles, permission dependency
-│   │   └── i18n.py             # en/ar strings, digit normalisation
+│   │   ├── i18n.py             # en/ar strings, digit normalisation
+│   │   └── country_profiles.py # load/apply country profiles; holidays, Ramadan, weekend (default EG)
 │   ├── graphs/
 │   │   ├── runtime.py          # checkpointer (AsyncSqliteSaver), graph registry, run/resume helpers
 │   │   ├── daily_run.py        # daily_run_graph: ordered agent subgraphs for one business date
@@ -116,7 +117,7 @@ backend/
 │   │   └── accountant/         # graphs: document (extract→checks→re-extract→post), reconciliation, trial_balance; logic: posting, matching, vat
 │   ├── chaos/                  # 8 scenario injectors
 │   ├── api/v1/                 # routers per contracts/rest-api.md
-│   └── seed/                   # sample cafe dataset + invoice samples
+│   └── seed/                   # sample cafe dataset, invoice samples, feed.py (daily simulated sales + bank data), countries/*.json (EG default, OM, AE, SA)
 └── tests/
     ├── unit/
     ├── contract/

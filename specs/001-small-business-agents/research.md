@@ -20,13 +20,14 @@ The repository is empty (greenfield), so every technical choice below was made i
 
 ## R3. Storage and money representation
 
-- **Decision**: SQLAlchemy 2.0 ORM + Alembic migrations. SQLite (WAL mode) for the demo; schema kept PostgreSQL-compatible. All money stored as integer **minor units** (baisa for OMR, 1/1000) with a currency code; quantities stored as `Decimal` with an explicit unit.
-- **Rationale**: One file database makes the demo reset (`seed` → known state) instant and reliable; integer minor units remove floating-point rounding errors that would break balanced-entry and arithmetic checks (FR-033, FR-035). 3-decimal OMR and 2-decimal AED/SAR handled by per-currency exponent (FR-051).
+- **Decision**: SQLAlchemy 2.0 ORM + Alembic migrations. SQLite (WAL mode) for the demo; schema kept PostgreSQL-compatible. All money stored as integer **minor units** (piastres for EGP, 1/100; baisa for OMR, 1/1000) with a currency code; the number of decimals per currency comes from an ISO 4217 table. Quantities stored as `Decimal` with an explicit unit.
+- **Concurrency**: API requests, Telegram callbacks, event handlers and the daily run share one process. Every SQLite connection sets `busy_timeout` (5 s), and all commits go through one process-wide `asyncio.Lock` (`write_session()`), so writes are serialised instead of failing with "database is locked". LangGraph checkpoints use a separate SQLite file. The lock is skipped on PostgreSQL.
+- **Rationale**: One file database makes the demo reset (`seed` → known state) instant and reliable; integer minor units remove floating-point rounding errors that would break balanced-entry and arithmetic checks (FR-033, FR-035). 2-decimal currencies (EGP default, AED, SAR) and 3-decimal ones (OMR, KWD) are handled by the per-currency exponent (FR-051).
 - **Alternatives considered**: PostgreSQL from day one (extra setup for judges); floats (unacceptable for accounting); `Decimal` columns for money (works, but integer minor units are simpler to sum and compare exactly).
 
 ## R4. LLM provider, models and call patterns
 
-- **Decision**: Anthropic Claude via the official `anthropic` Python SDK. Model `claude-opus-5` for all LLM roles, with `output_config.effort` tuned per role:
+- **Decision**: Anthropic Claude via the official `anthropic` Python SDK. Model `claude-opus-5-5` for all LLM roles, with `output_config.effort` tuned per role:
   | Role | Input | Output | Effort |
   |---|---|---|---|
   | Invoice extraction (Accountant) | Image or PDF document block + instructions | Structured JSON (Pydantic schema) with per-field confidence | `high` |
@@ -34,7 +35,7 @@ The repository is empty (greenfield), so every technical choice below was made i
   | Expense classification (Accountant) | Transaction text + chart of accounts + learned rules | Account code + confidence | `low` |
   | Owner-message wording, incident root-cause summary, learned-rule proposal | Structured incident/action facts | Short bilingual text / rule JSON | `medium` |
   - Structured outputs via `client.messages.parse()` with Pydantic output models (no prefill; prefill is rejected on current models).
-  - Adaptive thinking (default on for `claude-opus-5`); streaming not required because outputs are small (`max_tokens` ≈ 4–8K).
+  - Adaptive thinking (always on for `claude-opus-5-5`; it cannot be disabled, effort is the control and the model's default is `medium`, so every role sets it explicitly); thinking counts toward `max_tokens`, so calls allow 16K (4K for low-effort classification); streaming not required at that size.
   - Server-side refusal fallbacks enabled (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`) and `stop_reason` checked before reading content.
   - Prompt caching: stable system prompt + schema + chart of accounts + active learned rules placed first with a cache breakpoint; the document/transaction goes last.
 - **Rationale**: One model keeps one prompt-cache namespace and one behaviour profile to evaluate; effort is the cost lever instead of model downgrades. PDFs and images are native input, including Arabic text, so no separate OCR stage is needed.
@@ -64,7 +65,7 @@ The repository is empty (greenfield), so every technical choice below was made i
   2. **Safe fallback**: average of the last 4 same weekdays (spec FR-020), range = min/max of those 4.
   Switch to fallback when rolling 7-day MAPE exceeds the item's threshold; restore gradually (FR-006).
 - **Rationale**: Explainable, fast on 20 items × 3 months, and the fallback is exactly the method named in the spec.
-- **Calendar**: Oman defaults — Friday–Saturday weekend, public-holiday table seeded for the demo year, Ramadan dates computed with `hijridate` (Umm al-Qura).
+- **Calendar**: from the business's country profile (research R18); default Egypt — Friday–Saturday weekend, Egyptian fixed-date holidays plus Hijri-based Islamic holidays, Ramadan dates computed with `hijridate` (Umm al-Qura) with per-year override dates for local moon sighting.
 - **Alternatives considered**: Prophet (heavy dependency), LLM-based forecasting (non-deterministic, untestable).
 
 ## R9. Cash forecasting
@@ -76,6 +77,7 @@ The repository is empty (greenfield), so every technical choice below was made i
 
 - **Decision**: A `BusinessClock` service is the only source of "now". In demo mode it stores a simulated datetime in the DB; `advance(days | to_date)` iterates day by day and, for each day, invokes the LangGraph `daily_run_graph` (R17), whose nodes run in fixed order (import day's sales → stock deduction → morning forecast check → reorder planning → bank import → balance comparison → cash forecast → trial balance → reminders → approval timeouts). Outside demo mode an asyncio loop triggers the same job list once per real day.
 - **Rationale**: FR-012a requires in-order catch-up; a single job list for both modes avoids two code paths.
+- **Demo data feed**: In demo mode, the `import_sales` and `bank_import` steps are fed by a deterministic generator (`seed/feed.py`) that produces each new business date's sales and bank transactions from the same seasonal model as the 3-month history. The random seed comes from business and date, so a replay gives the same data, and re-running a date is a no-op. Chaos scenarios change future days through stored per-date overrides (demand spike, missing bank day, extra outflow) instead of editing records directly. Real mode uses uploads and imports instead.
 - **Alternatives considered**: APScheduler (hard to drive from a simulated clock), freezegun in production code (test-only tool). LangGraph nodes must read time only from `BusinessClock`, never the system clock.
 
 ## R11. Inter-agent events
@@ -116,7 +118,7 @@ The repository is empty (greenfield), so every technical choice below was made i
   |---|---|
   | Harness action lifecycle (FR-001) | `harness_graph`: a `StateGraph` with nodes `plan → precheck → classify_risk → premortem_verify → approval_gate → execute → post_verify → finalize`, conditional edges `post_verify → rollback → retry` (max 1) `→ escalate`. Each agent capability plugs in its own node callables via an `ActionSpec`; the graph shape is shared. |
   | Owner approval / question (FR-002, FR-010, FR-011) | `interrupt()` inside `approval_gate`; state persisted by the checkpointer; `ApprovalService.resolve()` resumes the thread with `Command(resume={option_key, user})`. Timeouts resume with the safe-default option. |
-  | Durable, resumable actions | `AsyncSqliteSaver` checkpointer in the same SQLite file; `thread_id = action.id`. A server restart mid-approval resumes cleanly. |
+  | Durable, resumable actions | `AsyncSqliteSaver` checkpointer in its own SQLite file (`var/checkpoints.db`) so its writes don't compete with business-data writes; `thread_id = action.id`. A server restart mid-approval resumes cleanly. |
   | Stock / Cash-Flow / Accountant agents | One compiled subgraph per workflow, e.g. `stock.reorder_graph` (forecast → days-of-cover → quantities → group by supplier → spawn `draft_po` actions), `accountant.document_graph` (extract → normalise → checks → re-extract once → classify → post), `cashflow.forecast_graph` (project → detect shortfall → build plan → simulate actions). |
   | Daily scheduler (FR-012a) | `daily_run_graph`: fixed sequence of agent subgraph nodes for one business date; `BusinessClock.advance` invokes it once per skipped day, in date order. |
   | Cross-agent conflict (FR-043) | `conflict_graph`: gathers both agents' positions, computes recommendation, interrupts for the owner. |
@@ -127,6 +129,13 @@ The repository is empty (greenfield), so every technical choice below was made i
 - **Testing**: graphs compiled with an in-memory checkpointer (`InMemorySaver`) in unit tests; interrupts tested by asserting the `__interrupt__` payload and resuming with `Command(resume=...)`. Optional LangSmith tracing only if an API key is configured (off by default; no business data leaves the tenant otherwise).
 - **Rationale**: The user requires LangGraph. It also fits the harness naturally: explicit nodes and conditional edges mirror the lifecycle, and checkpointed `interrupt()` is exactly the human-in-the-loop pause the spec needs.
 - **Alternatives considered**: hand-written pipeline classes (the original R12 design — superseded); LangChain `AgentExecutor`/ReAct agents (open-ended tool loops are harder to verify and would weaken the deterministic checks); Claude Managed Agents (hosted loop, but approval pauses and local data would be harder to control for this demo).
+
+## R18. Country and currency profiles (default Egypt)
+
+- **Decision**: No country is built into the code. A **CountryProfile** JSON file per country (`seed/countries/EG.json`, `OM.json`, `AE.json`, `SA.json`) holds currency, VAT rate and period, weekend days, public-holiday rules (fixed dates plus Hijri-calendar dates with per-year overrides), Ramadan source, tax registration number pattern, default date format and money defaults (cash buffer, journal limit). Choosing a profile copies its values into the Business row, where the owner can edit each one. The default profile is **Egypt**: EGP (2 decimals), VAT 14% filed monthly (stored as `vat_rate_percent = 14`; the app config key `DEFAULT_VAT_RATE_PERCENT` can override it for new businesses, and the owner can edit it in Settings; invoice lines can carry their own rate, e.g. 0 for exempt items), Friday–Saturday weekend, DMY dates, 9-digit tax registration number.
+- **Changing it**: The owner can switch country or edit any value at any time; new values apply from the current business date and never rewrite posted records. The **currency** can only change before any financial record exists, because the MVP stores amounts in one currency and does not convert; afterwards the API returns `currency_locked`. The demo seed takes `--country` and scales its EGP price list by the profile's `seed_price_factor`.
+- **Out of scope**: Egypt's Tax Authority e-invoicing and e-receipt submission; the suite prepares VAT figures only.
+- **Alternatives considered**: hard-coded Oman defaults (the original design; rejected, it ties the product to one market); multi-currency ledger with FX conversion (correct long-term, too large for the MVP).
 
 ## R16. Performance and scale
 

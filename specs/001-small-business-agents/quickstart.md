@@ -38,15 +38,15 @@ Seeded users: `owner / manager / staff` (demo passwords printed by the seed comm
 | `uv run pytest tests/integration -k chaos` | all 8 Chaos scenarios detected, explained, corrected, rule proposed (SC-001) |
 | `uv run pytest tests/integration -k milk_e2e` | cross-agent milk scenario (User Story 5) |
 | `uv run pytest tests/integration -k roles` | role refusals are enforced and logged (SC-012) |
-| `uv run pytest tests/integration -k sample_metrics` | SC-002, SC-003, SC-004, SC-006, SC-009 on 3-month replay |
-| `uv run pytest tests/eval --llm-live` | SC-008 extraction accuracy per language group (spends API credit) |
-| `cd frontend; npm test; npx playwright test` | UI units; e2e approval flow, dashboard views, roles |
+| `uv run pytest -m slow tests/integration/test_sample_metrics.py` | SC-002, SC-003, SC-004, SC-006, SC-009 on a 3-month replay against a no-assistant baseline; writes `backend/var/reports/sample_metrics.json` (about 5 minutes; opt-in) |
+| `LLM_MODE=live uv run pytest -m llm_live tests/eval` | SC-008 extraction accuracy per language group (needs `ANTHROPIC_API_KEY`; spends API credit) |
+| `cd frontend; npm test; npx playwright test` | UI units; e2e approval flow, dashboard views, roles (the e2e run seeds its own cafe in `backend/var/e2e` on ports 8765/5175; set `PW_CHANNEL=chrome` to use an installed browser when Playwright's cannot be downloaded) |
 
 ## Manual demo walkthrough (expected outcomes)
 
 1. **Log in as owner** → Home shows health strip, today's decisions, alerts; every figure shows "as of …" (FR-046).
-2. **Stock (US1)** → Clock: *Advance to next Tuesday*. Expect: "Milk will run out Thursday evening… [Approve] [Edit] [Reject]" in the chat panel and in Telegram. Approve in Telegram → the dashboard copy shows "Already answered in Telegram by owner".
-3. **Books (US2)** → Upload `samples/invoices/bilingual_gulf_packaging.pdf`. Expect fields with per-field confidence, Arabic digits normalised, posted journal entry that balances. Upload it again → held as duplicate with a one-tap question.
+2. **Stock (US1)** → Clock: *Advance to next Tuesday*. Expect: "Milk will run out Thursday evening… [Approve] [Edit] [Reject]" in the chat panel and in Telegram. Approve in Telegram → the dashboard copy shows "Already answered in Telegram by owner" (needs `TELEGRAM_BOT_TOKEN` and a linked chat; without them approve in the dashboard). Requests nobody answers within 4 business hours (`approval_timeout_hours`) are re-sent with higher urgency, so after jumping several days the card you see is the re-sent copy.
+3. **Books (US2)** → In the Books inbox pick the sample *bi_packaging* (Gulf Packaging, bilingual; the file is `backend/var/sample_invoices/bi_packaging.pdf`). Expect fields with per-field confidence, Arabic digits normalised, posted journal entry that balances. Pick *bi_packaging_duplicate* (the same invoice re-sent as a phone photo) → held as a duplicate with a one-tap question. Sending the identical file again is recognised at once as "already received".
 4. **Cash (US3)** → Cash view: 30-day chart with buffer line; lowest point and date. Advance to the week before rent + salaries → shortfall warning ≥ 14 days ahead with ranked actions; *Simulate* each to see the new lowest point.
 5. **Harness (US4)** → Harness view shows each action's LangGraph nodes live (plan → precheck → … → finalize); restart the backend while an approval is pending, then approve — the action resumes from its checkpoint; open an action to see plan, checks, verifier verdict, audit trail.
 6. **Chaos (US6)** → Inject each scenario; for each, confirm in < 2 min: incident opened with detection method → explanation to owner → correction/rollback → proposed learned rule. Approve the date-format rule; re-inject scenario 3 → rule applied automatically, no question asked.

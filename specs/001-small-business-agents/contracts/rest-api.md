@@ -4,7 +4,7 @@ Base path `/api/v1`. JSON over HTTPS. Session cookie auth (R14); state-changing 
 
 **Common rules**
 
-- Money in responses: `{ "amount_minor": 36000, "currency": "OMR", "display": "36.000" }`.
+- Money in responses: `{ "amount_minor": 180000, "currency": "EGP", "decimals": 2, "display": "EGP 1,800.00" }`. The currency is the business's configured currency (default EGP); clients must use `decimals`, never assume a fixed number.
 - Every figure-bearing response includes `data_as_of` (object of source → timestamp), satisfying FR-046.
 - Errors: `{ "error": { "code": "...", "message_en": "...", "message_ar": "..." } }`. `403 permission_denied` is always audit-logged (FR-049a).
 - Role column: minimum role allowed (`staff` < `manager` < `owner`). Staff never receive money fields.
@@ -26,6 +26,14 @@ Base path `/api/v1`. JSON over HTTPS. Session cookie auth (R14); state-changing 
 | GET | `/clock` | staff | `{mode, current_date, last_run_date, advancing}` |
 | POST | `/clock/advance` | owner | body `{days: 1}` or `{to_date}`; runs skipped days' jobs in order (FR-012a); 409 if already advancing |
 | POST | `/demo/reset` | owner | reload sample cafe seed (FR-052) |
+
+## Business and country
+
+| Method | Path | Role | Purpose |
+|---|---|---|---|
+| GET | `/business` | manager | country, currency and decimals, `vat_rate_percent` (e.g. 14) and VAT period, weekend days, tax id pattern, this year's holidays |
+| GET | `/countries` | manager | available country profiles (EG default, OM, AE, SA) |
+| PATCH | `/business` | owner | change country (re-applies profile values from today forward) or any single field, e.g. `{"vat_rate_percent": 14}` (0–100, max 2 decimals, else 422); `currency` change → 409 `currency_locked` once financial records exist |
 
 ## Home
 
@@ -51,6 +59,9 @@ Base path `/api/v1`. JSON over HTTPS. Session cookie auth (R14); state-changing 
 | PATCH | `/purchase-orders/{id}` | manager | edit draft lines (re-runs checks) |
 | POST | `/purchase-orders/{id}/deliveries` | staff | record delivery checklist/photo (multipart) |
 | GET | `/suppliers` / `/suppliers/{id}/scorecard` | manager | supplier list / P3 scorecard |
+| POST | `/sales/import` | manager | CSV upload (multipart, optional column mapping) → `{batch_id, imported, skipped_duplicates, errors[{row, reason}]}`; same file twice → 409 |
+| POST | `/sales/manual` | manager | daily manual entry `{date, lines:[{item_id, qty, amount}], payment_method}` |
+| GET | `/sales?date=` | manager | a day's sales with source (`seed`, `csv_upload`, `manual`) |
 
 ## Cash
 
@@ -72,6 +83,10 @@ Base path `/api/v1`. JSON over HTTPS. Session cookie auth (R14); state-changing 
 | GET | `/documents?status=` | manager | document inbox with extraction confidence |
 | GET | `/documents/{id}` | manager | fields, raw text, per-field confidence, checks, original file URL |
 | GET | `/review-queue` | manager | items needing answers |
+| POST | `/receivables` | manager | create customer invoice `{customer, invoice_date, due_date, lines, number?}` → 201; duplicate number → 409 |
+| GET | `/receivables?status=&overdue=` | manager | list with ageing bucket |
+| GET | `/receivables/{id}` | manager | lines, payments, reminders sent, promises |
+| POST | `/receivables/{id}/void` | manager | void with reason; 409 if any amount paid |
 | GET | `/reconciliation` | manager | % matched, unmatched list |
 | POST | `/reconciliation/{bank_txn_id}/match` | manager | confirm/override a match |
 | GET | `/reports/pnl?from&to`, `/reports/balance-sheet?as_of` | manager | reports |

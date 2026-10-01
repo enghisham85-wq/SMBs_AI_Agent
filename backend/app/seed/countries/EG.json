@@ -1,0 +1,31 @@
+{
+  "code": "EG",
+  "name_en": "Egypt",
+  "name_ar": "مصر",
+  "currency": "EGP",
+  "vat_rate_percent": "14",
+  "vat_period": "monthly",
+  "weekend_days": [5, 6],
+  "tax_id_pattern": "^\\d{9}$",
+  "default_date_format": "DMY",
+  "fixed_holidays": [
+    {"month": 1, "day": 7, "name_en": "Coptic Christmas", "name_ar": "عيد الميلاد المجيد"},
+    {"month": 1, "day": 25, "name_en": "Revolution Day / Police Day", "name_ar": "عيد الثورة / عيد الشرطة"},
+    {"month": 4, "day": 25, "name_en": "Sinai Liberation Day", "name_ar": "عيد تحرير سيناء"},
+    {"month": 5, "day": 1, "name_en": "Labour Day", "name_ar": "عيد العمال"},
+    {"month": 6, "day": 30, "name_en": "June 30 Revolution", "name_ar": "ثورة 30 يونيو"},
+    {"month": 7, "day": 23, "name_en": "Revolution Day (1952)", "name_ar": "عيد ثورة 23 يوليو"},
+    {"month": 10, "day": 6, "name_en": "Armed Forces Day", "name_ar": "عيد القوات المسلحة"}
+  ],
+  "hijri_holidays": [
+    {"month": 10, "day": 1, "days": 3, "name_en": "Eid al-Fitr", "name_ar": "عيد الفطر"},
+    {"month": 12, "day": 9, "days": 4, "name_en": "Arafat Day and Eid al-Adha", "name_ar": "وقفة عرفات وعيد الأضحى"},
+    {"month": 1, "day": 1, "days": 1, "name_en": "Islamic New Year", "name_ar": "رأس السنة الهجرية"},
+    {"month": 3, "day": 12, "days": 1, "name_en": "Prophet's Birthday", "name_ar": "المولد النبوي الشريف"}
+  ],
+  "special_holidays": ["sham_el_nessim"],
+  "holiday_overrides": {},
+  "ramadan_overrides": {},
+  "money_defaults": {"min_cash_buffer": "50000", "journal_value_limit": "10000", "po_auto_approve_limit": "0"},
+  "seed_price_factor": "1"
+}

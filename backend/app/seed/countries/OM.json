@@ -1,0 +1,27 @@
+{
+  "code": "OM",
+  "name_en": "Oman",
+  "name_ar": "عُمان",
+  "currency": "OMR",
+  "vat_rate_percent": "5",
+  "vat_period": "quarterly",
+  "weekend_days": [5, 6],
+  "tax_id_pattern": "^OM\\d{10}$",
+  "default_date_format": "DMY",
+  "fixed_holidays": [
+    {"month": 11, "day": 20, "name_en": "National Day", "name_ar": "العيد الوطني"},
+    {"month": 11, "day": 21, "name_en": "National Day", "name_ar": "العيد الوطني"}
+  ],
+  "hijri_holidays": [
+    {"month": 7, "day": 27, "days": 1, "name_en": "Isra and Mi'raj", "name_ar": "الإسراء والمعراج"},
+    {"month": 10, "day": 1, "days": 3, "name_en": "Eid al-Fitr", "name_ar": "عيد الفطر"},
+    {"month": 12, "day": 9, "days": 5, "name_en": "Arafat Day and Eid al-Adha", "name_ar": "وقفة عرفات وعيد الأضحى"},
+    {"month": 1, "day": 1, "days": 1, "name_en": "Islamic New Year", "name_ar": "رأس السنة الهجرية"},
+    {"month": 3, "day": 12, "days": 1, "name_en": "Prophet's Birthday", "name_ar": "المولد النبوي الشريف"}
+  ],
+  "special_holidays": [],
+  "holiday_overrides": {},
+  "ramadan_overrides": {},
+  "money_defaults": {"min_cash_buffer": "1500", "journal_value_limit": "200", "po_auto_approve_limit": "0"},
+  "seed_price_factor": "0.0077"
+}

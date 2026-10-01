@@ -1,6 +1,6 @@
 # Contract: LLM Call Schemas
 
-All LLM calls are made from LangGraph nodes (research R17) through one `LLMClient` wrapper around the official `anthropic` SDK (research R4): model `claude-opus-5`, structured output via `client.messages.parse()` with the Pydantic models below, `stop_reason` checked (refusal → treated as low confidence + owner question), server-side refusal fallback enabled, stable prefix cached. Tests use record/replay fixtures keyed by request hash (R15).
+All LLM calls are made from LangGraph nodes (research R17) through one `LLMClient` wrapper around the official `anthropic` SDK (research R4): model `claude-opus-5-5`, structured output via `client.messages.parse()` with the Pydantic models below, `stop_reason` checked (refusal → treated as low confidence + owner question), server-side refusal fallback enabled, stable prefix cached. Tests use record/replay fixtures keyed by request hash (R15).
 
 ## 1. `InvoiceExtraction` (Accountant, effort `high`)
 
@@ -16,7 +16,7 @@ InvoiceExtraction
   invoice_date: Field[date]            # ISO; raw_text keeps printed form
   due_date: Field[date] | null
   currency: Field[str]
-  lines: list[Line]                    # description, qty, unit, unit_price, vat_rate, line_total (each a Field)
+  lines: list[Line]                    # description, qty, unit, unit_price, vat_rate_percent (as printed, e.g. 14 or 0; null if not printed), line_total (each a Field)
   subtotal: Field[decimal]
   vat_amount: Field[decimal]
   total: Field[decimal]
