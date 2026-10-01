@@ -9,6 +9,9 @@ const RANK: Record<Role, number> = { staff: 0, manager: 1, owner: 2 };
 interface AuthValue {
   me: Me | null;
   loading: boolean;
+  /** Why /me failed when it was not a 401 (server down, offline, timeout); the app shows a retry for it. */
+  error: unknown;
+  reload: () => void;
   can: (min: Role) => boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -21,9 +24,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const meQuery = useQuery({
     queryKey: ["me"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       try {
-        return await api.get<Me>("/me");
+        return await api.get<Me>("/me", signal);
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) return null;
         throw e;
@@ -32,6 +35,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     staleTime: 60_000,
   });
   const me = meQuery.data ?? null;
+  // A retry after a failed first load shows the loading text again rather than a dead error screen.
+  const loading = meQuery.isLoading || (meQuery.isError && meQuery.isFetching && !me);
 
   useEffect(() => {
     if (me) {
@@ -50,7 +55,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    await api.post("/auth/logout");
+    try {
+      await api.post("/auth/logout");
+    } catch (e) {
+      // An already-expired session is as good as a logout; anything else leaves the user signed in.
+      if (!(e instanceof ApiError && e.status === 401)) throw e;
+    }
     setCsrfToken(null);
     qc.clear();
     await qc.invalidateQueries({ queryKey: ["me"] });
@@ -65,10 +75,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [qc],
   );
 
+  const refetchMe = meQuery.refetch;
+  const reload = useCallback(() => void refetchMe(), [refetchMe]);
+
   const can = useCallback((min: Role) => !!me && RANK[me.user.role] >= RANK[min], [me]);
 
   return (
-    <AuthContext.Provider value={{ me, loading: meQuery.isLoading, can, login, logout, setLanguage }}>
+    <AuthContext.Provider
+      value={{ me, loading, error: meQuery.error, reload, can, login, logout, setLanguage }}
+    >
       {children}
     </AuthContext.Provider>
   );

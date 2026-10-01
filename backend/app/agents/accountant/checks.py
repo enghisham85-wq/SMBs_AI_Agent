@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import re
 import uuid
 from datetime import date, timedelta
@@ -17,6 +18,27 @@ from app.harness.action_spec import Check
 from app.models.books import PayableInvoice
 from app.models.master import Item
 from app.models.purchasing import Delivery, DeliveryLine, PurchaseOrder, PurchaseOrderLine
+
+# Tax registration numbers are short (Egypt 9 digits, Saudi Arabia and the UAE 15). The pattern is the owner's
+# and the number is read off a supplier's document, so capping the length also bounds how long a badly
+# written pattern can backtrack (no regex timeout is available in the standard library).
+MAX_TAX_ID_LEN = 20
+
+
+@functools.lru_cache(maxsize=64)
+def _tax_id_regex(pattern: str) -> re.Pattern[str] | None:
+    try:
+        return re.compile(pattern)
+    except re.error:
+        return None
+
+
+def tax_id_valid(value: str | None, pattern: str) -> bool:
+    """The number fully matches the business's tax-id pattern (an over-long number never does)."""
+    if not value or len(value) > MAX_TAX_ID_LEN:
+        return False
+    rx = _tax_id_regex(pattern)
+    return rx is not None and rx.fullmatch(value) is not None
 
 
 def normalise_number(number: str | None) -> str:
@@ -135,7 +157,7 @@ def balanced_entry(lines: list[tuple[str, int, int]]) -> Check:
 
 def supplier_vat_validity(vat_number: str | None, vat_minor: int | None, pattern: str) -> Check:
     charged = (vat_minor or 0) > 0
-    ok = not charged or bool(vat_number and re.fullmatch(pattern, vat_number))
+    ok = not charged or tax_id_valid(vat_number, pattern)
     return Check("supplier_vat_validity", ok, {"vat_number": vat_number, "vat_charged": charged},
                  reason_en="VAT is charged but the supplier's tax registration number is missing or invalid",
                  reason_ar="تم احتساب ضريبة لكن رقم التسجيل الضريبي للمورد مفقود أو غير صالح")

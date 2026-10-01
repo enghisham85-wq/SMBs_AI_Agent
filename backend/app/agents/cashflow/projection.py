@@ -472,13 +472,8 @@ async def _regular_spend(s: AsyncSession, business_id: uuid.UUID, last_bank_date
     return {wd: int(v / weeks) for wd, v in out.items()}
 
 
-async def customer_late_score(s: AsyncSession, business_id: uuid.UUID, customer: str, stored: float) -> float:
+def late_score(paid: list[Any], stored: float) -> float:
     """Share of the customer's settled invoices paid more than 3 days late (the stored score when no history)."""
-    from app.models.books import ReceivableInvoice
-
-    paid = (await s.execute(select(ReceivableInvoice).where(ReceivableInvoice.business_id == business_id,
-                                                            ReceivableInvoice.customer_name == customer,
-                                                            ReceivableInvoice.status == "paid"))).scalars().all()
     rows = [r for r in paid if r.paid_on is not None]
     if not rows:
         return stored
@@ -507,13 +502,23 @@ async def load_inputs(s: AsyncSession, business_id: uuid.UUID, today: date, hori
     end = today + timedelta(days=horizon)
     sales, actual, share, history, source = await _sales_inputs(s, business_id, start, end, today)
 
-    receivables = []
-    for r in (await s.execute(select(ReceivableInvoice).where(ReceivableInvoice.business_id == business_id,
-                                                              ReceivableInvoice.status.in_(("open", "partially_paid"))))).scalars():
-        owed = r.total.amount_minor - r.amount_paid_minor
-        if owed > 0:
-            score = await customer_late_score(s, business_id, r.customer_name, r.late_payment_history_score)
-            receivables.append(Receivable(str(r.id), r.number, r.customer_name, owed, r.due_date, score))
+    open_invoices = [r for r in (await s.execute(select(ReceivableInvoice).where(
+        ReceivableInvoice.business_id == business_id,
+        ReceivableInvoice.status.in_(("open", "partially_paid"))))).scalars()
+        if r.total.amount_minor - r.amount_paid_minor > 0]
+    # Every owing customer's paid history in one query, not one per open invoice.
+    paid_by_customer: dict[str, list[Any]] = {}
+    customers = {r.customer_name for r in open_invoices}
+    if customers:
+        for p in (await s.execute(select(ReceivableInvoice).where(ReceivableInvoice.business_id == business_id,
+                                                                  ReceivableInvoice.customer_name.in_(customers),
+                                                                  ReceivableInvoice.status == "paid"))).scalars():
+            paid_by_customer.setdefault(p.customer_name, []).append(p)
+    receivables = [
+        Receivable(str(r.id), r.number, r.customer_name, r.total.amount_minor - r.amount_paid_minor, r.due_date,
+                   late_score(paid_by_customer.get(r.customer_name, []), r.late_payment_history_score))
+        for r in open_invoices
+    ]
 
     suppliers = {sp.id: sp for sp in (await s.execute(select(Supplier).where(Supplier.business_id == business_id))).scalars()}
 

@@ -19,6 +19,7 @@ from typing import Any
 from sqlalchemy import select
 
 from app.agents.accountant import posting
+from app.agents.accountant.checks import tax_id_valid
 from app.db.engine import read_session
 from app.db.types import Money
 from app.harness.action_spec import ActionContext, ActionSpec, VerifyOutcome, register
@@ -85,7 +86,7 @@ async def compute(business_id: uuid.UUID, period: str) -> dict[str, Any]:
     for inv in payables:
         vat = inv.vat_amount.amount_minor
         flags = []
-        if vat > 0 and not (inv.supplier_vat_number and re.fullmatch(b.tax_id_pattern, inv.supplier_vat_number)):
+        if vat > 0 and not tax_id_valid(inv.supplier_vat_number, b.tax_id_pattern):
             flags.append("missing_vat_number")
         if (inv.subtotal.amount_minor + vat != inv.total.amount_minor
                 or any(ln.get("vat_rate_percent") in (None, "") for ln in inv.lines)):

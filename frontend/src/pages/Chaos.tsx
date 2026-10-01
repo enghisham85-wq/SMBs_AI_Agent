@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, ApiError } from "../api/client";
+import { api, LONG_TIMEOUT_MS } from "../api/client";
+import { errorText } from "../api/errorText";
 import { useEventStream } from "../hooks/useEventStream";
 
 interface Scenario {
@@ -62,8 +63,8 @@ export function Chaos() {
   const qc = useQueryClient();
   const list = useQuery({
     queryKey: ["chaos"],
-    queryFn: () =>
-      api.get<{ demo_mode: boolean; scenarios: Scenario[]; recent: Injection[] }>("/chaos/scenarios"),
+    queryFn: ({ signal }) =>
+      api.get<{ demo_mode: boolean; scenarios: Scenario[]; recent: Injection[] }>("/chaos/scenarios", signal),
   });
   const [running, setRunning] = useState<string | null>(null);
   const [live, setLive] = useState<LiveStep[]>([]);
@@ -95,7 +96,8 @@ export function Chaos() {
   ]);
 
   const inject = useMutation({
-    mutationFn: (key: string) => api.post<Injection>("/chaos/inject", { scenario: key }),
+    mutationFn: (key: string) =>
+      api.post<Injection>("/chaos/inject", { scenario: key }, { timeoutMs: LONG_TIMEOUT_MS }),
     onMutate: (key) => {
       started.current = performance.now();
       setRunning(key);
@@ -104,7 +106,7 @@ export function Chaos() {
       setError(null);
     },
     onSuccess: (inj) => setResult(inj),
-    onError: (e) => setError(e instanceof ApiError ? e.message_for(i18n.language) : String(e)),
+    onError: (e) => setError(errorText(e)),
     onSettled: () => {
       setRunning(null);
       void qc.invalidateQueries({ queryKey: ["chaos"] });

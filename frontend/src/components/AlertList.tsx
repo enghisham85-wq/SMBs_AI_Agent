@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { api } from "../api/client";
+import { api, LONG_TIMEOUT_MS } from "../api/client";
 import type { ApprovalRequest } from "../api/types";
 
 const URGENCY = ["", "border-slate-200", "border-warn-500", "border-bad-500"];
@@ -12,7 +12,11 @@ export function AlertList({ alerts }: { alerts: ApprovalRequest[] }) {
   const qc = useQueryClient();
   const ack = useMutation({
     mutationFn: (a: ApprovalRequest) =>
-      api.post(`/approvals/${a.id}/resolve`, { option_key: a.options[0]?.key }),
+      api.post(
+        `/approvals/${a.id}/resolve`,
+        { option_key: a.options[0]?.key },
+        { timeoutMs: LONG_TIMEOUT_MS },
+      ),
     onSettled: () => qc.invalidateQueries({ queryKey: ["approvals"] }),
   });
   if (alerts.length === 0) return <p className="card text-sm text-ink-500">{t("home.no_alerts")}</p>;

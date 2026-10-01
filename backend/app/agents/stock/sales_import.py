@@ -117,17 +117,18 @@ async def _execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]
             continue
         seen.add(r["row_hash"])
         grouped.setdefault((r["date"], r["payment_method"]), []).append(r)
-    created = []
+    # Ids are assigned here, so the rows go in with one flush instead of one per sale under the write lock.
+    sales = [Sale(id=uuid.uuid4(), business_id=ctx.business_id, date=date.fromisoformat(d),
+                  lines=[{"sold_item_id": r["item_id"], "qty": float(Decimal(r["qty"])), "amount_minor": r["amount_minor"]}
+                         for r in rows],
+                  amount_total=Money(sum(r["amount_minor"] for r in rows), business.currency),
+                  payment_method=method, source=inputs.get("source", "csv_upload"), import_batch_id=batch,
+                  row_hash=rows[0]["row_hash"])
+             for (d, method), rows in grouped.items()]
+    created = [str(sale.id) for sale in sales]
     async with write_session() as s:
-        for (d, method), rows in grouped.items():
-            lines = [{"sold_item_id": r["item_id"], "qty": float(Decimal(r["qty"])), "amount_minor": r["amount_minor"]} for r in rows]
-            sale = Sale(business_id=ctx.business_id, date=date.fromisoformat(d), lines=lines,
-                        amount_total=Money(sum(r["amount_minor"] for r in rows), business.currency),
-                        payment_method=method, source=inputs.get("source", "csv_upload"), import_batch_id=batch,
-                        row_hash=rows[0]["row_hash"])
-            s.add(sale)
-            await s.flush()
-            created.append(str(sale.id))
+        s.add_all(sales)
+        await s.flush()
     return {"sale_ids": created, "imported_rows": len(seen), "skipped_duplicates": skipped,
             "total_minor": sum(r["amount_minor"] for r in inputs["rows"] if r["row_hash"] in seen),
             "dates": sorted({d for d, _ in grouped})}

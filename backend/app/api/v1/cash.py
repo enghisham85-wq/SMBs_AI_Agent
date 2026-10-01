@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from datetime import date, timedelta
 from typing import Any, Literal
@@ -20,7 +21,8 @@ from app.api.common import J, get_business, with_freshness
 from app.core import clock
 from app.core.auth import CurrentUser, RequireManager, RequireOwner
 from app.core.errors import AppError, not_found
-from app.db.engine import read_session
+from app.core.files import read_upload
+from app.db.engine import read_session, write_generation
 from app.db.types import Money
 from app.harness.graph import run_action
 from app.models.books import ReceivableInvoice
@@ -85,43 +87,67 @@ def _proj_rows(p: projection.Projection, cur: str) -> list[dict[str, Any]]:
              "closing": _m(d.closing, cur), "below_buffer": d.below_buffer, "confidence": d.confidence} for d in p.days]
 
 
+Projections = tuple[projection.Inputs, position.Freshness, dict[str, projection.Projection]]
+# Live projections (no saved run yet, the 13-week view, payables) keyed by (business, date, horizon).
+# An entry is only reused while no write has committed since it was computed, and for at most a
+# minute (the inputs are all database rows read for `today`).
+_PROJECTION_TTL_S = 60.0
+_projection_cache: dict[tuple[uuid.UUID, date, int], tuple[int, float, Projections]] = {}
+
+
+async def _projections(bid: uuid.UUID, today: date, horizon_days: int = 30) -> Projections:
+    """load_inputs + project_all, shared by repeated reads. Callers must not mutate the result."""
+    key = (bid, today, horizon_days)
+    gen = write_generation()  # taken before reading: a write landing meanwhile invalidates the entry
+    hit = _projection_cache.get(key)
+    if hit is not None and hit[0] == gen and time.monotonic() - hit[1] < _PROJECTION_TTL_S:
+        return hit[2]
+    async with read_session() as s:
+        inp, fresh = await projection.load_inputs(s, bid, today, horizon=horizon_days)
+    value = (inp, fresh, projection.project_all(inp))  # project_all also settles inp.tight
+    if len(_projection_cache) > 16:
+        _projection_cache.clear()
+    _projection_cache[key] = (gen, time.monotonic(), value)
+    return value
+
+
 @router.get("/cash/forecast")
 async def cash_forecast(horizon: Literal["30d", "13w"] = "30d", scenario: str | None = None,
                         user: CurrentUser = RequireManager) -> Response:
-    b = await get_business(user.business_id)
+    return J(await forecast_data(user.business_id, horizon, scenario))
+
+
+async def forecast_data(bid: uuid.UUID, horizon: str = "30d", scenario: str | None = None) -> dict[str, Any]:
+    b = await get_business(bid)
     cur = b.currency
     today = clock.today()
     if scenario is not None and scenario not in projection.SCENARIOS:
         raise AppError(422, "invalid_scenario", message_en="Scenario must be expected, pessimistic or optimistic.")
     if horizon == "13w":
-        async with read_session() as s:
-            inp, fresh = await projection.load_inputs(s, user.business_id, today, horizon=91)
-        projs = projection.project_all(inp)
+        inp, fresh, projs = await _projections(bid, today, 91)
         sc = scenario or "expected"
         all_weeks = {name: [{"week_start": w.week_start, "inflows": _m(w.inflows, cur), "outflows": _m(w.outflows, cur),
                              "closing": _m(w.closing, cur), "below_buffer": w.below_buffer}
                             for w in projection.weekly(p)] for name, p in projs.items()}
         low = projs[sc].lowest
-        return J(with_freshness({"horizon": "13w", "scenario": sc, "weeks": all_weeks[sc], "scenarios": all_weeks,
+        return with_freshness({"horizon": "13w", "scenario": sc, "weeks": all_weeks[sc], "scenarios": all_weeks,
                                  "buffer": b.min_cash_buffer,
                                  "lowest": {"date": low.date, "balance": _m(low.closing, cur)},
                                  "confidence": {"low": fresh.low_confidence, "reason": fresh.reason_en()}},
-                                {"bank": fresh.bank_data_as_of}))
-    run = await _latest_run(user.business_id)
+                                {"bank": fresh.bank_data_as_of})
+    run = await _latest_run(bid)
     if run is None:  # nothing saved yet: compute without saving
-        async with read_session() as s:
-            inp, fresh = await projection.load_inputs(s, user.business_id, today)
-        projs = projection.project_all(inp)
+        inp, fresh, projs = await _projections(bid, today)
         sc = scenario or "expected"
         p = projs[sc]
         low, first = p.lowest, p.first_below
-        return J(with_freshness({
+        return with_freshness({
             "horizon": "30d", "scenario": sc, "primary_scenario": "expected", "generated_on": today, "saved": False,
             "series": _proj_rows(p, cur), "buffer": b.min_cash_buffer, "opening": _m(inp.opening_minor, cur),
             "lowest": {"date": low.date, "balance": _m(low.closing, cur)},
             "first_below_buffer": first.date if first else None,
             "confidence": {"low": fresh.low_confidence, "reason": fresh.reason_en()}, "checks": []},
-            {"bank": fresh.bank_data_as_of, "forecast": None}))
+            {"bank": fresh.bank_data_as_of, "forecast": None})
     sc = scenario or run.primary_scenario
     async with read_session() as s:
         rows = (await s.execute(select(CashForecast).where(CashForecast.run_id == run.id,
@@ -129,13 +155,13 @@ async def cash_forecast(horizon: Literal["30d", "13w"] = "30d", scenario: str | 
     series = _series_rows(list(rows))
     low_row = min(series, key=lambda r: (r["closing"].amount_minor, r["date"])) if series else None
     first_date = next((r["date"] for r in series if r["below_buffer"]), None)
-    return J(with_freshness({
+    return with_freshness({
         "horizon": "30d", "scenario": sc, "primary_scenario": run.primary_scenario, "generated_on": run.generated_on,
         "saved": True, "run_id": run.id, "series": series, "buffer": run.buffer, "opening": run.opening_balance,
         "lowest": {"date": low_row["date"], "balance": low_row["closing"]} if low_row else None,
         "first_below_buffer": first_date,
         "confidence": {"low": run.low_confidence_reason is not None, "reason": run.low_confidence_reason},
-        "checks": run.checks, "flows": run.flows}, {"bank": run.bank_data_as_of, "forecast": run.created_at}))
+        "checks": run.checks, "flows": run.flows}, {"bank": run.bank_data_as_of, "forecast": run.created_at})
 
 
 # ------------------------------------------------------------------ shortfall plan
@@ -218,9 +244,7 @@ async def cash_receivables(user: CurrentUser = RequireManager) -> Response:
 @router.get("/cash/payables")
 async def cash_payables(user: CurrentUser = RequireManager) -> Response:
     today = clock.today()
-    async with read_session() as s:
-        inp, fresh = await projection.load_inputs(s, user.business_id, today)
-    projection.project_all(inp)  # decides whether cash is tight
+    inp, fresh, _ = await _projections(user.business_id, today)  # project_all decides whether cash is tight
     cur = inp.currency
     items = []
     for p in inp.payables:
@@ -242,8 +266,9 @@ async def cash_payables(user: CurrentUser = RequireManager) -> Response:
 @router.post("/bank/statements")
 async def upload_statement(file: UploadFile = File(...), account_id: uuid.UUID | None = Form(None),
                            mapping: str | None = Form(None), user: CurrentUser = RequireManager) -> Response:
+    data = await read_upload(file)
     try:
-        inputs, parsed = await bank_import.prepare(user.business_id, await file.read(), account_id,
+        inputs, parsed = await bank_import.prepare(user.business_id, data, account_id,
                                                    json.loads(mapping) if mapping else None)
     except bank_import.StatementError as exc:
         raise AppError(422, exc.code, message_en=exc.message_en, message_ar=exc.message_ar) from exc

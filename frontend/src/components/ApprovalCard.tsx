@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, ApiError } from "../api/client";
+import { api, ApiError, LONG_TIMEOUT_MS } from "../api/client";
+import { errorText } from "../api/errorText";
 import type { ApprovalRequest } from "../api/types";
 
 const URGENCY_STYLE = ["border-slate-200", "border-warn-500", "border-bad-500"];
@@ -13,7 +14,13 @@ export function ApprovalCard({ request, compact = false }: { request: ApprovalRe
   const qc = useQueryClient();
   const [notice, setNotice] = useState<string | null>(null);
   const [reply, setReply] = useState("");
-  const editLines = ((request.context?.edit as any)?.lines ?? []) as { item_id: string; name_en: string; name_ar: string; qty: string; unit: string }[];
+  const editLines = ((request.context?.edit as any)?.lines ?? []) as {
+    item_id: string;
+    name_en: string;
+    name_ar: string;
+    qty: string;
+    unit: string;
+  }[];
   const [editing, setEditing] = useState(false);
   const [qtys, setQtys] = useState<Record<string, string>>({});
   const text = lang === "ar" ? request.text_ar : request.text_en;
@@ -21,15 +28,15 @@ export function ApprovalCard({ request, compact = false }: { request: ApprovalRe
 
   const resolve = useMutation({
     mutationFn: (body: { option_key?: string; text?: string; edits?: Record<string, unknown> }) =>
-      api.post(`/approvals/${request.id}/resolve`, body),
+      api.post(`/approvals/${request.id}/resolve`, body, { timeoutMs: LONG_TIMEOUT_MS }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["approvals"] }),
     onError: (e) => {
       if (e instanceof ApiError && e.status === 409) {
         const winner = (e.extra.request as ApprovalRequest | undefined) ?? null;
         setNotice(t("approval.already", { channel: winner?.resolved_via ?? "" }));
         void qc.invalidateQueries({ queryKey: ["approvals"] });
-      } else if (e instanceof ApiError) {
-        setNotice(e.message_for(lang));
+      } else {
+        setNotice(errorText(e));
       }
     },
   });
@@ -46,14 +53,22 @@ export function ApprovalCard({ request, compact = false }: { request: ApprovalRe
     >
       <div className="mb-1 flex items-center justify-between gap-2 text-xs text-ink-500">
         <span>{t("approval.from", { agent })}</span>
-        {request.urgency > 1 && <span className="badge bg-warn-50 text-warn-700">{t("approval.urgency", { level: request.urgency })}</span>}
+        {request.urgency > 1 && (
+          <span className="badge bg-warn-50 text-warn-700">
+            {t("approval.urgency", { level: request.urgency })}
+          </span>
+        )}
       </div>
       <p className={`whitespace-pre-line ${compact ? "text-sm" : "text-base"} text-ink-900`}>{text}</p>
       {done ? (
         <p className="mt-2 text-sm font-medium text-good-700">
           {request.status === "timed_out"
-            ? t("approval.timed_out", { option: resolvedOption ? label(resolvedOption) : request.resolved_option })
-            : t("approval.resolved", { option: resolvedOption ? label(resolvedOption) : request.resolved_option })}
+            ? t("approval.timed_out", {
+                option: resolvedOption ? label(resolvedOption) : request.resolved_option,
+              })
+            : t("approval.resolved", {
+                option: resolvedOption ? label(resolvedOption) : request.resolved_option,
+              })}
           {request.resolved_via ? ` · ${request.resolved_via}` : ""}
         </p>
       ) : (
@@ -62,9 +77,19 @@ export function ApprovalCard({ request, compact = false }: { request: ApprovalRe
             <button
               key={o.key}
               type="button"
-              className={o.effect === "reject" || o.effect === "cancel" ? "btn-danger" : o.effect === "approve" || o.effect === "override" ? "btn-primary" : "btn-secondary"}
+              className={
+                o.effect === "reject" || o.effect === "cancel"
+                  ? "btn-danger"
+                  : o.effect === "approve" || o.effect === "override"
+                    ? "btn-primary"
+                    : "btn-secondary"
+              }
               disabled={resolve.isPending}
-              onClick={() => (o.effect === "edit" && editLines.length ? setEditing((v) => !v) : resolve.mutate({ option_key: o.key }))}
+              onClick={() =>
+                o.effect === "edit" && editLines.length
+                  ? setEditing((v) => !v)
+                  : resolve.mutate({ option_key: o.key })
+              }
             >
               {label(o)}
             </button>
@@ -76,7 +101,9 @@ export function ApprovalCard({ request, compact = false }: { request: ApprovalRe
                 e.preventDefault();
                 resolve.mutate({
                   option_key: request.options.find((o) => o.effect === "edit")!.key,
-                  edits: { lines: editLines.map((l) => ({ item_id: l.item_id, qty: qtys[l.item_id] ?? l.qty })) },
+                  edits: {
+                    lines: editLines.map((l) => ({ item_id: l.item_id, qty: qtys[l.item_id] ?? l.qty })),
+                  },
                 });
               }}
             >
@@ -108,13 +135,25 @@ export function ApprovalCard({ request, compact = false }: { request: ApprovalRe
                 if (reply.trim()) resolve.mutate({ text: reply.trim() });
               }}
             >
-              <input className="input" maxLength={100} value={reply} onChange={(e) => setReply(e.target.value)} placeholder={t("chat.reply")} />
-              <button className="btn-primary" type="submit">{t("chat.send")}</button>
+              <input
+                className="input"
+                maxLength={100}
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                placeholder={t("chat.reply")}
+              />
+              <button className="btn-primary" type="submit">
+                {t("chat.send")}
+              </button>
             </form>
           )}
         </div>
       )}
-      {notice && <p className="mt-2 text-sm text-warn-700" role="status">{notice}</p>}
+      {notice && (
+        <p className="mt-2 text-sm text-warn-700" role="status">
+          {notice}
+        </p>
+      )}
     </article>
   );
 }

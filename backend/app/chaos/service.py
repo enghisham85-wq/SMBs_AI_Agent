@@ -60,14 +60,13 @@ class _Recorder:
         self.start = time.monotonic()
         self.seen: list[tuple[float, str, dict[str, Any]]] = []
         self._queues = {ch: broker.subscribe(ch) for ch in ("harness", "chat")}
-        self._task = asyncio.create_task(self._drain())
+        # One waiter per channel: each sleeps on its queue until a message arrives (no polling).
+        self._tasks = [asyncio.create_task(self._drain(ch, q)) for ch, q in self._queues.items()]
 
-    async def _drain(self) -> None:
+    async def _drain(self, ch: str, q: asyncio.Queue[dict[str, Any]]) -> None:
         while True:
-            for ch, q in self._queues.items():
-                while not q.empty():
-                    self.seen.append((time.monotonic() - self.start, ch, q.get_nowait()))
-            await asyncio.sleep(0.02)
+            msg = await q.get()
+            self.seen.append((time.monotonic() - self.start, ch, msg))
 
     def elapsed(self) -> float:
         return time.monotonic() - self.start
@@ -78,9 +77,11 @@ class _Recorder:
             while not q.empty():
                 self.seen.append((self.elapsed(), ch, q.get_nowait()))
             broker.unsubscribe(ch, q)
-        self._task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._task
+        for task in self._tasks:
+            task.cancel()
+        for task in self._tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
     def first(self, pred: Any) -> float | None:
         return next((t for t, ch, msg in self.seen if pred(ch, msg)), None)

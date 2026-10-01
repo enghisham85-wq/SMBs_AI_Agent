@@ -1,15 +1,22 @@
 """harness_graph: the lifecycle every agent action goes through (FR-001 ... FR-009, research R12/R17).
 
-plan -> precheck -> [hold] -> classify_risk -> premortem_verify -> approval_gate -> execute
-     -> post_verify -> (finalize | rollback -> retry -> execute ... -> escalate) -> finalize
+plan -> precheck -> [prepare_hold -> hold] -> classify_risk -> premortem_verify -> prepare_approval
+     -> approval_gate -> execute -> post_verify -> (finalize | rollback -> retry -> execute ... -> escalate)
+     -> finalize
 
 Every node updates Action.stage and writes an audit entry. Irreversible/external actions pause at
 `approval_gate` (LangGraph interrupt) unless the spec's own auto_approve rule allows them.
 Reversible writes are undone by the spec's `compensate` step when read-back verification fails.
+
+LangGraph re-runs an interrupted node from the top when it resumes, so each owner question is built
+in a `prepare_*` node (wording, which may call the model, rule counters, stage and audit) and kept in
+`pending_ask`; the node that pauses only asks it. Route values keep naming the logical step ("hold",
+"approval_gate"); the path maps send them to the prepare node.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
@@ -75,6 +82,15 @@ def _title(spec: ActionSpec) -> tuple[str, str]:
     return spec.title_en or spec.name.replace("_", " "), spec.title_ar or spec.title_en or spec.name
 
 
+def _ask_to_state(ask: OwnerAsk) -> dict[str, Any]:
+    out: dict[str, Any] = jsonable(dataclasses.asdict(ask))
+    return out
+
+
+def _ask_from_state(data: dict[str, Any]) -> OwnerAsk:
+    return OwnerAsk(**data)
+
+
 # ---------------------------------------------------------------- nodes
 async def plan_node(state: ActionState) -> dict[str, Any]:
     spec = _spec(state)
@@ -135,11 +151,14 @@ async def _check_incident(state: ActionState, spec: ActionSpec, check: dict[str,
     await analyse_and_propose(incident_id, resolve=route == "finalize")
 
 
-async def hold_node(state: ActionState) -> dict[str, Any]:
+def _failed_checks(state: ActionState) -> list[dict[str, Any]]:
+    return [r for r in state.get("precheck_results", []) if not r["passed"]]
+
+
+async def _hold_ask(state: ActionState) -> OwnerAsk:
     spec = _spec(state)
-    ctx = _ctx(state)
-    failed = [r for r in state.get("precheck_results", []) if not r["passed"]]
-    custom: OwnerAsk | None = await spec.on_hold(ctx, state["inputs"], failed) if spec.on_hold else None
+    failed = _failed_checks(state)
+    custom: OwnerAsk | None = await spec.on_hold(_ctx(state), state["inputs"], failed) if spec.on_hold else None
     title_en, title_ar = _title(spec)
     reason_en = "; ".join(r["reason_en"] or r["name"] for r in failed)
     reason_ar = "؛ ".join(r["reason_ar"] or r["reason_en"] or r["name"] for r in failed)
@@ -152,29 +171,58 @@ async def hold_node(state: ActionState) -> dict[str, Any]:
     reask = state.get("reask", 0)
     ask.urgency = min(3, ask.urgency + reask)
     ask.reask = reask
-    await _stage(state, "awaiting_approval", "stage:hold", {"failed": failed})
+    return ask
+
+
+async def prepare_hold_node(state: ActionState) -> dict[str, Any]:
+    ask = await _hold_ask(state)
+    await _stage(state, "awaiting_approval", "stage:hold", {"failed": _failed_checks(state)})
+    return {"pending_ask": _ask_to_state(ask)}
+
+
+async def hold_node(state: ActionState) -> dict[str, Any]:
+    spec = _spec(state)
+    ctx = _ctx(state)
+    failed = _failed_checks(state)
+    pending = state.get("pending_ask")
+    # Nothing prepared: a thread checkpointed before prepare_hold existed is resuming here.
+    ask = _ask_from_state(pending) if pending else await _hold_ask(state)
+    reask = state.get("reask", 0)
     answer = await approvals.ask_owner(
         business_id=ctx.business_id, graph_name=GRAPH, thread_id=state["action_id"],
         gate_key=f"hold:{state.get('attempt', 1)}:{reask}", ask=ask, action_id=ctx.action_id, agent=spec.agent,
     )
     effect = answer.get("effect")
     if effect == "reask":
-        return {"route": "hold", "reask": reask + 1, "approval": answer}
+        return {"route": "hold", "reask": reask + 1, "approval": answer, "pending_ask": None}
     if effect in ("override", "approve", "continue"):
         from app.harness import rules
 
         for r in failed:
             if r.get("learned_rule_id"):
                 await rules.mark_overridden(uuid.UUID(r["learned_rule_id"]))
-        return {"route": "classify_risk", "approval": answer}
+        return {"route": "classify_risk", "approval": answer, "pending_ask": None}
     if effect == "edit" and spec.on_option:
         out = await spec.on_option(ctx, state["inputs"], answer.get("option_key"), answer.get("edits") or {})
-        return {"route": out.get("next", "precheck"), "inputs": out.get("inputs", state["inputs"]), "approval": answer}
+        nxt = out.get("next", "precheck")
+        return {"route": nxt, "inputs": out.get("inputs", state["inputs"]), "approval": answer,
+                "pending_ask": None, **_fresh_gate(nxt, reask)}
     if spec.on_option and effect not in ("cancel", "reject"):
         out = await spec.on_option(ctx, state["inputs"], answer.get("option_key"), answer.get("edits") or {})
-        return {"route": out.get("next", "finalize"), "inputs": out.get("inputs", state["inputs"]),
-                "approval": answer, "outcome": out.get("outcome", "cancelled")}
-    return {"route": "finalize", "outcome": "cancelled", "approval": answer}
+        nxt = out.get("next", "finalize")
+        return {"route": nxt, "inputs": out.get("inputs", state["inputs"]),
+                "approval": answer, "outcome": out.get("outcome", "cancelled"), "pending_ask": None,
+                **_fresh_gate(nxt, reask)}
+    return {"route": "finalize", "outcome": "cancelled", "approval": answer, "pending_ask": None}
+
+
+def _fresh_gate(route: str, reask: int) -> dict[str, Any]:
+    """Moving to an owner gate after an answer needs the next re-ask number.
+
+    The gate key includes it; asking again under the same key would find the request just answered
+    and pause with nothing for the owner to answer.
+    """
+    return {"reask": reask + 1} if route in ("approval_gate", "hold") else {}
 
 
 async def classify_risk_node(state: ActionState) -> dict[str, Any]:
@@ -202,7 +250,8 @@ async def premortem_verify_node(state: ActionState) -> dict[str, Any]:
     return {"verifier_verdict": verdict, "route": route, "reason": reason}
 
 
-async def approval_gate_node(state: ActionState) -> dict[str, Any]:
+async def prepare_approval_node(state: ActionState) -> dict[str, Any]:
+    """Decide whether the owner must approve and, if so, word the request (once per request)."""
     spec = _spec(state)
     ctx = _ctx(state)
     from app.harness import rules
@@ -234,22 +283,38 @@ async def approval_gate_node(state: ActionState) -> dict[str, Any]:
     if policy is not None:
         ask.context = {**ask.context, "learned_rule_id": str(policy)}
     await _stage(state, "awaiting_approval", "stage:approval_gate", {"reask": reask, "learned_rule_id": policy})
+    return {"route": "approval_gate", "pending_ask": _ask_to_state(ask)}
+
+
+async def approval_gate_node(state: ActionState) -> dict[str, Any]:
+    spec = _spec(state)
+    ctx = _ctx(state)
+    pending = state.get("pending_ask")
+    if not pending:
+        # A thread checkpointed before prepare_approval existed is resuming here: prepare inline, as before.
+        prepared = await prepare_approval_node(state)
+        if prepared.get("route") != "approval_gate":
+            return prepared
+        pending = prepared["pending_ask"]
+    reask = state.get("reask", 0)
     answer = await approvals.ask_owner(
         business_id=ctx.business_id, graph_name=GRAPH, thread_id=state["action_id"],
-        gate_key=f"approval:{state.get('attempt', 1)}:{reask}", ask=ask, action_id=ctx.action_id, agent=spec.agent,
+        gate_key=f"approval:{state.get('attempt', 1)}:{reask}", ask=_ask_from_state(pending),
+        action_id=ctx.action_id, agent=spec.agent,
     )
     effect = answer.get("effect")
     if effect == "approve":
-        return {"route": "execute", "approval": answer}
+        return {"route": "execute", "approval": answer, "pending_ask": None}
     if effect == "reask":
-        return {"route": "approval_gate", "reask": reask + 1, "approval": answer}
+        return {"route": "approval_gate", "reask": reask + 1, "approval": answer, "pending_ask": None}
     if effect == "reject":
-        return {"route": "finalize", "outcome": "rejected", "approval": answer}
+        return {"route": "finalize", "outcome": "rejected", "approval": answer, "pending_ask": None}
     if spec.on_option is not None:
         out = await spec.on_option(ctx, state["inputs"], answer.get("option_key"), answer.get("edits") or {})
-        return {"route": out.get("next", "precheck"), "inputs": out.get("inputs", state["inputs"]),
-                "approval": answer, "outcome": out.get("outcome")}
-    return {"route": "finalize", "outcome": "rejected", "approval": answer}
+        nxt = out.get("next", "precheck")
+        return {"route": nxt, "inputs": out.get("inputs", state["inputs"]),
+                "approval": answer, "outcome": out.get("outcome"), "pending_ask": None, **_fresh_gate(nxt, reask)}
+    return {"route": "finalize", "outcome": "rejected", "approval": answer, "pending_ask": None}
 
 
 async def execute_node(state: ActionState) -> dict[str, Any]:
@@ -369,8 +434,9 @@ def _as_agent(fn: Callable[[ActionState], Awaitable[dict[str, Any]]]) -> Callabl
 
 def build() -> StateGraph[Any]:
     g: StateGraph[Any] = StateGraph(ActionState)
-    for name, fn in (("plan", plan_node), ("precheck", precheck_node), ("hold", hold_node),
-                     ("classify_risk", classify_risk_node), ("premortem_verify", premortem_verify_node),
+    for name, fn in (("plan", plan_node), ("precheck", precheck_node), ("prepare_hold", prepare_hold_node),
+                     ("hold", hold_node), ("classify_risk", classify_risk_node),
+                     ("premortem_verify", premortem_verify_node), ("prepare_approval", prepare_approval_node),
                      ("approval_gate", approval_gate_node), ("execute", execute_node), ("post_verify", post_verify_node),
                      ("rollback", rollback_node), ("retry", retry_node), ("escalate", escalate_node),
                      ("finalize", finalize_node)):
@@ -378,11 +444,16 @@ def build() -> StateGraph[Any]:
 
     g.add_edge(START, "plan")
     g.add_edge("plan", "precheck")
-    g.add_conditional_edges("precheck", _route, ["hold", "escalate", "classify_risk", "finalize"])
-    g.add_conditional_edges("hold", _route, ["hold", "classify_risk", "precheck", "execute", "finalize"])
+    g.add_conditional_edges("precheck", _route, {"hold": "prepare_hold", "escalate": "escalate",
+                                                 "classify_risk": "classify_risk", "finalize": "finalize"})
+    g.add_edge("prepare_hold", "hold")
+    g.add_conditional_edges("hold", _route, {"hold": "prepare_hold", "classify_risk": "classify_risk",
+                                             "precheck": "precheck", "execute": "execute", "finalize": "finalize"})
     g.add_conditional_edges("classify_risk", _route, ["premortem_verify", "execute"])
-    g.add_conditional_edges("premortem_verify", _route, ["approval_gate", "escalate"])
-    g.add_conditional_edges("approval_gate", _route, ["execute", "approval_gate", "finalize", "precheck"])
+    g.add_conditional_edges("premortem_verify", _route, {"approval_gate": "prepare_approval", "escalate": "escalate"})
+    g.add_conditional_edges("prepare_approval", _route, ["execute", "approval_gate"])
+    g.add_conditional_edges("approval_gate", _route, {"execute": "execute", "approval_gate": "prepare_approval",
+                                                      "finalize": "finalize", "precheck": "precheck"})
     g.add_edge("execute", "post_verify")
     g.add_conditional_edges("post_verify", _route, ["finalize", "rollback"])
     g.add_conditional_edges("rollback", _route, ["retry", "escalate"])

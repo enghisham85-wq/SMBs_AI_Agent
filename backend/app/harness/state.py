@@ -24,3 +24,4 @@ class ActionState(TypedDict, total=False):
     reason: str | None
     dry_run: bool
     route: str
+    pending_ask: dict[str, Any] | None  # the owner question prepared for the next hold / approval_gate

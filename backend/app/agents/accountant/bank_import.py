@@ -177,17 +177,22 @@ async def _execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]
         await s.flush()
         # A closing balance per statement date: the file's own balance column, else the running total.
         snapshots: list[dict[str, Any]] = []
-        for d in dates:
-            given = [r["balance_minor"] for r in inputs["rows"] if r["date"] == d.isoformat() and r.get("balance_minor") is not None]
+        given_by_day: dict[str, list[int]] = {}
+        for r in inputs["rows"]:
+            if r.get("balance_minor") is not None:
+                given_by_day.setdefault(r["date"], []).append(r["balance_minor"])
+        closes = [datetime.combine(d, time(23, 59)) for d in dates]
+        existing_snaps = {sn.as_of: sn for sn in (await s.execute(select(BankBalanceSnapshot).where(
+            BankBalanceSnapshot.account_id == account_id, BankBalanceSnapshot.as_of.in_(closes)))).scalars()} if dates else {}
+        for d, as_of in zip(dates, closes, strict=True):
+            given = given_by_day.get(d.isoformat())
             closing = given[-1] if given else await _balance_before(s, account_id, d + timedelta(days=1))
-            as_of = datetime.combine(d, time(23, 59))
-            snap = (await s.execute(select(BankBalanceSnapshot).where(BankBalanceSnapshot.account_id == account_id,
-                                                                      BankBalanceSnapshot.as_of == as_of))).scalar_one_or_none()
+            snap = existing_snaps.get(as_of)
             if snap is None:
-                snap = BankBalanceSnapshot(business_id=ctx.business_id, account_id=account_id, as_of=as_of,
-                                           balance=Money(int(closing), acct.currency))
+                # Client-side id: no flush needed to report it (a later query autoflushes the row).
+                snap = BankBalanceSnapshot(id=uuid.uuid4(), business_id=ctx.business_id, account_id=account_id,
+                                           as_of=as_of, balance=Money(int(closing), acct.currency))
                 s.add(snap)
-                await s.flush()
                 snapshots.append({"id": str(snap.id), "previous": None})
             else:
                 snapshots.append({"id": str(snap.id), "previous": snap.balance.amount_minor})

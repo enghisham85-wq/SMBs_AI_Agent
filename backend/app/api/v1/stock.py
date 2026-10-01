@@ -10,6 +10,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, File, Form, Response, UploadFile
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.stock import checks, demand, reorder, waste
 from app.agents.stock import graphs as stock_graphs
@@ -19,7 +20,7 @@ from app.api.common import J, with_freshness
 from app.core import clock, settings_store
 from app.core.auth import CurrentUser, RequireManager, RequireStaff, can
 from app.core.errors import AppError, not_found
-from app.core.files import save_upload
+from app.core.files import read_upload, save_upload
 from app.db.engine import read_session, write_session
 from app.harness.graph import run_action
 from app.harness.incidents import open_incident
@@ -33,23 +34,28 @@ router = APIRouter(tags=["stock"])
 @router.get("/stock/items")
 async def list_items(user: CurrentUser = RequireStaff) -> Response:
     """Purchased items with stock, days of cover, reorder status and expiry risk. Staff see no costs."""
-    show_money = can(user.role, "manager")
+    return J(await items_data(user.business_id, show_money=can(user.role, "manager")))
+
+
+async def items_data(business_id: uuid.UUID, *, show_money: bool) -> dict[str, Any]:
     today = clock.today()
     async with read_session() as s:
-        items = list((await s.execute(select(Item).where(Item.business_id == user.business_id,
+        items = list((await s.execute(select(Item).where(Item.business_id == business_id,
                                                          Item.is_ingredient.is_(True)).order_by(Item.name_en))).scalars())
-        levels = {r.item_id: r for r in (await s.execute(select(StockLevel).where(StockLevel.business_id == user.business_id))).scalars()}
-        gen = await demand.latest_generation(s, user.business_id, today)
-        fc = await demand.daily_demand(s, user.business_id, gen) if gen else {}
+        levels = {r.item_id: r for r in (await s.execute(select(StockLevel).where(StockLevel.business_id == business_id))).scalars()}
+        gen = await demand.latest_generation(s, business_id, today)
+        fc = await demand.daily_demand(s, business_id, gen) if gen else {}
         open_lines: dict[uuid.UUID, list[dict[str, Any]]] = {}
-        for po in (await s.execute(select(PurchaseOrder).where(PurchaseOrder.business_id == user.business_id,
-                                                               PurchaseOrder.status.in_(OPEN_STATUSES)))).scalars():
-            for ln in (await s.execute(select(PurchaseOrderLine).where(PurchaseOrderLine.po_id == po.id))).scalars():
+        open_pos = (await s.execute(select(PurchaseOrder).where(PurchaseOrder.business_id == business_id,
+                                                                PurchaseOrder.status.in_(OPEN_STATUSES)))).scalars().all()
+        lines_by_po = await _lines_by_po(s, [po.id for po in open_pos])
+        for po in open_pos:
+            for ln in lines_by_po.get(po.id, []):
                 open_lines.setdefault(ln.item_id, []).append({"po": po.number, "status": po.status, "qty": ln.qty,
                                                               "expected_date": po.expected_date})
-        suppliers = {sp.id: sp for sp in (await s.execute(select(Supplier).where(Supplier.business_id == user.business_id))).scalars()}
+        suppliers = {sp.id: sp for sp in (await s.execute(select(Supplier).where(Supplier.business_id == business_id))).scalars()}
         last_update = (await s.execute(select(func.max(StockLevel.last_updated_at)).where(
-            StockLevel.business_id == user.business_id))).scalar_one()
+            StockLevel.business_id == business_id))).scalar_one()
     out = []
     for item in items:
         lvl = levels.get(item.id)
@@ -79,8 +85,7 @@ async def list_items(user: CurrentUser = RequireStaff) -> Response:
         if show_money:
             row["unit_cost"] = item.unit_cost
         out.append(row)
-    return J(with_freshness({"items": out, "forecast_generated_on": gen},
-                            {"stock": last_update, "forecast": gen}))
+    return with_freshness({"items": out, "forecast_generated_on": gen}, {"stock": last_update, "forecast": gen})
 
 
 @router.get("/stock/products")
@@ -163,49 +168,89 @@ class CountIn(BaseModel):
     counts: list[CountLine]
 
 
+def _unique_runs(counts: list[CountLine]) -> list[list[CountLine]]:
+    """Split into consecutive runs with no repeated item, so a repeat sees the earlier adjustment."""
+    runs: list[list[CountLine]] = [[]]
+    for c in counts:
+        if any(x.item_id == c.item_id for x in runs[-1]):
+            runs.append([])
+        runs[-1].append(c)
+    return [r for r in runs if r]
+
+
 @router.post("/stock/counts", status_code=201)
 async def record_counts(body: CountIn, user: CurrentUser = RequireManager) -> Response:
     tolerance = float(await settings_store.get(user.business_id, "stock_variance_pct"))
     results = []
-    for c in body.counts:
-        item_id, counted = c.item_id, c.counted_qty
+    for run in _unique_runs(body.counts):
+        ids = [c.item_id for c in run]
         async with read_session() as s:
-            item = await s.get(Item, item_id)
-            lvl = (await s.execute(select(StockLevel).where(StockLevel.item_id == item_id))).scalar_one_or_none()
-        if item is None or item.business_id != user.business_id:
+            items = {i.id: i for i in (await s.execute(select(Item).where(Item.id.in_(ids)))).scalars()}
+            levels = {lv.item_id: lv.quantity for lv in (await s.execute(
+                select(StockLevel).where(StockLevel.item_id.in_(ids)))).scalars()}
+        if any(i not in items or items[i].business_id != user.business_id for i in ids):
             raise not_found("Item")
-        calculated = lvl.quantity if lvl else Decimal(0)
-        check = checks.count_variance(item, counted, calculated, tolerance)
-        resolution = "accepted" if check.passed else "investigating"
+        lines = []
+        for c in run:
+            calculated = levels.get(c.item_id, Decimal(0))
+            lines.append((c, calculated, checks.count_variance(items[c.item_id], c.counted_qty, calculated, tolerance)))
+        # The count rows share one commit; each correction stays its own harness action (checked,
+        # audited and possibly sent for approval on its own), so those run line by line.
         async with write_session() as s:
-            s.add(StockCount(business_id=user.business_id, item_id=item_id, counted_qty=counted, calculated_qty=calculated,
-                             variance=counted - calculated, counted_by=user.id, date=clock.today(), resolution=resolution))
-        if counted != calculated:
-            reason = "stock count" if check.passed else "stock count: variance under investigation (missing waste record, recipe error or loss)"
-            await run_action("adjust_stock", {"item_id": str(item_id), "qty_delta": str(counted - calculated),
-                                              "type": "count_correction", "reason": reason}, user.business_id)
-        if not check.passed:
-            await open_incident(business_id=user.business_id, agent="stock", type="count_variance", detected_by="count_variance",
-                                summary=check.reason_en, refs={"item_id": str(item_id), **{k: str(v) for k, v in check.details.items()}},
-                                action_taken="adjusted to the count and opened an investigation")
-        results.append({"item_id": item_id, "variance": counted - calculated, "resolution": resolution,
-                        "variance_pct": check.details.get("variance_pct")})
+            s.add_all([StockCount(business_id=user.business_id, item_id=c.item_id, counted_qty=c.counted_qty,
+                                  calculated_qty=calculated, variance=c.counted_qty - calculated, counted_by=user.id,
+                                  date=clock.today(), resolution="accepted" if check.passed else "investigating")
+                       for c, calculated, check in lines])
+        for c, calculated, check in lines:
+            item_id, counted = c.item_id, c.counted_qty
+            if counted != calculated:
+                reason = "stock count" if check.passed else "stock count: variance under investigation (missing waste record, recipe error or loss)"
+                await run_action("adjust_stock", {"item_id": str(item_id), "qty_delta": str(counted - calculated),
+                                                  "type": "count_correction", "reason": reason}, user.business_id)
+            if not check.passed:
+                await open_incident(business_id=user.business_id, agent="stock", type="count_variance", detected_by="count_variance",
+                                    summary=check.reason_en, refs={"item_id": str(item_id), **{k: str(v) for k, v in check.details.items()}},
+                                    action_taken="adjusted to the count and opened an investigation")
+            results.append({"item_id": item_id, "variance": counted - calculated,
+                            "resolution": "accepted" if check.passed else "investigating",
+                            "variance_pct": check.details.get("variance_pct")})
     return J({"results": results}, 201)
 
 
-async def _po_out(s: Any, po: PurchaseOrder) -> dict[str, Any]:
-    sup = await s.get(Supplier, po.supplier_id)
-    lines = (await s.execute(select(PurchaseOrderLine).where(PurchaseOrderLine.po_id == po.id))).scalars().all()
-    items = {i.id: i for i in (await s.execute(select(Item).where(Item.id.in_([ln.item_id for ln in lines])))).scalars()} if lines else {}
-    deliveries = (await s.execute(select(Delivery).where(Delivery.po_id == po.id))).scalars().all()
-    return {"id": po.id, "number": po.number, "status": po.status, "supplier": {"id": sup.id, "name_en": sup.name_en,
+async def _lines_by_po(s: AsyncSession, po_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[PurchaseOrderLine]]:
+    out: dict[uuid.UUID, list[PurchaseOrderLine]] = {}
+    if po_ids:
+        for ln in (await s.execute(select(PurchaseOrderLine).where(PurchaseOrderLine.po_id.in_(po_ids)))).scalars():
+            out.setdefault(ln.po_id, []).append(ln)
+    return out
+
+
+async def _pos_out(s: AsyncSession, pos: list[PurchaseOrder]) -> list[dict[str, Any]]:
+    """Orders with supplier, lines and deliveries, loaded with one query per table for the whole page."""
+    if not pos:
+        return []
+    po_ids = [po.id for po in pos]
+    sups = {sp.id: sp for sp in (await s.execute(select(Supplier).where(
+        Supplier.id.in_({po.supplier_id for po in pos})))).scalars()}
+    lines_by_po = await _lines_by_po(s, po_ids)
+    item_ids = {ln.item_id for lns in lines_by_po.values() for ln in lns}
+    items = {i.id: i for i in (await s.execute(select(Item).where(Item.id.in_(item_ids)))).scalars()} if item_ids else {}
+    deliveries: dict[uuid.UUID, list[Delivery]] = {}
+    for d in (await s.execute(select(Delivery).where(Delivery.po_id.in_(po_ids)))).scalars():
+        deliveries.setdefault(d.po_id, []).append(d)
+    out = []
+    for po in pos:
+        sup = sups.get(po.supplier_id)
+        out.append({
+            "id": po.id, "number": po.number, "status": po.status, "supplier": {"id": sup.id, "name_en": sup.name_en,
             "name_ar": sup.name_ar} if sup else None, "total": po.total, "expected_date": po.expected_date,
             "is_critical": po.is_critical_order, "sent_at": po.sent_at, "late": po.late_flagged, "notes": po.notes,
             "lines": [{"item_id": ln.item_id, "name_en": items[ln.item_id].name_en if ln.item_id in items else "",
                        "name_ar": items[ln.item_id].name_ar if ln.item_id in items else "", "qty": ln.qty, "unit": ln.unit,
-                       "unit_price": ln.unit_price, "line_total": ln.line_total} for ln in lines],
+                       "unit_price": ln.unit_price, "line_total": ln.line_total} for ln in lines_by_po.get(po.id, [])],
             "deliveries": [{"id": d.id, "received_on": d.received_on, "discrepancies": d.discrepancies,
-                            "has_photo": d.photo_file_id is not None} for d in deliveries]}
+                            "has_photo": d.photo_file_id is not None} for d in deliveries.get(po.id, [])]})
+    return out
 
 
 @router.get("/purchase-orders")
@@ -217,7 +262,7 @@ async def list_pos(status: str | None = None, user: CurrentUser = RequireStaff) 
         elif status:
             q = q.where(PurchaseOrder.status == status)
         rows = (await s.execute(q.order_by(PurchaseOrder.created_at.desc()).limit(100))).scalars().all()
-        out = [await _po_out(s, po) for po in rows]
+        out = await _pos_out(s, list(rows))
     if not can(user.role, "manager"):  # staff see what to expect, not prices
         for po in out:
             po.pop("total", None)
@@ -243,19 +288,30 @@ async def patch_po(po_id: uuid.UUID, body: POPatch, user: CurrentUser = RequireM
     # Re-run the draft checks on the edited order.
     pct = float(await settings_store.get(user.business_id, "price_change_pct"))
     found = []
+    before = clock.today() + timedelta(days=1)
     async with read_session() as s:
         lines = (await s.execute(select(PurchaseOrderLine).where(PurchaseOrderLine.po_id == po_id))).scalars().all()
         found.append(await checks.duplicate_po(s, user.business_id, po.supplier_id, {str(ln.item_id) for ln in lines},
                                                exclude_po=po_id))
+        item_ids = {ln.item_id for ln in lines}
+        items = {i.id: i for i in (await s.execute(select(Item).where(Item.id.in_(item_ids)))).scalars()} if lines else {}
+        # Every price of this supplier for these items, newest first: the latest one and the
+        # price_history() window (the five newest before tomorrow) are both read from it.
+        prices: dict[uuid.UUID, list[SupplierPrice]] = {}
+        if lines:
+            for p in (await s.execute(select(SupplierPrice).where(SupplierPrice.supplier_id == po.supplier_id,
+                                                                  SupplierPrice.item_id.in_(item_ids))
+                                      .order_by(SupplierPrice.valid_from.desc()))).scalars():
+                prices.setdefault(p.item_id, []).append(p)
         for ln in lines:
-            item = await s.get(Item, ln.item_id)
-            price = (await s.execute(select(SupplierPrice).where(SupplierPrice.supplier_id == po.supplier_id,
-                                                                 SupplierPrice.item_id == ln.item_id)
-                                     .order_by(SupplierPrice.valid_from.desc()).limit(1))).scalar_one_or_none()
-            hist = await checks.price_history(s, po.supplier_id, ln.item_id, clock.today() + timedelta(days=1))
+            item = items[ln.item_id]
+            mine = prices.get(ln.item_id, [])
+            hist = [p.price.amount_minor for p in mine if p.valid_from < before][:5]
             found.append(checks.price_sanity(item, ln.unit_price.amount_minor, hist[1:], pct))
-            found.append(checks.unit_mismatch(item, ln.unit, ln.pack_size, price))
-        out = await _po_out(s, await s.get(PurchaseOrder, po_id))
+            found.append(checks.unit_mismatch(item, ln.unit, ln.pack_size, mine[0] if mine else None))
+        edited = await s.get(PurchaseOrder, po_id)
+        assert edited is not None
+        out = (await _pos_out(s, [edited]))[0]
     out["checks"] = [{"name": c.name, "passed": c.passed, "reason_en": c.reason_en, "reason_ar": c.reason_ar} for c in found]
     return J(out)
 
@@ -284,7 +340,7 @@ async def record_delivery(po_id: uuid.UUID, lines: str = Form(...), photo: Uploa
                        message_ar="يجب أن تكون البنود قائمة JSON من {item_id, qty_received}.") from exc
     photo_id = po.notes.get("pending_photo_file_id")
     if photo is not None:
-        ref = await save_upload(user.business_id, await photo.read(), photo.content_type or "image/jpeg",
+        ref = await save_upload(user.business_id, await read_upload(photo), photo.content_type or "image/jpeg",
                                 photo.filename or "delivery.jpg", user.id)
         photo_id = str(ref.id)
     result = await stock_graphs.record_delivery(user.business_id, {

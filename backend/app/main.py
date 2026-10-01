@@ -37,6 +37,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     tasks: list[asyncio.Task[Any]] = []
     bid = await first_business_id()
     if bid is not None:
+        if await clock.clear_stale_advance(bid):
+            log.warning("cleared a clock advance left unfinished by the previous run")
         await clock.load(bid)
         if not settings.DEMO_MODE:
             from app.core.scheduler import real_time_loop
@@ -77,6 +79,15 @@ def create_app() -> FastAPI:
         from app.core.freshness import FreshnessCheck
 
         app.add_middleware(FreshnessCheck)
+
+    from starlette.middleware.gzip import GZipMiddleware
+
+    from app.core.files import UploadLimit
+
+    # Added after FreshnessCheck so it wraps it (that check reads the uncompressed body). Starlette's
+    # default exclusions leave text/event-stream alone, so the SSE streams are not buffered.
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
+    app.add_middleware(UploadLimit)  # outermost: refuses an oversized upload before anything reads it
 
     from app.api import router as api_router
 

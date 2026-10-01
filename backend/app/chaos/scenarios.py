@@ -10,6 +10,7 @@ clock is advanced until an agent notices.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import hashlib
 import json
@@ -154,7 +155,8 @@ def _render(spec: Any) -> tuple[bytes, str, str]:
 async def _submit(ctx: Ctx, spec: Any) -> dict[str, Any]:
     from app.agents.accountant.intake import submit
 
-    data, mime, name = _render(spec)
+    # Rendering (reportlab/Pillow) and its file writes are slow and blocking: keep them off the event loop.
+    data, mime, name = await asyncio.to_thread(_render, spec)
     return await submit(ctx.bid, data, mime, name, "dashboard", None)
 
 

@@ -18,6 +18,7 @@ from app.api.common import J, with_freshness
 from app.core import clock
 from app.core.auth import CurrentUser, RequireManager
 from app.core.errors import AppError
+from app.core.files import read_upload
 from app.db.engine import read_session
 from app.harness.graph import run_action
 from app.models.finance_master import Sale
@@ -32,11 +33,26 @@ def _result(out: dict, errors: list) -> dict:
             "skipped_duplicates": res.get("skipped_duplicates", 0), "errors": errors}
 
 
+def _mapping(raw: str | None) -> dict[str, str] | None:
+    """The optional column mapping form field: a JSON object of {field: column name}."""
+    if not raw:
+        return None
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AppError(422, "invalid_mapping", message_en="The column mapping is not valid JSON.",
+                       message_ar="ربط الأعمدة ليس JSON صالحاً.") from exc
+    if not isinstance(value, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in value.items()):
+        raise AppError(422, "invalid_mapping", message_en="The column mapping must map field names to column names.",
+                       message_ar="يجب أن يربط ربط الأعمدة أسماء الحقول بأسماء الأعمدة.")
+    return value
+
+
 @router.post("/sales/import", status_code=201)
 async def import_csv(file: UploadFile = File(...), mapping: str | None = Form(None),
                      user: CurrentUser = RequireManager) -> Response:
-    data = await file.read()
-    parsed = await parse_csv(user.business_id, data, json.loads(mapping) if mapping else None)
+    data = await read_upload(file)
+    parsed = await parse_csv(user.business_id, data, _mapping(mapping))
     if await file_already_imported(user.business_id, parsed.sha256):
         raise AppError(409, "file_already_imported", message_en="This file was already imported.",
                        message_ar="تم استيراد هذا الملف من قبل.")

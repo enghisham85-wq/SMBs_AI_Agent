@@ -7,11 +7,12 @@ trigger must validate against its kind's schema (rule_schemas), else the templat
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from app.db.engine import read_session
 from app.harness import rule_schemas, rules
@@ -22,6 +23,7 @@ from app.models.harness import Incident
 PROMPTS = Path(__file__).resolve().parent.parent / "llm" / "prompts"
 Template = Callable[[Incident], tuple[IncidentAnalysis, RuleProposal] | None]
 TEMPLATES: dict[str, Template] = {}
+_LLM_FAILURES = (LLMRefusalError, LLMUnavailableError, MissingFixtureError, AttributeError)
 
 
 def template(incident_type: str) -> Callable[[Template], Template]:
@@ -216,12 +218,24 @@ async def analyse_and_propose(incident_id: uuid.UUID, *, resolve: bool = True) -
     facts = json.dumps({"type": inc.type, "summary": inc.summary, "detected_by": inc.detected_by, "refs": inc.refs,
                         "action_taken": inc.action_taken}, ensure_ascii=False, default=str)
     llm = get_llm()
-    try:
-        analysis = await llm.parse("incident", _prompt("incident_analysis.md"), [text_block(facts)], IncidentAnalysis,
-                                   offline=lambda: fallback[0] if fallback else IncidentAnalysis(root_cause=inc.summary, category="other"))
-        proposal: RuleProposal | None = await llm.parse("incident", _prompt("rule_proposal.md"), [text_block(facts)], RuleProposal,
-                                   offline=lambda: fallback[1] if fallback else None)  # type: ignore[arg-type,return-value]
-    except (LLMRefusalError, LLMUnavailableError, MissingFixtureError, AttributeError):
+    # Both calls only read `facts`, so they run side by side; any expected failure falls back for both.
+    got = await asyncio.gather(
+        llm.parse("incident", _prompt("incident_analysis.md"), [text_block(facts)], IncidentAnalysis,
+                  offline=lambda: fallback[0] if fallback else IncidentAnalysis(root_cause=inc.summary, category="other")),
+        llm.parse("incident", _prompt("rule_proposal.md"), [text_block(facts)], RuleProposal,
+                  offline=lambda: fallback[1] if fallback else None),  # type: ignore[arg-type,return-value]
+        return_exceptions=True,
+    )
+    errors = [r for r in got if isinstance(r, BaseException)]
+    unexpected = [e for e in errors if not isinstance(e, _LLM_FAILURES)]
+    if unexpected:
+        raise unexpected[0]
+    analysis: IncidentAnalysis
+    proposal: RuleProposal | None
+    if not errors:
+        analysis = cast(IncidentAnalysis, got[0])
+        proposal = cast(RuleProposal | None, got[1])
+    else:
         if fallback is None:
             await _record_cause(inc, IncidentAnalysis(root_cause=inc.summary, category="other"), resolve)
             return None

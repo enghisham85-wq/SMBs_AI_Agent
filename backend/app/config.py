@@ -9,6 +9,8 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_SESSION_SECRET = "change-me-in-production"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -32,13 +34,22 @@ class Settings(BaseSettings):
     FILES_DIR: str = "./var/files"
     # Sample invoices written by the generator (the offline extractor reads their ground truth).
     SAMPLE_INVOICES_DIR: str = "./var/sample_invoices"
-    SESSION_SECRET: str = "change-me-in-production"
+    SESSION_SECRET: str = DEFAULT_SESSION_SECRET
 
     DEFAULT_COUNTRY: str = "EG"
     # When set, overrides the chosen country profile's VAT rate for newly created businesses.
     DEFAULT_VAT_RATE_PERCENT: Decimal | None = Field(default=None, ge=0, le=100)
 
 
+class InsecureSettingsError(RuntimeError):
+    pass
+
+
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    # Session cookies are signed with this secret; with the public default anyone could forge one.
+    # (Checked here, not in a pydantic validator, so the error never echoes the other settings.)
+    if settings.APP_ENV == "prod" and settings.SESSION_SECRET == DEFAULT_SESSION_SECRET:
+        raise InsecureSettingsError("SESSION_SECRET must be set to a private random value when APP_ENV=prod")
+    return settings

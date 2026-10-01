@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from app.agents.accountant import checks, classification, extraction, matching, supplier_match
 from app.approvals import service as approvals
@@ -51,6 +51,8 @@ class DocState(TypedDict, total=False):
     outcome: str | None
     held_published: bool
     warnings: list[str]
+    # Per-line classification, keyed by line index; reused while the supplier and description are unchanged.
+    classified: dict[str, dict[str, Any]]
 
 
 def _norm(d: dict[str, Any]) -> extraction.Normalised:
@@ -278,36 +280,52 @@ async def validate_node(state: DocState) -> dict[str, Any]:
     if not vat_check.passed:
         warnings.append(vat_check.reason_en)
 
-    # Classification of non-stock lines
+    # Classification of non-stock lines. Each line is classified (and flagged) once; re-validating after an
+    # owner answer reuses the result instead of asking the model again.
+    sup_id = supplier.id if supplier else None
+    overridden: dict[str, str] = ov.get("accounts") or {}
+    classified: dict[str, dict[str, Any]] = dict(state.get("classified") or {})
+    keys = {i: f"{sup_id}|{ln['description']}" for i, ln in enumerate(n.lines)}
+    todo = [i for i in range(len(n.lines)) if item_ids[i] is None and str(i) not in overridden
+            and (classified.get(str(i)) or {}).get("key") != keys[i]]
+    fresh = await classification.classify_many(business.id, sup_id, [n.lines[i]["description"] for i in todo])
+    for i, cls in zip(todo, fresh, strict=True):
+        desc = n.lines[i]["description"]
+        band = await confidence_route(
+            business.id, "accountant", cls.confidence,
+            f"Recorded “{desc}” as account {cls.account_code} ({cls.confidence:.0%} sure)",
+            f"سُجّل «{desc}» على الحساب {cls.account_code} (بثقة {cls.confidence:.0%})",
+            {"document_id": str(doc.id), "line": i})
+        classified[str(i)] = {"key": keys[i], "account_code": cls.account_code, "account_source": cls.source,
+                              "account_confidence": cls.confidence, "band": band}
     accounts: list[dict[str, Any]] = []
+    accts: dict[str, Account] | None = None
     for i, ln in enumerate(n.lines):
         if item_ids[i] is not None:
             accounts.append({"item_id": str(item_ids[i]), "account_code": "1200", "account_source": "stock", "account_confidence": 1.0})
             continue
-        if str(i) in (ov.get("accounts") or {}):
-            code = ov["accounts"][str(i)]
-            accounts.append({"account_code": code, "account_source": "owner", "account_confidence": 1.0})
+        if str(i) in overridden:
+            accounts.append({"account_code": overridden[str(i)], "account_source": "owner", "account_confidence": 1.0})
             continue
-        cls = await classification.classify(business.id, supplier.id if supplier else None, ln["description"])
-        accounts.append({"account_code": cls.account_code, "account_source": cls.source, "account_confidence": cls.confidence})
-        if await confidence_route(
-                business.id, "accountant", cls.confidence,
-                f"Recorded “{ln['description']}” as account {cls.account_code} ({cls.confidence:.0%} sure)",
-                f"سُجّل «{ln['description']}» على الحساب {cls.account_code} (بثقة {cls.confidence:.0%})",
-                {"document_id": str(doc.id), "line": i}) == "ask":
-            async with read_session() as s:
-                accts = {a.code: a for a in (await s.execute(select(Account).where(Account.business_id == business.id))).scalars()}
-            choices = [cls.account_code] + [c for c in ALT_ACCOUNTS if c != cls.account_code][:2]
+        c = classified[str(i)]
+        accounts.append({"account_code": c["account_code"], "account_source": c["account_source"],
+                         "account_confidence": c["account_confidence"]})
+        if c["band"] == "ask":
+            if accts is None:
+                async with read_session() as s:
+                    accts = {a.code: a for a in (await s.execute(select(Account).where(Account.business_id == business.id))).scalars()}
+            code = c["account_code"]
+            choices = [code] + [x for x in ALT_ACCOUNTS if x != code][:2]
             issues.append(_issue(
                 f"classify:{i}", f"How should I record “{ln['description']}” from {supplier.name_en if supplier else 'this supplier'}?",
                 f"كيف أسجل «{ln['description']}» من {supplier.name_ar if supplier else 'هذا المورد'}؟",
-                [{"key": f"account:{c}", "label_en": f"{accts[c].name_en} ({c})", "label_ar": f"{accts[c].name_ar} ({c})",
-                  "effect": "account"} for c in choices if c in accts],
-                line=i, suggested=cls.account_code))
+                [{"key": f"account:{x}", "label_en": f"{accts[x].name_en} ({x})", "label_ar": f"{accts[x].name_ar} ({x})",
+                  "effect": "account"} for x in choices if x in accts],
+                line=i, suggested=code))
     saved = await _save(state, business, n, supplier, issues, warnings, found, po_id, accounts)
     if detected_tw is not None and saved.get("invoice_id"):
         await _three_way_incident({**state, "invoice_id": saved["invoice_id"]}, detected_tw, None)
-    return saved
+    return {**saved, "classified": classified}
 
 
 async def _save(state: DocState, business: Business, n: extraction.Normalised, supplier: Supplier | None,
@@ -644,14 +662,21 @@ async def ledger_bank_balances(business_id: uuid.UUID) -> dict[str, dict[str, in
     """Ledger vs bank-statement balance per bank account (FR: bank balance agreement)."""
     async with read_session() as s:
         accts = {a.code: a for a in (await s.execute(select(Account).where(Account.business_id == business_id))).scalars()}
+        banks = list((await s.execute(select(BankAccount).where(BankAccount.business_id == business_id))).scalars())
+        ledger_ids = [accts[ba.ledger_account_code].id for ba in banks if ba.ledger_account_code in accts]
+        sums: dict[uuid.UUID, int] = {}
+        if ledger_ids:
+            net = func.coalesce(func.sum(JournalLine.debit_minor - JournalLine.credit_minor), 0)
+            sums = {aid: int(total) for aid, total in (await s.execute(
+                select(JournalLine.account_id, net).join(JournalEntry, JournalEntry.id == JournalLine.entry_id)
+                .where(JournalLine.account_id.in_(ledger_ids), JournalEntry.status.in_(("posted", "reversed")))
+                .group_by(JournalLine.account_id))).all()}
         out: dict[str, dict[str, int]] = {}
-        for ba in (await s.execute(select(BankAccount).where(BankAccount.business_id == business_id))).scalars():
+        for ba in banks:
             acct = accts.get(ba.ledger_account_code)
             if acct is None:
                 continue
-            rows = (await s.execute(select(JournalLine).join(JournalEntry, JournalEntry.id == JournalLine.entry_id).where(
-                JournalLine.account_id == acct.id, JournalEntry.status.in_(("posted", "reversed"))))).scalars().all()
-            ledger = sum(r.debit_minor - r.credit_minor for r in rows)
+            ledger = sums.get(acct.id, 0)
             snap = (await s.execute(select(BankBalanceSnapshot).where(BankBalanceSnapshot.account_id == ba.id)
                                     .order_by(BankBalanceSnapshot.as_of.desc()).limit(1))).scalar_one_or_none()
             out[ba.name] = {"ledger_minor": ledger, "bank_minor": snap.balance.amount_minor if snap else 0}
