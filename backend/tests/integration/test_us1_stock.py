@@ -223,3 +223,17 @@ async def test_late_po_flagged_once_with_one_reliability_drop(cafe: dict[str, An
     questions = [q for q in await _pending(bid, "question") if "late" in q.text_en]
     assert len(questions) == 1
     assert {o["key"] for o in questions[0].options} == {"wait", "reorder_other", "call"}
+
+
+async def test_no_expiry_warnings_before_the_first_forecast(cafe: dict[str, Any]) -> None:
+    """A freshly seeded business has no forecast yet: expected use is unknown, not zero."""
+    import json as _json
+
+    from app.api.v1.stock import list_items
+    from app.core.auth import CurrentUser
+
+    bid = cafe["business_id"]
+    owner = await _owner(bid)
+    body = _json.loads(bytes((await list_items(CurrentUser(owner.id, bid, "owner", "owner", "en", "x"))).body))
+    assert body["forecast_generated_on"] is None
+    assert all(i["expiry_risk"] is None for i in body["items"])

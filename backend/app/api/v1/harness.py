@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sse_starlette.sse import EventSourceResponse
 
-from app.api.common import J
+from app.api.common import J, with_freshness
 from app.approvals import service as approvals
 from app.core import clock
 from app.core.auth import CurrentUser, RequireManager, RequireOwner
@@ -55,7 +55,7 @@ async def list_actions(live: bool = False, agent: str | None = None, limit: int 
         if agent:
             q = q.where(Action.agent == agent)
         rows = (await s.execute(q.order_by(Action.created_at.desc()).limit(max(1, min(limit, 500))))).scalars().all()
-    return J({"actions": [_action_out(a) for a in rows]})
+    return J(with_freshness({"actions": [_action_out(a) for a in rows]}, {"actions": max((a.updated_at for a in rows), default=None)}))
 
 
 @router.get("/harness/actions/{action_id}")
@@ -70,7 +70,7 @@ async def action_detail(action_id: uuid.UUID, user: CurrentUser = RequireManager
         reqs = (await s.execute(select(ApprovalRequest).where(ApprovalRequest.action_id == action_id)
                                 .order_by(ApprovalRequest.created_at))).scalars().all()
         children = (await s.execute(select(Action).where(Action.parent_action_id == action_id))).scalars().all()
-    return J({"action": {**_action_out(a), "plan": a.plan, "inputs": a.inputs, "result": a.result,
+    return J(with_freshness({"action": {**_action_out(a), "plan": a.plan, "inputs": a.inputs, "result": a.result,
                          "verifier_verdict": a.verifier_verdict},
               "checks": [{"name": c.check_name, "passed": c.passed, "details": c.details,
                           "learned_rule_id": c.learned_rule_id} for c in checks],
@@ -78,7 +78,7 @@ async def action_detail(action_id: uuid.UUID, user: CurrentUser = RequireManager
                          "user_id": e.user_id, "inputs": e.inputs, "outputs": e.outputs,
                          "verification": e.verification_result} for e in trail],
               "approvals": [approvals.to_dict(r) for r in reqs],
-              "children": [_action_out(c) for c in children]})
+              "children": [_action_out(c) for c in children]}, {"actions": a.updated_at}))
 
 
 @router.get("/harness/stream")
@@ -124,12 +124,12 @@ async def list_incidents(status: str | None = None, agent: str | None = None, li
     by_inc: dict[uuid.UUID, list[LearnedRule]] = {}
     for r in proposed:
         by_inc.setdefault(r.source_incident_id, []).append(r)  # type: ignore[arg-type]
-    return J({"incidents": [{
+    return J(with_freshness({"incidents": [{
         "id": i.id, "agent": i.agent, "type": i.type, "detected_by": i.detected_by, "summary": i.summary,
         "action_taken": i.action_taken, "root_cause": i.root_cause, "category": i.category, "status": i.status,
         "refs": i.refs, "action_id": i.action_id, "chaos_injection_id": i.chaos_injection_id, "created_at": i.created_at,
         "resolved_at": i.resolved_at,
-        "rules": [{"id": r.id, "status": r.status, "text_en": r.rule_text_en} for r in by_inc.get(i.id, [])]} for i in rows]})
+        "rules": [{"id": r.id, "status": r.status, "text_en": r.rule_text_en} for r in by_inc.get(i.id, [])]} for i in rows]}, {"incidents": max((i.updated_at for i in rows), default=None)}))
 
 
 # ------------------------------------------------------------------ learned rules
@@ -147,7 +147,7 @@ async def list_rules(status: str | None = None, user: CurrentUser = RequireManag
         if status:
             q = q.where(LearnedRule.status == status)
         rows = (await s.execute(q.order_by(LearnedRule.created_at.desc()))).scalars().all()
-    return J({"rules": [_rule_out(r) for r in rows]})
+    return J(with_freshness({"rules": [_rule_out(r) for r in rows]}, {"rules": max((r.updated_at for r in rows), default=None)}))
 
 
 def _rule_error(exc: rules.RuleError) -> AppError:
@@ -216,10 +216,10 @@ async def calibration_view(days: int = 30, user: CurrentUser = RequireManager) -
                                     "degraded": r.degraded, "degraded_since": r.degraded_since,
                                     "restore_progress": r.restore_progress, "healthy_streak": r.healthy_streak,
                                     "method_override": r.method_override} for r in mine]})
-    return J({"agents": agents,
+    return J(with_freshness({"agents": agents,
               "history": [{"agent": h.agent, "metric": h.metric, "date": h.date, "value": h.value, "threshold": h.threshold,
                            "degraded": h.degraded, "high_confidence_threshold": h.high_confidence_threshold} for h in hist],
-              "data_as_of": {"clock": clock.clock_now().isoformat()}})
+              "data_as_of": {"clock": clock.clock_now().isoformat()}}, {"calibration": max((r.updated_at for r in rows), default=None)}))
 
 
 # ------------------------------------------------------------------ audit log and digest
@@ -236,13 +236,13 @@ async def audit_log(event: str | None = None, action_id: uuid.UUID | None = None
             q = q.where(AuditLogEntry.agent == agent)
         rows = (await s.execute(q.order_by(AuditLogEntry.business_time.desc(), AuditLogEntry.wall_time.desc())
                                 .offset(max(0, offset)).limit(max(1, min(limit, 1000))))).scalars().all()
-    return J({"entries": [{"id": e.id, "event": e.event, "at": e.business_time, "wall_time": e.wall_time, "agent": e.agent,
+    return J(with_freshness({"entries": [{"id": e.id, "event": e.event, "at": e.business_time, "wall_time": e.wall_time, "agent": e.agent,
                            "user_id": e.user_id, "action_id": e.action_id, "inputs": e.inputs, "outputs": e.outputs,
-                           "verification": e.verification_result} for e in rows]})
+                           "verification": e.verification_result} for e in rows]}, {"audit": max((e.business_time for e in rows), default=None)}))
 
 
 @router.get("/harness/digest")
 async def digest_today(user: CurrentUser = RequireManager) -> Response:
     from app.harness import digest
 
-    return J(await digest.collect(user.business_id, clock.today()))
+    return J(with_freshness(await digest.collect(user.business_id, clock.today()), {"clock": clock.today()}))

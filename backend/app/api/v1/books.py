@@ -29,7 +29,7 @@ from app.db.engine import read_session
 from app.harness.graph import run_action
 from app.models.books import Document, Extraction, PayableInvoice, ReceivableInvoice
 from app.models.finance_master import BankAccount, BankTransaction
-from app.models.harness import ApprovalRequest
+from app.models.harness import ApprovalRequest, CheckResult
 from app.models.master import Supplier
 from app.models.tenancy import FileRef
 
@@ -100,6 +100,8 @@ async def document_detail(doc_id: uuid.UUID, user: CurrentUser = RequireManager)
         if d is None or d.business_id != user.business_id:
             raise not_found("Document")
         exts = (await s.execute(select(Extraction).where(Extraction.document_id == doc_id).order_by(Extraction.attempt))).scalars().all()
+        doc_checks = (await s.execute(select(CheckResult).where(CheckResult.extraction_id.in_([e.id for e in exts]))
+                                      .order_by(CheckResult.created_at))).scalars().all() if exts else []
         inv = await s.get(PayableInvoice, d.payable_invoice_id) if d.payable_invoice_id else None
         sp = await s.get(Supplier, inv.supplier_id) if inv and inv.supplier_id else None
         pending = (await s.execute(select(ApprovalRequest).where(ApprovalRequest.graph_thread_id == d.graph_thread_id,
@@ -114,6 +116,7 @@ async def document_detail(doc_id: uuid.UUID, user: CurrentUser = RequireManager)
                     "lines": inv.lines, "subtotal": inv.subtotal, "vat_amount": inv.vat_amount, "total": inv.total,
                     "hold_reason": inv.hold_reason, "match_result": inv.match_result,
                     "supplier_vat_number": inv.supplier_vat_number} if inv else None,
+        "checks": [{"name": c.check_name, "passed": c.passed, "details": c.details} for c in doc_checks],
         "questions": [approvals.to_dict(r) for r in pending],
     }, {"books": inv.updated_at if inv else d.updated_at}))
 

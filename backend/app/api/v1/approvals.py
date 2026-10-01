@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sse_starlette.sse import EventSourceResponse
 
-from app.api.common import J
+from app.api.common import J, with_freshness
 from app.approvals import service as approvals
 from app.core.auth import ROLE_RANK, CurrentUser, RequireStaff
 from app.core.errors import AppError
@@ -33,7 +33,7 @@ async def list_approvals(status: str | None = "pending", user: CurrentUser = Req
             q = q.where(ApprovalRequest.status == status)
         rows = (await s.execute(q.order_by(ApprovalRequest.urgency.desc(), ApprovalRequest.created_at.desc()).limit(200))).scalars().all()
     visible = [approvals.to_dict(r) for r in rows if ROLE_RANK[user.role] >= ROLE_RANK.get(r.required_role, 1)]
-    return J({"approvals": visible})
+    return J(with_freshness({"approvals": visible}, {"approvals": max((r.updated_at for r in rows), default=None)}))
 
 
 class ResolveIn(BaseModel):

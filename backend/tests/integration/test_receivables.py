@@ -17,6 +17,7 @@ from app.db.engine import read_session, write_session
 from app.db.types import Money
 from app.harness.graph import run_action
 from app.models.books import JournalLine, ReceivableInvoice
+from app.models.cash import PaymentReminder
 from app.models.finance_master import BankAccount, BankTransaction
 from app.seed.sample_cafe import PASSWORDS, seed
 
@@ -56,6 +57,14 @@ async def test_create_posts_balanced_entry_with_vat(api: Any, cafe: dict[str, An
     assert ar == rec.total.amount_minor
     listed = (await api.client.get("/api/v1/receivables?status=open")).json()["receivables"]
     assert any(x["id"] == data["id"] for x in listed)
+    # The Cash-Flow Agent picks the new invoice up from the shared records on its next forecast.
+    from app.agents.cashflow import graphs as cash_graphs
+
+    await cash_graphs.step_cash_forecast(cafe["business_id"], clock.today())
+    run = await cash_graphs.latest_run(cafe["business_id"], clock.today())
+    # The expected payment may be split across dates (on time / late); together they are the whole invoice.
+    parts = [f for f in run.flows if f["kind"] == "receivable" and f["ref"] == data["id"]]  # type: ignore[union-attr]
+    assert parts and sum(f["amount_minor"] for f in parts) == rec.total.amount_minor
 
 
 async def test_duplicate_number_and_bad_dates_are_rejected(api: Any, cafe: dict[str, Any]) -> None:
@@ -70,6 +79,13 @@ async def test_duplicate_number_and_bad_dates_are_rejected(api: Any, cafe: dict[
 async def test_bank_payment_marks_invoice_paid(api: Any, cafe: dict[str, Any]) -> None:
     bid = cafe["business_id"]
     data = (await api.client.post("/api/v1/receivables", json=_body())).json()
+    async with write_session() as s:  # a reminder is waiting to go out
+        reminder = PaymentReminder(business_id=bid, receivable_invoice_id=uuid.UUID(data["id"]), level=1,
+                                   scheduled_for=clock.today() + timedelta(days=1), status="scheduled",
+                                   text_en="Reminder", text_ar="تذكير")
+        s.add(reminder)
+        await s.flush()
+        reminder_id = reminder.id
     async with write_session() as s:
         bank = (await s.execute(select(BankAccount).where(BankAccount.business_id == bid,
                                                           BankAccount.is_cash_on_hand.is_(False)))).scalar_one()
@@ -83,6 +99,8 @@ async def test_bank_payment_marks_invoice_paid(api: Any, cafe: dict[str, Any]) -
     assert out["outcome"] == "completed"
     detail = (await api.client.get(f"/api/v1/receivables/{data['id']}")).json()
     assert detail["status"] == "paid" and detail["payments"]
+    async with read_session() as s:
+        assert (await s.get(PaymentReminder, reminder_id)).status == "cancelled_paid"  # type: ignore[union-attr]
 
 
 async def test_void_paid_invoice_is_refused_and_unpaid_is_voided(api: Any, cafe: dict[str, Any]) -> None:
@@ -115,6 +133,9 @@ async def test_books_endpoints(api: Any, cafe: dict[str, Any]) -> None:
     docs = (await api.client.get("/api/v1/documents")).json()["documents"]
     detail = (await api.client.get(f"/api/v1/documents/{docs[0]['id']}")).json()
     assert detail["invoice"]["status"] == "posted" and detail["extractions"]
+    names = {c["name"] for c in detail["checks"]}
+    passed = {c["name"] for c in detail["checks"] if c["passed"]}
+    assert {"extraction_arithmetic", "date_sanity", "duplicate_invoice"} <= passed <= names
     f = await api.client.get(detail["document"]["file_url"])
     assert f.status_code == 200 and f.headers["content-type"] == "application/pdf"
     rq = (await api.client.get("/api/v1/review-queue")).json()

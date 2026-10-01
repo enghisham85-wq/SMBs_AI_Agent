@@ -23,6 +23,7 @@ interface Detail {
     supplier_vat_number: string | null;
   } | null;
   questions: ApprovalRequest[];
+  checks: { name: string; passed: boolean; details: Record<string, string> }[];
 }
 
 function Confidence({ value }: { value: number | undefined }) {
@@ -38,7 +39,7 @@ export function DocumentDetail({ id }: { id: string }) {
   const ar = i18n.language === "ar";
   const q = useQuery({ queryKey: ["books", "document", id], queryFn: () => api.get<Detail>(`/documents/${id}`) });
   if (!q.data) return <p className="text-ink-500">{t("app.loading")}</p>;
-  const { document: doc, extractions, invoice, questions } = q.data;
+  const { document: doc, extractions, invoice, questions, checks } = q.data;
   const last = extractions[extractions.length - 1];
   const conf = last?.fields?.confidence ?? {};
   const source = last ? t(`books.sources.${last.source}`, { defaultValue: last.source }) : "";
@@ -98,6 +99,15 @@ export function DocumentDetail({ id }: { id: string }) {
               </tbody>
             </table>
           </div>
+        )}
+        {checks.length > 0 && (
+          <ul className="flex flex-wrap gap-1 text-xs" aria-label={t("harness.checks")}>
+            {checks.map((c) => (
+              <li key={c.name} className={`badge ${c.passed ? "bg-good-50 text-good-700" : "bg-warn-50 text-warn-700"}`}>
+                {c.passed ? "✓" : "!"} {t(`books.check_names.${c.name}`, { defaultValue: c.name.replace(/_/g, " ") })}
+              </li>
+            ))}
+          </ul>
         )}
         {invoice?.match_result?.warnings?.map((w) => (
           <p key={w} className="rounded-lg bg-warn-50 p-2 text-xs text-warn-700">{w}</p>

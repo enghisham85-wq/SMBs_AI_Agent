@@ -36,6 +36,11 @@ async def cafe(api: Any, tmp_path: Path, monkeypatch: Any) -> dict[str, Any]:
     monkeypatch.setattr(get_settings(), "FILES_DIR", str(tmp_path / "files"))
     wiring.register_all()
     info = await seed(start_date=START, history_days=42)
+    # A budget conflict: its question carries both positions with amounts, as in a running business.
+    from tests.integration.test_us5_coordination import _budget, _order
+
+    await _budget(info["business_id"], "100")
+    await _order(info["business_id"], "Oranges", "20")
     await scheduler.advance(info["business_id"], days=1)  # forecasts, reconciliation, approvals exist
     await api.login("owner", PASSWORDS["owner"])
     files = {f["name"]: f for f in json.loads((tmp_path / "samples" / "files.json").read_text())}
@@ -76,7 +81,7 @@ async def test_every_manager_get_with_figures_has_data_as_of(api: Any, cafe: dic
         if has_figures(body):
             with_figures.append(url)
     assert not missing, f"figures without data_as_of: {missing}"
-    assert "/api/v1/home" in with_figures and "/api/v1/cash/forecast" in with_figures
+    assert {"/api/v1/home", "/api/v1/cash/forecast", "/api/v1/approvals"} <= set(with_figures)
     assert len(checked) >= 15
 
 
