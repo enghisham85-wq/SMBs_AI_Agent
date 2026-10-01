@@ -40,6 +40,7 @@ async def _compensate(ctx: Any, inputs: dict[str, Any], result: dict[str, Any]) 
 
 
 async def _approval(ctx: Any, inputs: dict[str, Any], plan: dict[str, Any]) -> OwnerAsk:
+    _count(f"approval_request:{inputs.get('tag')}")  # in real specs this words the request with the model
     return OwnerAsk(kind="approval", text_en="Send it?", text_ar="هل أرسل؟",
                     options=[option("approve", "opt_approve", "approve"), option("reject", "opt_reject", "reject")])
 
@@ -165,6 +166,25 @@ async def test_precheck_hold_asks_owner_and_continue_executes(business: dict[str
     assert req.kind == "question" and "price up 25%" in req.text_en
     await approvals.resolve(str(req.id), "continue", actor("manager"), "dashboard")
     assert calls["execute:h"] == 1
+
+
+async def _events(action_id: uuid.UUID) -> list[str]:
+    async with read_session() as s:
+        return [e.event for e in (await s.execute(select(AuditLogEntry).where(AuditLogEntry.action_id == action_id))).scalars()]
+
+
+async def test_owner_questions_are_prepared_once_across_pause_and_resume(business: dict[str, Any], actor: Any) -> None:
+    """Resuming re-runs the paused node, so the wording (a model call) and the stage audit live before it."""
+    calls.clear()
+    out = await run_action("t_send", {"tag": "once"}, business["id"])
+    await approvals.resolve(str((await _pending(out["action_id"])).id), "approve", actor("manager"), "dashboard")
+    assert calls["approval_request:once"] == 1 and calls["execute:once"] == 1
+    assert (await _events(out["action_id"])).count("stage:approval_gate") == 1
+
+    held = await run_action("t_hold", {"tag": "held_once"}, business["id"])
+    await approvals.resolve(str((await _pending(held["action_id"])).id), "continue", actor("manager"), "dashboard")
+    assert calls["execute:held_once"] == 1
+    assert (await _events(held["action_id"])).count("stage:hold") == 1
 
 
 async def test_every_node_writes_audit_and_stage(business: dict[str, Any]) -> None:

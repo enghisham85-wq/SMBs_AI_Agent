@@ -5,15 +5,19 @@
   with `interrupt()`.
 - `resolve()` is called by the dashboard and the Telegram bot. An atomic
   `UPDATE ... WHERE status='pending'` makes the first answer win; only the winner resumes the graph.
+  `claim()` is that first step on its own, for callers (Telegram) that resume the graph later.
+- Channel notifiers (Telegram) run on one background worker, so creating or answering a request
+  never waits on the network.
 - `expire_due()` applies the safe default to overdue requests (never irreversible).
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import secrets
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Protocol
@@ -35,6 +39,8 @@ log = logging.getLogger(__name__)
 
 Notifier = Callable[[str, dict[str, Any]], Awaitable[None]]
 _notifiers: list[Notifier] = []
+_queue: asyncio.Queue[tuple[str, dict[str, Any]]] | None = None
+_worker: asyncio.Task[None] | None = None
 # Standalone questions (post_question key "<kind>:<ref>") act on their answer through these handlers.
 QuestionHandler = Callable[[dict[str, Any]], Awaitable[None]]
 QUESTION_HANDLERS: dict[str, QuestionHandler] = {}
@@ -61,6 +67,14 @@ class ResolveResult:
     graph_result: dict[str, Any] | None = None
 
 
+@dataclass
+class Claim:
+    """The outcome of the atomic first-answer-wins step. `resume` is set only for the winner."""
+
+    result: ResolveResult
+    resume: Callable[[], Coroutine[Any, Any, dict[str, Any] | None]] | None = None
+
+
 def add_notifier(fn: Notifier) -> None:
     if fn not in _notifiers:
         _notifiers.append(fn)
@@ -70,13 +84,46 @@ def clear_notifiers() -> None:
     _notifiers.clear()
 
 
-async def _notify(kind: str, req: dict[str, Any]) -> None:
+def _notify(kind: str, req: dict[str, Any]) -> None:
+    """Publish to the dashboard now and queue the channel notifiers; never waits on the network.
+
+    Callers are graph nodes and resolve paths, and a slow or down channel (e.g. Telegram) must not
+    hold them up or block the other channel (FR-010a).
+    """
+    global _queue, _worker
     broker.publish("chat", {"kind": kind, "request": req})
-    for fn in list(_notifiers):
+    if not _notifiers:
+        return
+    loop = asyncio.get_running_loop()
+    if _queue is None or _worker is None or _worker.done() or _worker.get_loop() is not loop:
+        _queue = asyncio.Queue()
+        _worker = loop.create_task(_drain_forever(_queue))
+        _worker.add_done_callback(_worker_stopped)
+    _queue.put_nowait((kind, req))
+
+
+async def _drain_forever(queue: asyncio.Queue[tuple[str, dict[str, Any]]]) -> None:
+    # One worker keeps a request's events in order: "resolved" edits the messages "created" sent.
+    while True:
+        kind, req = await queue.get()
         try:
-            await fn(kind, req)
-        except Exception:  # a failing channel (e.g. Telegram down) must not block the other (FR-010a)
-            log.exception("approval notifier failed")
+            results = await asyncio.gather(*(fn(kind, req) for fn in list(_notifiers)), return_exceptions=True)
+            for r in results:
+                if isinstance(r, Exception):
+                    log.error("approval notifier failed", exc_info=r)
+        finally:
+            queue.task_done()
+
+
+def _worker_stopped(task: asyncio.Task[None]) -> None:
+    if not task.cancelled() and task.exception() is not None:
+        log.error("approval notifier worker stopped", exc_info=task.exception())
+
+
+async def drain_notifications() -> None:
+    """Wait until every queued channel notification has been handled (tests)."""
+    if _queue is not None and _worker is not None and not _worker.done():
+        await _queue.join()
 
 
 def to_dict(r: ApprovalRequest) -> dict[str, Any]:
@@ -182,7 +229,7 @@ async def _create(
         add_audit(s, "approval_requested", business_id=business_id, agent=agent, action_id=action_id,
                   inputs={"request_id": req.id, "kind": ask.kind, "text_en": ask.text_en})
         data = to_dict(req)
-    await _notify("created", data)
+    _notify("created", data)
     return uuid.UUID(data["id"]), True
 
 
@@ -267,20 +314,40 @@ async def resolve(
     edits: dict[str, Any] | None = None,
     text: str | None = None,
 ) -> ResolveResult:
+    """Answer a request; the winner's continuation (question handler, paused graph) runs inline."""
+    c = await claim(ref, option_key, actor, via, edits, text)
+    if c.resume is not None:
+        c.result.graph_result = await c.resume()
+    return c.result
+
+
+async def claim(
+    ref: str,
+    option_key: str | None,
+    actor: Actor,
+    via: str,
+    edits: dict[str, Any] | None = None,
+    text: str | None = None,
+) -> Claim:
+    """The first step of `resolve()`: the checks and the atomic first-answer-wins update.
+
+    The winner gets `resume`, which notifies the channels and continues the paused graph; a caller
+    that must answer quickly (a Telegram tap) can run it in the background.
+    """
     req = await get(ref)
     if req is None:
-        return ResolveResult("not_found")
+        return Claim(ResolveResult("not_found"))
     if not can(actor.role, req.required_role):
         await audit("permission_denied", business_id=req.business_id, user_id=actor.id,
                     inputs={"what": "resolve_request", "request_id": req.id, "via": via, "role": actor.role,
                             "required": req.required_role})
-        return ResolveResult("permission_denied", to_dict(req))
+        return Claim(ResolveResult("permission_denied", to_dict(req)))
 
     option = next((o for o in req.options if o["key"] == option_key), None)
     if option is None and not (req.context.get("allow_text") and text):
-        return ResolveResult("invalid_option", to_dict(req))
+        return Claim(ResolveResult("invalid_option", to_dict(req)))
     if text is not None and len(text) > 100:
-        return ResolveResult("invalid_option", to_dict(req))
+        return Claim(ResolveResult("invalid_option", to_dict(req)))
 
     now = clock_now()
     async with write_session() as s:
@@ -304,32 +371,36 @@ async def resolve(
     assert fresh is not None
     data = to_dict(fresh)
     if not won:
-        return ResolveResult("already_resolved", data)
+        return Claim(ResolveResult("already_resolved", data))
+    effect = option["effect"] if option else "text"
+    graph_name, thread_id, user_id = fresh.graph_name, fresh.graph_thread_id, str(actor.id)
 
-    await _notify("resolved", data)
-    graph_result = None
-    if fresh.graph_thread_id and fresh.graph_thread_id.startswith("q:"):
-        kind = fresh.graph_thread_id[2:].split(":", 1)[0]
-        handler = QUESTION_HANDLERS.get(kind)
-        if handler is not None:
-            await handler({**data, "effect": option["effect"] if option else "text", "text": text, "edits": edits or {}})
-    if fresh.graph_name and fresh.graph_thread_id:
-        from app.graphs import runtime
+    async def resume() -> dict[str, Any] | None:
+        _notify("resolved", data)
+        if thread_id and thread_id.startswith("q:"):
+            kind = thread_id[2:].split(":", 1)[0]
+            handler = QUESTION_HANDLERS.get(kind)
+            if handler is not None:
+                await handler({**data, "effect": effect, "text": text, "edits": edits or {}})
+        if graph_name and thread_id:
+            from app.graphs import runtime
 
-        graph_result = await runtime.resume(
-            fresh.graph_name,
-            fresh.graph_thread_id,
-            {
-                "option_key": option_key,
-                "effect": option["effect"] if option else "text",
-                "edits": edits or {},
-                "text": text,
-                "user_id": str(actor.id),
-                "via": via,
-                "timed_out": False,
-            },
-        )
-    return ResolveResult("resolved", data, graph_result)
+            return await runtime.resume(
+                graph_name,
+                thread_id,
+                {
+                    "option_key": option_key,
+                    "effect": effect,
+                    "edits": edits or {},
+                    "text": text,
+                    "user_id": user_id,
+                    "via": via,
+                    "timed_out": False,
+                },
+            )
+        return None
+
+    return Claim(ResolveResult("resolved", data), resume)
 
 
 async def answer_for(key: str) -> dict[str, Any] | None:
@@ -364,7 +435,7 @@ async def withdraw(ref: str, reason: str) -> bool:
                   inputs={"request_id": req.id, "reason": reason})
     fresh = await get(str(req.id))
     assert fresh is not None
-    await _notify("resolved", to_dict(fresh))
+    _notify("resolved", to_dict(fresh))
     if req.graph_name and req.graph_thread_id:
         from app.graphs import runtime
 
@@ -409,7 +480,7 @@ async def expire_due(business_id: uuid.UUID) -> int:
         count += 1
         fresh = await get(str(req.id))
         assert fresh is not None
-        await _notify("resolved", to_dict(fresh))
+        _notify("resolved", to_dict(fresh))
         effect = next((o["effect"] for o in req.options if o["key"] == req.safe_default), req.safe_default or "reask")
         if req.graph_name and req.graph_thread_id:
             from app.graphs import runtime

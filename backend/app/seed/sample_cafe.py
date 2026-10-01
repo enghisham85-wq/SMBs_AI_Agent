@@ -6,6 +6,7 @@ so history and future days follow the same patterns.
 
 from __future__ import annotations
 
+import asyncio
 import calendar as pycal
 import json
 import logging
@@ -75,6 +76,13 @@ async def seed(country: str | None = None, start_date: date | None = None, histo
 
     bid = uuid.uuid4()
     ids: dict[str, Any] = {"suppliers": {}, "items": {}, "bank_accounts": {}, "users": {}}
+    # argon2 is slow on purpose: hash in worker threads, before the write lock is taken.
+    hashes = dict(zip(PASSWORDS, await asyncio.gather(*(asyncio.to_thread(hash_password, pw)
+                                                       for pw in PASSWORDS.values())), strict=True))
+    # Ids are assigned up front, so instead of a flush per row to learn its id there is one flush per
+    # layer of foreign keys (the unit of work does not order inserts by FK without relationships).
+    referencing_parents: list[Any] = []  # rows pointing at suppliers or bank accounts
+    referencing_items: list[Any] = []
     async with write_session() as s:
         b = Business(id=bid, name="Nile Corner Cafe" if profile.code == "EG" else "Corner Cafe",
                      min_cash_buffer=Money(0, cur), demo_mode=settings.DEMO_MODE)
@@ -84,15 +92,14 @@ async def seed(country: str | None = None, start_date: date | None = None, histo
         for k, v in extra_settings.items():
             await settings_store.put(s, bid, k, v)
 
-        for role, pw in PASSWORDS.items():
-            u = User(business_id=bid, username=role, password_hash=hash_password(pw), role=role,
+        for role in PASSWORDS:
+            u = User(id=uuid.uuid4(), business_id=bid, username=role, password_hash=hashes[role], role=role,
                      language="ar" if role == "staff" else "en")
             s.add(u)
-            await s.flush()
             ids["users"][role] = u.id
 
         for sp in catalog["suppliers"]:
-            sup = Supplier(business_id=bid, name_en=sp["name_en"], name_ar=sp["name_ar"], vat_number=sp["vat_number"],
+            sup = Supplier(id=uuid.uuid4(), business_id=bid, name_en=sp["name_en"], name_ar=sp["name_ar"], vat_number=sp["vat_number"],
                            phone=sp.get("phone"), stated_lead_time_days=sp["stated_lead_time_days"],
                            observed_lead_time_days=sp["observed_lead_time_days"],
                            payment_terms_days=sp["payment_terms_days"],
@@ -100,47 +107,44 @@ async def seed(country: str | None = None, start_date: date | None = None, histo
                            if sp.get("early_payment_discount_percent") else None,
                            early_payment_days=sp.get("early_payment_days"))
             s.add(sup)
-            await s.flush()
             ids["suppliers"][sp["key"]] = sup.id
             names = [(sp["name_en"], "en"), (sp["name_ar"], "ar")]
             names += [(a, "en") for a in sp.get("aliases_en", [])] + [(a, "ar") for a in sp.get("aliases_ar", [])]
             for text, lang in names:
-                s.add(SupplierAlias(business_id=bid, supplier_id=sup.id, alias_text=text,
-                                    normalised_text=normalize_arabic_name(text), language=lang))
+                referencing_parents.append(SupplierAlias(business_id=bid, supplier_id=sup.id, alias_text=text,
+                                                         normalised_text=normalize_arabic_name(text), language=lang))
 
         ingredient_cost: dict[str, Money] = {}
         for ing in catalog["ingredients"]:
             unit_price = price(ing["price"])
-            item = Item(business_id=bid, name_en=ing["name_en"], name_ar=ing["name_ar"], unit=ing["unit"],
+            item = Item(id=uuid.uuid4(), business_id=bid, name_en=ing["name_en"], name_ar=ing["name_ar"], unit=ing["unit"],
                         category=ing["category"], is_ingredient=True, is_sold=False,
                         shelf_life_days=ing.get("shelf_life_days"), safety_stock=Decimal(ing["safety_stock"]),
                         storage_capacity=Decimal(ing["storage_capacity"]),
                         preferred_supplier_id=ids["suppliers"][ing["supplier"]], is_critical=ing["critical"],
                         unit_cost=unit_price, sale_price=Money(0, cur), margin_class=ing["margin_class"])
-            s.add(item)
-            await s.flush()
+            referencing_parents.append(item)
             ids["items"][ing["key"]] = item.id
             ingredient_cost[ing["key"]] = unit_price
-            s.add(SupplierPrice(business_id=bid, supplier_id=ids["suppliers"][ing["supplier"]], item_id=item.id,
-                                pack_size=Decimal(ing["pack_size"]), unit=ing["unit"],
-                                min_order_qty=Decimal(ing["min_order_qty"]), price=unit_price,
-                                valid_from=start - timedelta(days=history_days + 30)))
+            referencing_items.append(SupplierPrice(
+                business_id=bid, supplier_id=ids["suppliers"][ing["supplier"]], item_id=item.id,
+                pack_size=Decimal(ing["pack_size"]), unit=ing["unit"], min_order_qty=Decimal(ing["min_order_qty"]),
+                price=unit_price, valid_from=start - timedelta(days=history_days + 30)))
 
         feed_products: dict[str, Any] = {}
         for prod in catalog["products"]:
             cost = Money(0, cur)
             for key, qty, _unit in prod["recipe"]:
                 cost = cost + ingredient_cost[key].times(Decimal(qty))
-            item = Item(business_id=bid, name_en=prod["name_en"], name_ar=prod["name_ar"], unit="piece",
+            item = Item(id=uuid.uuid4(), business_id=bid, name_en=prod["name_en"], name_ar=prod["name_ar"], unit="piece",
                         category=prod["kind"], is_ingredient=False, is_sold=True, unit_cost=cost,
                         sale_price=price(prod["price"]), margin_class="high" if prod["kind"] == "drink" else "normal")
-            s.add(item)
-            await s.flush()
+            referencing_parents.append(item)
             ids["items"][prod["key"]] = item.id
             feed_products[str(item.id)] = {"base_daily": prod["base_daily"], "kind": prod["kind"], "key": prod["key"]}
             for key, qty, unit in prod["recipe"]:
-                s.add(RecipeLine(business_id=bid, sold_item_id=item.id, ingredient_item_id=ids["items"][key],
-                                 quantity=Decimal(qty), unit=unit))
+                referencing_items.append(RecipeLine(business_id=bid, sold_item_id=item.id,
+                                                    ingredient_item_id=ids["items"][key], quantity=Decimal(qty), unit=unit))
 
         for acc in json.loads((SEED_DIR / "chart_of_accounts.json").read_text(encoding="utf-8")):
             s.add(Account(business_id=bid, code=acc["code"], name_en=acc["name_en"], name_ar=acc["name_ar"],
@@ -149,19 +153,24 @@ async def seed(country: str | None = None, start_date: date | None = None, histo
 
         history_start = start - timedelta(days=history_days)
         for ba in catalog["bank_accounts"]:
-            acct = BankAccount(business_id=bid, name=ba["name"], bank=ba["bank"], currency=cur,
+            acct = BankAccount(id=uuid.uuid4(), business_id=bid, name=ba["name"], bank=ba["bank"], currency=cur,
                                is_cash_on_hand=ba["cash"], ledger_account_code=ba["ledger"])
             s.add(acct)
-            await s.flush()
             ids["bank_accounts"][ba["key"]] = acct.id
-            s.add(BankBalanceSnapshot(business_id=bid, account_id=acct.id,
-                                      as_of=datetime.combine(history_start - timedelta(days=1), time(23, 59)),
-                                      balance=price(ba["opening"])))
+            referencing_parents.append(BankBalanceSnapshot(
+                business_id=bid, account_id=acct.id, balance=price(ba["opening"]),
+                as_of=datetime.combine(history_start - timedelta(days=1), time(23, 59))))
 
         for ob in catalog["obligations"]:
-            s.add(Obligation(business_id=bid, type=ob["type"], description=ob["description"], amount=price(ob["amount"]),
-                             next_due_date=_first_due(ob["day"], start), recurrence=ob["recurrence"],
-                             bank_account_id=ids["bank_accounts"]["bank"]))
+            referencing_parents.append(Obligation(
+                business_id=bid, type=ob["type"], description=ob["description"], amount=price(ob["amount"]),
+                next_due_date=_first_due(ob["day"], start), recurrence=ob["recurrence"],
+                bank_account_id=ids["bank_accounts"]["bank"]))
+
+        await s.flush()
+        s.add_all(referencing_parents)
+        await s.flush()
+        s.add_all(referencing_items)
 
         await settings_store.put(s, bid, "demo_feed", {"products": feed_products, "prices_include_vat": True,
                                                        "customers": catalog["customers"]})

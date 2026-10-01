@@ -191,3 +191,21 @@ async def approvals_pending(bid: uuid.UUID) -> list[ApprovalRequest]:
     async with read_session() as s:
         return list((await s.execute(select(ApprovalRequest).where(ApprovalRequest.business_id == bid,
                                                                    ApprovalRequest.status == "pending"))).scalars())
+
+
+async def test_edit_without_a_change_asks_the_owner_again(cafe: dict[str, Any]) -> None:
+    bid = cafe["business_id"]
+    async with read_session() as s:
+        milk = (await s.execute(select(Item).where(Item.business_id == bid, Item.name_en == "Milk"))).scalar_one()
+    req = await _milk_request(bid, milk)
+    po_id = uuid.UUID(req.context["po_id"])
+
+    # "Edit" sent back with nothing changed: the order is not sent, and the owner gets a fresh question.
+    res = await approvals.resolve(str(req.id), "edit", await _owner(bid), "dashboard", edits={})
+    assert res.status == "resolved"
+    async with read_session() as s:
+        po = await s.get(PurchaseOrder, po_id)
+        again = (await s.execute(select(ApprovalRequest).where(ApprovalRequest.graph_thread_id == req.graph_thread_id,
+                                                               ApprovalRequest.status == "pending"))).scalars().all()
+    assert po is not None and po.status != "sent"
+    assert len(again) == 1 and again[0].id != req.id and again[0].gate_key != req.gate_key

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import func, select
 
@@ -24,6 +26,7 @@ from app.models.master import Supplier
 _PROMPT = (Path(__file__).resolve().parents[2] / "llm" / "prompts" / "classification.md").read_text(encoding="utf-8")
 RECURRING_COUNT = 3
 RECURRING_WINDOW_DAYS = 90
+CONCURRENCY = 4  # model calls in flight per invoice
 KEYWORDS: list[tuple[tuple[str, ...], str, float]] = [
     (("cup", "packag", "box", "bag", "كوب", "تغليف", "علب"), "5120", 0.85),
     (("rent", "إيجار"), "5200", 0.9),
@@ -44,6 +47,14 @@ class Classification:
     rationale: str = ""
 
 
+@dataclass
+class ClassifyContext:
+    accounts: dict[str, Account]
+    history: Counter[str] = field(default_factory=Counter)
+    supplier_name: str | None = None
+    rule: Any = None  # the active classification rule for this supplier (a LearnedRule), if any
+
+
 def _keyword_guess(text: str) -> tuple[str, float]:
     low = text.lower()
     for words, code, conf in KEYWORDS:
@@ -52,16 +63,15 @@ def _keyword_guess(text: str) -> tuple[str, float]:
     return "5900", 0.45
 
 
-async def classify(business_id: uuid.UUID, supplier_id: uuid.UUID | None, description: str) -> Classification:
-    # 1. Active classification rules for this supplier.
+async def load_context(business_id: uuid.UUID, supplier_id: uuid.UUID | None) -> ClassifyContext:
+    """What classification needs from the database for one invoice's supplier; shared by all its lines."""
+    rule = None
     if supplier_id is not None:
-        for r in await rules.active_rules(business_id, "accountant", "classification"):
-            if str(r.trigger.get("supplier_id")) == str(supplier_id):
-                await rules.mark_applied(r.id)
-                return Classification(r.trigger["account_code"], 0.99, "rule", str(r.id), r.rule_text_en)
+        rule = next((r for r in await rules.active_rules(business_id, "accountant", "classification")
+                     if str(r.trigger.get("supplier_id")) == str(supplier_id)), None)
     async with read_session() as s:
         accts = {a.code: a for a in (await s.execute(select(Account).where(Account.business_id == business_id))).scalars()}
-        # 2. Supplier history: accounts used on this supplier's posted non-stock lines.
+        # Supplier history: accounts used on this supplier's posted non-stock lines.
         history: Counter[str] = Counter()
         if supplier_id is not None:
             for inv in (await s.execute(select(PayableInvoice).where(PayableInvoice.supplier_id == supplier_id,
@@ -70,15 +80,30 @@ async def classify(business_id: uuid.UUID, supplier_id: uuid.UUID | None, descri
                     if not ln.get("item_id") and ln.get("account_code"):
                         history[ln["account_code"]] += 1
         sup = await s.get(Supplier, supplier_id) if supplier_id else None
+    return ClassifyContext(accts, history, sup.name_en if sup else None, rule)
+
+
+async def classify(business_id: uuid.UUID, supplier_id: uuid.UUID | None, description: str,
+                   ctx: ClassifyContext | None = None) -> Classification:
+    if ctx is None:
+        ctx = await load_context(business_id, supplier_id)
+    # 1. An active classification rule for this supplier.
+    if ctx.rule is not None:
+        await rules.mark_applied(ctx.rule.id)
+        return Classification(ctx.rule.trigger["account_code"], 0.99, "rule", str(ctx.rule.id), ctx.rule.rule_text_en)
+    # 2. Supplier history.
+    history = ctx.history
     if history:
         code, n = history.most_common(1)[0]
         if n >= 2 and n / sum(history.values()) >= 0.8:
             return Classification(code, 0.9, "history", rationale=f"used {n} times for this supplier")
     # 3. Model (offline: keywords).
-    guess_code, guess_conf = _keyword_guess(f"{sup.name_en if sup else ''} {description}")
-    chart = "\n".join(f"{a.code} {a.name_en}" for a in accts.values() if a.type == "expense")
-    content = [text_block(json.dumps({"supplier": sup.name_en if sup else None, "description": description,
-                                      "history": dict(history)}, ensure_ascii=False) + "\n\nChart of accounts:\n" + chart)]
+    guess_code, guess_conf = _keyword_guess(f"{ctx.supplier_name or ''} {description}")
+    chart = "\n".join(f"{a.code} {a.name_en}" for a in ctx.accounts.values() if a.type == "expense")
+    # The chart of accounts is the same for every line of the business, so it goes first and is cached.
+    content = [text_block("Chart of accounts:\n" + chart, cache=True),
+               text_block(json.dumps({"supplier": ctx.supplier_name, "description": description,
+                                      "history": dict(history)}, ensure_ascii=False))]
     llm = get_llm()
     try:
         out = await llm.parse("classification", _PROMPT, content, ExpenseClassification,
@@ -86,10 +111,25 @@ async def classify(business_id: uuid.UUID, supplier_id: uuid.UUID | None, descri
                                                                     rationale="matched keywords in the description"))
     except (LLMRefusalError, LLMUnavailableError, MissingFixtureError):
         out = ExpenseClassification(account_code=guess_code, confidence=min(guess_conf, 0.5), rationale="model unavailable")
-    if out.account_code not in accts:
+    if out.account_code not in ctx.accounts:
         return Classification("5900", 0.3, "llm", rationale="suggested account does not exist")
     return Classification(out.account_code, out.confidence, "offline" if llm.mode == "offline" else "llm",
                           rationale=out.rationale)
+
+
+async def classify_many(business_id: uuid.UUID, supplier_id: uuid.UUID | None,
+                        descriptions: list[str]) -> list[Classification]:
+    """Classify an invoice's lines: the shared lookups run once, the model calls a few at a time (in order)."""
+    if not descriptions:
+        return []
+    ctx = await load_context(business_id, supplier_id)
+    sem = asyncio.Semaphore(CONCURRENCY)
+
+    async def one(description: str) -> Classification:
+        async with sem:
+            return await classify(business_id, supplier_id, description, ctx)
+
+    return list(await asyncio.gather(*(one(d) for d in descriptions)))
 
 
 async def record_correction(business_id: uuid.UUID, supplier_id: uuid.UUID | None, from_code: str | None, to_code: str,

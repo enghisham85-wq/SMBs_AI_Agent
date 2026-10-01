@@ -1347,13 +1347,46 @@
           "books"
         ],
         "summary": "Reconciliation",
+        "description": "`open` is paged with limit/offset, newest first; `total` and `matched` always count every line.",
         "operationId": "reconciliation_api_v1_reconciliation_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 500,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -1615,6 +1648,7 @@
           "books"
         ],
         "summary": "List Receivables",
+        "description": "Ordered by due date and paged with limit/offset.",
         "operationId": "list_receivables_api_v1_receivables_get",
         "parameters": [
           {
@@ -1647,6 +1681,26 @@
                 }
               ],
               "title": "Overdue"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 500,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
             }
           }
         ],
@@ -2294,6 +2348,7 @@
           "harness"
         ],
         "summary": "List Rules",
+        "description": "Newest first, paged with limit/offset.",
         "operationId": "list_rules_api_v1_harness_rules_get",
         "parameters": [
           {
@@ -2310,6 +2365,26 @@
                 }
               ],
               "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 500,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
             }
           }
         ],
@@ -3025,8 +3100,7 @@
         "properties": {
           "counts": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/CountLine"
             },
             "type": "array",
             "title": "Counts"
@@ -3037,6 +3111,34 @@
           "counts"
         ],
         "title": "CountIn"
+      },
+      "CountLine": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Item Id"
+          },
+          "counted_qty": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Counted Qty"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "counted_qty"
+        ],
+        "title": "CountLine"
       },
       "HTTPValidationError": {
         "properties": {
@@ -3254,6 +3356,7 @@
           },
           "amount_minor": {
             "type": "integer",
+            "maximum": 1000000000000000.0,
             "exclusiveMinimum": 0.0,
             "title": "Amount Minor"
           },
@@ -3327,6 +3430,7 @@
             "anyOf": [
               {
                 "type": "integer",
+                "maximum": 1000000000000000.0,
                 "exclusiveMinimum": 0.0
               },
               {
@@ -3458,17 +3562,36 @@
         "properties": {
           "description": {
             "type": "string",
+            "maxLength": 300,
             "title": "Description",
             "default": ""
           },
           "qty": {
-            "type": "number",
-            "exclusiveMinimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,9}|(?=[\\d.]{1,13}0*$)\\d{0,9}\\.\\d{0,3}0*$)"
+              }
+            ],
             "title": "Qty"
           },
           "unit_price": {
-            "type": "number",
-            "minimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,12}|(?=[\\d.]{1,16}0*$)\\d{0,12}\\.\\d{0,3}0*$)"
+              }
+            ],
             "title": "Unit Price"
           },
           "vat_rate_percent": {
@@ -3477,6 +3600,10 @@
                 "type": "number",
                 "maximum": 100.0,
                 "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,3}|(?=[\\d.]{1,6}0*$)\\d{0,3}\\.\\d{0,2}0*$)"
               },
               {
                 "type": "null"

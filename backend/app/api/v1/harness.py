@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sse_starlette.sse import EventSourceResponse
 
-from app.api.common import J, with_freshness
+from app.api.common import DEFAULT_LIMIT, J, page, with_freshness
 from app.approvals import service as approvals
 from app.core import clock
 from app.core.auth import CurrentUser, RequireManager, RequireOwner
@@ -141,12 +141,16 @@ def _rule_out(r: LearnedRule) -> dict[str, Any]:
 
 
 @router.get("/harness/rules")
-async def list_rules(status: str | None = None, user: CurrentUser = RequireManager) -> Response:
+async def list_rules(status: str | None = None, limit: int = DEFAULT_LIMIT, offset: int = 0,
+                     user: CurrentUser = RequireManager) -> Response:
+    """Newest first, paged with limit/offset."""
+    limit, offset = page(limit, offset)
     async with read_session() as s:
         q = select(LearnedRule).where(LearnedRule.business_id == user.business_id)
         if status:
             q = q.where(LearnedRule.status == status)
-        rows = (await s.execute(q.order_by(LearnedRule.created_at.desc()))).scalars().all()
+        rows = (await s.execute(q.order_by(LearnedRule.created_at.desc())
+                                .offset(offset).limit(limit))).scalars().all()
     return J(with_freshness({"rules": [_rule_out(r) for r in rows]}, {"rules": max((r.updated_at for r in rows), default=None)}))
 
 
@@ -226,6 +230,7 @@ async def calibration_view(days: int = 30, user: CurrentUser = RequireManager) -
 @router.get("/audit-log")
 async def audit_log(event: str | None = None, action_id: uuid.UUID | None = None, agent: str | None = None,
                     limit: int = 200, offset: int = 0, user: CurrentUser = RequireOwner) -> Response:
+    limit, offset = page(limit, offset)
     async with read_session() as s:
         q = select(AuditLogEntry).where(AuditLogEntry.business_id == user.business_id)
         if event:
@@ -235,7 +240,7 @@ async def audit_log(event: str | None = None, action_id: uuid.UUID | None = None
         if agent:
             q = q.where(AuditLogEntry.agent == agent)
         rows = (await s.execute(q.order_by(AuditLogEntry.business_time.desc(), AuditLogEntry.wall_time.desc())
-                                .offset(max(0, offset)).limit(max(1, min(limit, 1000))))).scalars().all()
+                                .offset(offset).limit(limit))).scalars().all()
     return J(with_freshness({"entries": [{"id": e.id, "event": e.event, "at": e.business_time, "wall_time": e.wall_time, "agent": e.agent,
                            "user_id": e.user_id, "action_id": e.action_id, "inputs": e.inputs, "outputs": e.outputs,
                            "verification": e.verification_result} for e in rows]}, {"audit": max((e.business_time for e in rows), default=None)}))

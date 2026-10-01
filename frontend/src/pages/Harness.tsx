@@ -15,10 +15,22 @@ export function Harness() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("pipeline");
   const [selected, setSelected] = useState<string | null>(null);
-  const actions = useQuery({ queryKey: ["harness", "actions"], queryFn: () => api.get<{ actions: ActionRow[] }>("/harness/actions?limit=60") });
-  const incidents = useQuery({ queryKey: ["harness", "incidents"], queryFn: () => api.get<{ incidents: IncidentRow[] }>("/harness/incidents") });
-  const rules = useQuery({ queryKey: ["harness", "rules"], queryFn: () => api.get<{ rules: RuleRow[] }>("/harness/rules") });
-  const calibration = useQuery({ queryKey: ["harness", "calibration"], queryFn: () => api.get<CalibrationData>("/harness/calibration") });
+  const actions = useQuery({
+    queryKey: ["harness", "actions"],
+    queryFn: ({ signal }) => api.get<{ actions: ActionRow[] }>("/harness/actions?limit=60", signal),
+  });
+  const incidents = useQuery({
+    queryKey: ["harness", "incidents"],
+    queryFn: ({ signal }) => api.get<{ incidents: IncidentRow[] }>("/harness/incidents", signal),
+  });
+  const rules = useQuery({
+    queryKey: ["harness", "rules"],
+    queryFn: ({ signal }) => api.get<{ rules: RuleRow[] }>("/harness/rules", signal),
+  });
+  const calibration = useQuery({
+    queryKey: ["harness", "calibration"],
+    queryFn: ({ signal }) => api.get<CalibrationData>("/harness/calibration", signal),
+  });
 
   // Live pipeline: each stage message updates the matching row; new actions refetch the list.
   const onEvent = useCallback(
@@ -31,9 +43,14 @@ export function Harness() {
             void qc.invalidateQueries({ queryKey: ["harness", "actions"] });
             return old;
           }
-          return { actions: old.actions.map((a) => (a.id === data.action_id ? { ...a, stage: data.stage, attempt: data.attempt } : a)) };
+          return {
+            actions: old.actions.map((a) =>
+              a.id === data.action_id ? { ...a, stage: data.stage, attempt: data.attempt } : a,
+            ),
+          };
         });
-        if (data.action_id === selected) void qc.invalidateQueries({ queryKey: ["harness", "action", selected] });
+        if (data.action_id === selected)
+          void qc.invalidateQueries({ queryKey: ["harness", "action", selected] });
       } else if (event === "incident.opened") {
         void qc.invalidateQueries({ queryKey: ["harness", "incidents"] });
       } else if (event === "rule.proposed") {
@@ -54,17 +71,29 @@ export function Harness() {
         <h1 className="text-xl font-semibold">{t("nav.harness")}</h1>
         <div role="tablist" className="flex flex-wrap gap-1">
           {tabs.map((k) => (
-            <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "btn-primary" : "btn-secondary"} onClick={() => setTab(k)}>
+            <button
+              key={k}
+              role="tab"
+              aria-selected={tab === k}
+              className={tab === k ? "btn-primary" : "btn-secondary"}
+              onClick={() => setTab(k)}
+            >
               {t(`harness.tabs.${k}`)}
-              {k === "rules" && pendingRules > 0 && <span className="badge ms-1 bg-warn-50 text-warn-700">{pendingRules}</span>}
+              {k === "rules" && pendingRules > 0 && (
+                <span className="badge ms-1 bg-warn-50 text-warn-700">{pendingRules}</span>
+              )}
             </button>
           ))}
         </div>
       </div>
       <div className="grid gap-4 lg:grid-cols-[1fr_minmax(0,420px)]">
         <div className="min-w-0">
-          {tab === "pipeline" && <PipelineView actions={actions.data?.actions ?? []} selected={selected} onSelect={setSelected} />}
-          {tab === "incidents" && <IncidentLog incidents={incidents.data?.incidents ?? []} onOpenAction={setSelected} />}
+          {tab === "pipeline" && (
+            <PipelineView actions={actions.data?.actions ?? []} selected={selected} onSelect={setSelected} />
+          )}
+          {tab === "incidents" && (
+            <IncidentLog incidents={incidents.data?.incidents ?? []} onOpenAction={setSelected} />
+          )}
           {tab === "rules" && <RulesPanel rules={rules.data?.rules ?? []} />}
           {tab === "calibration" && calibration.data && <CalibrationChart data={calibration.data} />}
         </div>
@@ -76,29 +105,48 @@ export function Harness() {
 
 function ActionDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const { t, i18n } = useTranslation();
-  const q = useQuery({ queryKey: ["harness", "action", id], queryFn: () => api.get<any>(`/harness/actions/${id}`) });
+  const q = useQuery({
+    queryKey: ["harness", "action", id],
+    queryFn: ({ signal }) => api.get<any>(`/harness/actions/${id}`, signal),
+  });
   const d = q.data;
   const when = (iso: string) =>
-    new Date(iso).toLocaleTimeString(i18n.language === "ar" ? "ar-EG" : "en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    new Date(iso).toLocaleTimeString(i18n.language === "ar" ? "ar-EG" : "en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
   return (
-    <aside className="card flex max-h-[80vh] flex-col gap-3 overflow-auto" data-testid="action-drawer" aria-label={t("harness.action_detail")}>
+    <aside
+      className="card flex max-h-[80vh] flex-col gap-3 overflow-auto"
+      data-testid="action-drawer"
+      aria-label={t("harness.action_detail")}
+    >
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold">{d ? d.action.type.replace(/_/g, " ") : "…"}</h2>
-        <button type="button" className="btn-secondary" onClick={onClose}>{t("common.back")}</button>
+        <button type="button" className="btn-secondary" onClick={onClose}>
+          {t("common.back")}
+        </button>
       </div>
       {d && (
         <>
           <p className="text-xs text-ink-500">
-            {t(`agents.${d.action.agent}`, { defaultValue: d.action.agent })} · {t(`harness.risk.${d.action.risk_class}`, { defaultValue: d.action.risk_class })} ·{" "}
+            {t(`agents.${d.action.agent}`, { defaultValue: d.action.agent })} ·{" "}
+            {t(`harness.risk.${d.action.risk_class}`, { defaultValue: d.action.risk_class })} ·{" "}
             {t(`harness.stages.${d.action.stage}`, { defaultValue: d.action.stage })}
           </p>
-          <Section title={t("harness.plan")}><pre className="whitespace-pre-wrap text-xs">{JSON.stringify(d.action.plan, null, 2)}</pre></Section>
+          <Section title={t("harness.plan")}>
+            <pre className="whitespace-pre-wrap text-xs">{JSON.stringify(d.action.plan, null, 2)}</pre>
+          </Section>
           <Section title={t("harness.checks")}>
-            {d.checks.length === 0 ? <p className="text-xs text-ink-500">{t("common.none")}</p> : (
+            {d.checks.length === 0 ? (
+              <p className="text-xs text-ink-500">{t("common.none")}</p>
+            ) : (
               <ul className="text-xs">
                 {d.checks.map((c: any, i: number) => (
                   <li key={i} className={c.passed ? "text-good-700" : "text-bad-700"}>
-                    {c.passed ? "✓" : "✗"} {c.name}{c.learned_rule_id ? ` (${t("harness.learned_rule")})` : ""}
+                    {c.passed ? "✓" : "✗"} {c.name}
+                    {c.learned_rule_id ? ` (${t("harness.learned_rule")})` : ""}
                   </li>
                 ))}
               </ul>
@@ -108,11 +156,21 @@ function ActionDrawer({ id, onClose }: { id: string; onClose: () => void }) {
             {d.action.verifier_verdict ? (
               <div className="text-xs">
                 <p className={d.action.verifier_verdict.agrees ? "text-good-700" : "text-bad-700"}>
-                  {d.action.verifier_verdict.agrees ? t("harness.verifier_agrees") : t("harness.verifier_disagrees")}
+                  {d.action.verifier_verdict.agrees
+                    ? t("harness.verifier_agrees")
+                    : t("harness.verifier_disagrees")}
                 </p>
-                <ul>{(d.action.verifier_verdict.issues ?? []).map((iss: any, i: number) => <li key={i}>{iss.field}: {iss.problem} ({iss.severity})</li>)}</ul>
+                <ul>
+                  {(d.action.verifier_verdict.issues ?? []).map((iss: any, i: number) => (
+                    <li key={i}>
+                      {iss.field}: {iss.problem} ({iss.severity})
+                    </li>
+                  ))}
+                </ul>
               </div>
-            ) : <p className="text-xs text-ink-500">{t("harness.no_verifier")}</p>}
+            ) : (
+              <p className="text-xs text-ink-500">{t("harness.no_verifier")}</p>
+            )}
           </Section>
           <Section title={t("harness.audit_trail")}>
             <ol className="text-xs">
@@ -120,7 +178,17 @@ function ActionDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                 <li key={i} className="flex gap-2">
                   <span className="text-ink-500">{when(e.at)}</span>
                   <span>{t(`harness.events.${e.event.replace(":", "_")}`, { defaultValue: e.event })}</span>
-                  {e.verification && <span className={e.verification === "passed" || e.verification === "agreed" ? "text-good-700" : "text-bad-700"}>{e.verification}</span>}
+                  {e.verification && (
+                    <span
+                      className={
+                        e.verification === "passed" || e.verification === "agreed"
+                          ? "text-good-700"
+                          : "text-bad-700"
+                      }
+                    >
+                      {e.verification}
+                    </span>
+                  )}
                 </li>
               ))}
             </ol>

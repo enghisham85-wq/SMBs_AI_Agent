@@ -13,7 +13,7 @@ export function ChatPanel() {
   const [activity, setActivity] = useState<ApprovalRequest[]>([]);
   const pending = useQuery({
     queryKey: ["approvals", "pending"],
-    queryFn: () => api.get<{ approvals: ApprovalRequest[] }>("/approvals?status=pending"),
+    queryFn: ({ signal }) => api.get<{ approvals: ApprovalRequest[] }>("/approvals?status=pending", signal),
     refetchInterval: 30_000,
   });
 
@@ -43,7 +43,9 @@ export function ChatPanel() {
       </div>
       {recent.length > 0 && (
         <>
-          <h3 className="mt-2 text-xs font-semibold uppercase tracking-wide text-ink-400">{t("chat.activity")}</h3>
+          <h3 className="mt-2 text-xs font-semibold uppercase tracking-wide text-ink-400">
+            {t("chat.activity")}
+          </h3>
           <ul className="flex flex-col gap-2">
             {recent.map((r) => (
               <li key={r.id} className="rounded-lg bg-slate-100 p-2 text-xs text-ink-700">

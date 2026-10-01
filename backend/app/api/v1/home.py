@@ -1,12 +1,13 @@
 """Home (contracts/rest-api.md "Home", T120): health strip, today's decisions and alerts by urgency.
 
-The strip's figures come from the same endpoint functions the Stock, Cash and Books views use, so
-Home never shows a number those views would contradict.
+The strip's figures come from the same functions the Stock, Cash and Books views use, so Home
+never shows a number those views would contradict.
 """
 
 from __future__ import annotations
 
-import json
+import asyncio
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, Response
@@ -24,16 +25,20 @@ from app.models.tenancy import ROLE_RANK
 router = APIRouter(tags=["home"])
 
 
-def _body(resp: Response) -> dict[str, Any]:
-    return json.loads(bytes(resp.body))  # type: ignore[no-any-return]
+async def _pending(business_id: uuid.UUID) -> list[ApprovalRequest]:
+    async with read_session() as s:
+        return list((await s.execute(select(ApprovalRequest).where(
+            ApprovalRequest.business_id == business_id, ApprovalRequest.status == "pending"))).scalars())
 
 
 @router.get("/home")
 async def home(user: CurrentUser = RequireManager) -> Response:
-    items = _body(await stock.list_items(user))
-    forecast = _body(await cash.cash_forecast("30d", None, user))
-    recon = _body(await books.reconciliation(user))
-    review = _body(await books.review_queue(user))
+    # Independent reads, each in its own session (separate pooled connections; SQLite WAL lets
+    # readers run side by side), so they run concurrently.
+    items, forecast, recon, review, pending = await asyncio.gather(
+        stock.items_data(user.business_id, show_money=True), cash.forecast_data(user.business_id, "30d"),
+        books.reconciliation_summary(user.business_id), books.review_queue_data(user.business_id),
+        _pending(user.business_id))
 
     rows = items["items"]
     warnings = [i for i in rows if i["reorder_status"] == "reorder" or i["expiry_risk"]]
@@ -45,12 +50,9 @@ async def home(user: CurrentUser = RequireManager) -> Response:
                   "first_below_buffer": forecast["first_below_buffer"], "confidence": forecast["confidence"],
                   "data_as_of": forecast["data_as_of"]}
     review_count = len(review["questions"]) + len(review["held_invoices"]) + len(review["suggested_matches"])
-    books_strip = {"percent_reconciled": recon["percent_matched"], "unmatched": len(recon["open"]),
+    books_strip = {"percent_reconciled": recon["percent_matched"], "unmatched": recon["open_count"],
                    "review_count": review_count, "data_as_of": recon["data_as_of"]}
 
-    async with read_session() as s:
-        pending = (await s.execute(select(ApprovalRequest).where(
-            ApprovalRequest.business_id == user.business_id, ApprovalRequest.status == "pending"))).scalars().all()
     mine = [r for r in pending if ROLE_RANK[user.role] >= ROLE_RANK.get(r.required_role, 1)]
     # Most urgent first; among equals, the nearest deadline, then the newest.
     decisions = sorted((r for r in mine if r.kind != "alert"),

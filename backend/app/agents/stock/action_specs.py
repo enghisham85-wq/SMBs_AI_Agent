@@ -545,8 +545,7 @@ async def _apply_sales_compensate(ctx: ActionContext, inputs: dict[str, Any], re
 # =========================================================================== generate_forecasts
 async def _forecast_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     d = date.fromisoformat(inputs["date"])
-    async with write_session() as s:
-        methods = await demand.generate(s, ctx.business_id, d)
+    methods = await demand.generate(ctx.business_id, d)
     return {"methods": methods, "generated_on": d.isoformat()}
 
 

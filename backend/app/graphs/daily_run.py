@@ -6,6 +6,7 @@ once per date, in date order, so jumping ahead never skips a day's checks.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
@@ -35,6 +36,9 @@ STEPS: tuple[str, ...] = (
 )
 
 StepFn = Callable[[uuid.UUID, date], Awaitable[Any]]
+# Wall-clock budget for each registered step function. A step stuck on the network (a model call, a
+# channel) is cancelled and recorded as a failure, so the rest of the day still runs.
+STEP_BUDGET_S = 300.0
 _steps: dict[str, list[tuple[str, StepFn]]] = {s: [] for s in STEPS}
 
 
@@ -67,13 +71,20 @@ def _node(step: str) -> Callable[[DayState], Awaitable[dict[str, Any]]]:
         d = date.fromisoformat(state["date"])
         failures = list(state.get("failures", []))
         for name, fn in _steps[step]:
+            budget = asyncio.timeout(STEP_BUDGET_S)
             try:
-                await fn(bid, d)
+                async with budget:
+                    await fn(bid, d)
             except Exception as exc:  # one failing step must not stop the rest of the day
-                log.exception("daily step %s/%s failed on %s", step, name, d)
-                failures.append({"step": step, "name": name, "error": repr(exc)})
+                if isinstance(exc, TimeoutError) and budget.expired():
+                    log.error("daily step %s/%s took longer than %.0fs on %s; cancelled", step, name, STEP_BUDGET_S, d)
+                    error = f"TimeoutError('step took longer than {STEP_BUDGET_S:.0f}s')"
+                else:
+                    log.exception("daily step %s/%s failed on %s", step, name, d)
+                    error = repr(exc)
+                failures.append({"step": step, "name": name, "error": error})
                 await audit("daily_step_failed", business_id=bid, inputs={"step": step, "name": name, "date": d},
-                            outputs={"error": repr(exc)})
+                            outputs={"error": error})
         return {"done": [*state.get("done", []), step], "failures": failures}
 
     return run

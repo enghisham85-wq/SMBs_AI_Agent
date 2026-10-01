@@ -27,7 +27,7 @@ Library: `python-telegram-bot` v21, long polling (research R13). The bot is a se
 ```
 
 - `request_token` is opaque (not the DB id) and bound to the request.
-- On callback: bot calls `ApprovalService.resolve(token, option_key, user)`. Results:
+- On callback: bot calls `ApprovalService.claim(token, option_key, user)` (the atomic first-answer-wins step of `resolve`), answers the callback at once, then resumes the waiting agent in the background. Results:
   - `resolved` → edit message to show the chosen option, who chose it and when.
   - `already_resolved` → edit message to "Already answered in <channel> by <user>: <option>" (first answer wins).
   - `permission_denied` → answer callback with a refusal notice; audit-logged.
@@ -36,5 +36,7 @@ Library: `python-telegram-bot` v21, long polling (research R13). The bot is a se
 
 ## Failure handling
 
-- Send failure (network, blocked bot) → `telegram_send_failed` audit entry; request remains open in the dashboard chat panel (FR-010a); retried on next scheduler tick.
+- Sends and edits are queued and never block the action that triggered them.
+- Send failure (network) → `telegram_send_failed` audit entry; request remains open in the dashboard chat panel (FR-010a); resent to the chats that failed, with backoff from 60 s doubling to 1 h, at most 6 attempts, then one `telegram_send_gave_up` audit entry.
+- Permanent failures (blocked bot, bad chat id: `Forbidden` / `BadRequest`) are not retried.
 - Duplicate callbacks (Telegram retries) are idempotent by `(callback_query_id)`.
