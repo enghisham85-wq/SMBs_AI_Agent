@@ -7,7 +7,7 @@ Modes (LLM_MODE):
 - offline: never call the API; use the caller's deterministic `offline` fallback. Clearly a
            stand-in for development and demos without an API key.
 
-Every call uses model `claude-opus-5` with structured output (Pydantic), an effort level per
+Every call uses model `claude-opus-5-5` with structured output (Pydantic), an effort level per
 role, server-side refusal fallback, and top-level prompt caching of the stable prefix.
 """
 
@@ -27,7 +27,7 @@ from app.config import get_settings
 
 log = logging.getLogger(__name__)
 
-MODEL = "claude-opus-5"
+MODEL = "claude-opus-5-5"
 EFFORT: dict[str, str] = {
     "extraction": "high",
     "verifier": "high",
@@ -35,7 +35,10 @@ EFFORT: dict[str, str] = {
     "message": "medium",
     "incident": "medium",
 }
-MAX_TOKENS: dict[str, int] = {"extraction": 8000, "verifier": 4000, "classification": 1000}
+# Thinking is always on (Claude Opus 5.5) and counts toward max_tokens, so leave room for it as well as
+# the reply. Each role sets its effort explicitly: the model's own default is "medium".
+MAX_TOKENS: dict[str, int] = {"classification": 4000}
+DEFAULT_MAX_TOKENS = 16000
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 T = TypeVar("T", bound=BaseModel)
@@ -77,7 +80,9 @@ def _content_for_hash(blocks: list[dict[str, Any]]) -> list[Any]:
 
 def request_hash(role: str, system: str, blocks: list[dict[str, Any]], schema_name: str) -> str:
     raw = json.dumps(
-        {"role": role, "system": system, "content": _content_for_hash(blocks), "schema": schema_name},
+        # The model and effort change the answer, so a recorded fixture only replays for the same pair.
+        {"model": MODEL, "effort": EFFORT.get(role, "medium"), "role": role, "system": system,
+         "content": _content_for_hash(blocks), "schema": schema_name},
         sort_keys=True,
         ensure_ascii=False,
     )
@@ -133,7 +138,7 @@ class LLMClient:
         try:
             response = await self._api().beta.messages.parse(
                 model=MODEL,
-                max_tokens=MAX_TOKENS.get(role, 4000),
+                max_tokens=MAX_TOKENS.get(role, DEFAULT_MAX_TOKENS),
                 system=system,
                 messages=[{"role": "user", "content": content}],
                 output_format=output_model,

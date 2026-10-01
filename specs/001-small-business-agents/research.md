@@ -27,7 +27,7 @@ The repository is empty (greenfield), so every technical choice below was made i
 
 ## R4. LLM provider, models and call patterns
 
-- **Decision**: Anthropic Claude via the official `anthropic` Python SDK. Model `claude-opus-5` for all LLM roles, with `output_config.effort` tuned per role:
+- **Decision**: Anthropic Claude via the official `anthropic` Python SDK. Model `claude-opus-5-5` for all LLM roles, with `output_config.effort` tuned per role:
   | Role | Input | Output | Effort |
   |---|---|---|---|
   | Invoice extraction (Accountant) | Image or PDF document block + instructions | Structured JSON (Pydantic schema) with per-field confidence | `high` |
@@ -35,7 +35,7 @@ The repository is empty (greenfield), so every technical choice below was made i
   | Expense classification (Accountant) | Transaction text + chart of accounts + learned rules | Account code + confidence | `low` |
   | Owner-message wording, incident root-cause summary, learned-rule proposal | Structured incident/action facts | Short bilingual text / rule JSON | `medium` |
   - Structured outputs via `client.messages.parse()` with Pydantic output models (no prefill; prefill is rejected on current models).
-  - Adaptive thinking (default on for `claude-opus-5`); streaming not required because outputs are small (`max_tokens` ≈ 4–8K).
+  - Adaptive thinking (always on for `claude-opus-5-5`; it cannot be disabled, effort is the control and the model's default is `medium`, so every role sets it explicitly); thinking counts toward `max_tokens`, so calls allow 16K (4K for low-effort classification); streaming not required at that size.
   - Server-side refusal fallbacks enabled (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`) and `stop_reason` checked before reading content.
   - Prompt caching: stable system prompt + schema + chart of accounts + active learned rules placed first with a cache breakpoint; the document/transaction goes last.
 - **Rationale**: One model keeps one prompt-cache namespace and one behaviour profile to evaluate; effort is the cost lever instead of model downgrades. PDFs and images are native input, including Arabic text, so no separate OCR stage is needed.
