@@ -1,0 +1,28 @@
+{
+  "code": "AE",
+  "name_en": "United Arab Emirates",
+  "name_ar": "الإمارات العربية المتحدة",
+  "currency": "AED",
+  "vat_rate_percent": "5",
+  "vat_period": "quarterly",
+  "weekend_days": [6, 7],
+  "tax_id_pattern": "^\\d{15}$",
+  "default_date_format": "DMY",
+  "fixed_holidays": [
+    {"month": 1, "day": 1, "name_en": "New Year's Day", "name_ar": "رأس السنة الميلادية"},
+    {"month": 12, "day": 1, "name_en": "Commemoration Day", "name_ar": "يوم الشهيد"},
+    {"month": 12, "day": 2, "name_en": "National Day", "name_ar": "اليوم الوطني"},
+    {"month": 12, "day": 3, "name_en": "National Day", "name_ar": "اليوم الوطني"}
+  ],
+  "hijri_holidays": [
+    {"month": 10, "day": 1, "days": 3, "name_en": "Eid al-Fitr", "name_ar": "عيد الفطر"},
+    {"month": 12, "day": 9, "days": 4, "name_en": "Arafat Day and Eid al-Adha", "name_ar": "وقفة عرفات وعيد الأضحى"},
+    {"month": 1, "day": 1, "days": 1, "name_en": "Islamic New Year", "name_ar": "رأس السنة الهجرية"},
+    {"month": 3, "day": 12, "days": 1, "name_en": "Prophet's Birthday", "name_ar": "المولد النبوي الشريف"}
+  ],
+  "special_holidays": [],
+  "holiday_overrides": {},
+  "ramadan_overrides": {},
+  "money_defaults": {"min_cash_buffer": "20000", "journal_value_limit": "3000", "po_auto_approve_limit": "0"},
+  "seed_price_factor": "0.074"
+}
