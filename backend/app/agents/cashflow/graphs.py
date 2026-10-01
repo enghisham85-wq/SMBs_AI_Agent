@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from collections import defaultdict
 from datetime import date, timedelta
 from typing import Any, TypedDict
 
@@ -481,6 +482,11 @@ def build_balance_compare() -> StateGraph[Any]:
 async def _promise(s: Any, inv_id: uuid.UUID, today: date, paid: bool) -> reminders.PromiseState | None:
     p = (await s.execute(select(PaymentPromise).where(PaymentPromise.receivable_invoice_id == inv_id)
                          .order_by(PaymentPromise.created_at.desc()).limit(1))).scalars().first()
+    return _promise_state(p, today, paid)
+
+
+def _promise_state(p: PaymentPromise | None, today: date, paid: bool) -> reminders.PromiseState | None:
+    """Settle a promise whose date has passed (or that was kept) and return its state."""
     if p is None:
         return None
     if p.outcome is None and (paid or p.promised_date < today):
@@ -495,13 +501,29 @@ async def rm_schedule(state: DayState) -> dict[str, Any]:
     async with write_session() as s:
         invs = (await s.execute(select(ReceivableInvoice).where(ReceivableInvoice.business_id == bid,
                                                                 ReceivableInvoice.status.in_(("open", "partially_paid"))))).scalars().all()
+        # One query each for every open invoice's reminders, latest promise and the customers' paid history,
+        # instead of three per invoice while holding the write lock.
+        ids = [inv.id for inv in invs]
+        by_inv: dict[uuid.UUID, list[PaymentReminder]] = defaultdict(list)
+        latest: dict[uuid.UUID, PaymentPromise] = {}
+        paid_by_customer: dict[str, list[ReceivableInvoice]] = defaultdict(list)
+        if ids:
+            for r in (await s.execute(select(PaymentReminder).where(PaymentReminder.receivable_invoice_id.in_(ids)))).scalars():
+                by_inv[r.receivable_invoice_id].append(r)
+            for pr in (await s.execute(select(PaymentPromise).where(PaymentPromise.receivable_invoice_id.in_(ids))
+                                       .order_by(PaymentPromise.created_at.desc()))).scalars():
+                latest.setdefault(pr.receivable_invoice_id, pr)
+            for paid in (await s.execute(select(ReceivableInvoice).where(
+                    ReceivableInvoice.business_id == bid, ReceivableInvoice.status == "paid",
+                    ReceivableInvoice.customer_name.in_(sorted({inv.customer_name for inv in invs}))))).scalars():
+                paid_by_customer[paid.customer_name].append(paid)
         for inv in invs:
-            rows = (await s.execute(select(PaymentReminder).where(PaymentReminder.receivable_invoice_id == inv.id))).scalars().all()
+            rows = by_inv.get(inv.id, [])
             if any(r.status in ("scheduled", "pending_approval") for r in rows):
                 continue
-            promise = await _promise(s, inv.id, d, False)
+            promise = _promise_state(latest.get(inv.id), d, False)
             sent = {r.level: (r.sent_at.date() if r.sent_at else r.scheduled_for) for r in rows if r.status == "sent"}
-            score = await projection.customer_late_score(s, bid, inv.customer_name, inv.late_payment_history_score)
+            score = projection.late_score(paid_by_customer.get(inv.customer_name, []), inv.late_payment_history_score)
             nxt = reminders.next_reminder(inv.due_date, score, sent, d, promise)
             if nxt is None or any(r.level == nxt.level for r in rows):
                 continue  # all sent, paused by a promise, or this level was cancelled by the owner

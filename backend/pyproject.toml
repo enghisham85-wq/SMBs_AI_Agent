@@ -26,6 +26,7 @@ dependencies = [
     "python-bidi>=0.4",
     "pillow>=10.4",
     "itsdangerous>=2.2",
+    "boosthis",
 ]
 
 [dependency-groups]
@@ -41,9 +42,14 @@ dev = [
 [tool.uv]
 package = false
 
+[tool.uv.sources]
+# Vendored Boosthis kit (not on PyPI); its files must stay byte-for-byte as shipped.
+boosthis = { path = "lib/boosthis-py", editable = true }
+
 [tool.ruff]
 line-length = 110
 target-version = "py312"
+extend-exclude = ["lib"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ASYNC"]

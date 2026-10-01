@@ -65,6 +65,22 @@ async def load(business_id: uuid.UUID) -> None:
         set_state(row.mode, row.current_date if row.mode == "simulated" else None)
 
 
+async def clear_stale_advance(business_id: uuid.UUID) -> bool:
+    """At startup no advance can be running, so a set `advancing` flag was left by a crash mid-advance;
+    clear it, or every later advance would be refused as busy. Returns whether a flag was cleared."""
+    from app.db.engine import read_session, write_session
+    from app.models.clock import BusinessClock
+
+    query = select(BusinessClock).where(BusinessClock.business_id == business_id, BusinessClock.advancing.is_(True))
+    async with read_session() as s:
+        if (await s.execute(query)).scalar_one_or_none() is None:
+            return False
+    async with write_session() as s:
+        for row in (await s.execute(query)).scalars():
+            row.advancing = False
+    return True
+
+
 DayCallback = Callable[[date], Awaitable[None]]
 
 

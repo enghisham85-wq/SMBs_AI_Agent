@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -13,17 +13,19 @@ from typing import Any
 from fastapi import APIRouter, File, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import case, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.accountant import graphs as acc_graphs
 from app.agents.accountant import receivables, reports
 from app.agents.accountant.intake import UnsupportedFileError, submit
-from app.api.common import J, get_business, with_freshness
+from app.api.common import DEFAULT_LIMIT, J, get_business, page, with_freshness
 from app.approvals import service as approvals
 from app.config import get_settings
 from app.core import clock
 from app.core.auth import CurrentUser, RequireManager
 from app.core.errors import AppError, not_found
+from app.core.files import read_upload
 from app.db.currencies import exponent
 from app.db.engine import read_session
 from app.harness.graph import run_action
@@ -34,6 +36,8 @@ from app.models.master import Supplier
 from app.models.tenancy import FileRef
 
 router = APIRouter(tags=["books"])
+MATCHED = ("auto_matched", "confirmed")
+OPEN = ("unmatched", "suggested")
 
 
 def _money(minor: int, cur: str) -> dict[str, Any]:
@@ -46,7 +50,7 @@ def _money(minor: int, cur: str) -> dict[str, Any]:
 @router.post("/documents", status_code=202)
 async def upload_document(file: UploadFile = File(...), user: CurrentUser = RequireManager) -> Response:
     try:
-        res = await submit(user.business_id, await file.read(), file.content_type or "application/octet-stream",
+        res = await submit(user.business_id, await read_upload(file), file.content_type or "application/octet-stream",
                            file.filename or "document", "dashboard", user.id)
     except UnsupportedFileError as exc:
         raise AppError(415, "unsupported_file", message_en="Please upload a PDF or an image.",
@@ -54,20 +58,25 @@ async def upload_document(file: UploadFile = File(...), user: CurrentUser = Requ
     return J(res, 202)
 
 
+def _sample_listing(root: Path) -> list[dict[str, Any]]:
+    files = root / "files.json"
+    return json.loads(files.read_text(encoding="utf-8")) if files.exists() else []
+
+
 @router.get("/documents/samples")
 async def sample_documents(user: CurrentUser = RequireManager) -> Response:
-    files = Path(get_settings().SAMPLE_INVOICES_DIR) / "files.json"
-    return J({"samples": json.loads(files.read_text(encoding="utf-8")) if files.exists() else []})
+    return J({"samples": await asyncio.to_thread(_sample_listing, Path(get_settings().SAMPLE_INVOICES_DIR))})
 
 
 @router.post("/documents/samples/{name}", status_code=202)
 async def submit_sample(name: str, user: CurrentUser = RequireManager) -> Response:
     root = Path(get_settings().SAMPLE_INVOICES_DIR)
-    listing = json.loads((root / "files.json").read_text(encoding="utf-8")) if (root / "files.json").exists() else []
+    listing = await asyncio.to_thread(_sample_listing, root)
     entry = next((f for f in listing if f["name"] == name), None)
     if entry is None:
         raise not_found("Sample")
-    res = await submit(user.business_id, (root / entry["file"]).read_bytes(), entry["mime"], entry["file"], "dashboard", user.id)
+    data = await asyncio.to_thread((root / entry["file"]).read_bytes)
+    res = await submit(user.business_id, data, entry["mime"], entry["file"], "dashboard", user.id)
     return J(res, 202)
 
 
@@ -131,49 +140,82 @@ async def get_file(file_id: uuid.UUID, user: CurrentUser = RequireManager) -> Re
 
 
 # ------------------------------------------------------------------ review and reconciliation
-@router.get("/review-queue")
-async def review_queue(user: CurrentUser = RequireManager) -> Response:
+async def review_queue_data(business_id: uuid.UUID) -> dict[str, Any]:
     async with read_session() as s:
-        qs = (await s.execute(select(ApprovalRequest).where(ApprovalRequest.business_id == user.business_id,
+        qs = (await s.execute(select(ApprovalRequest).where(ApprovalRequest.business_id == business_id,
                                                             ApprovalRequest.agent == "accountant",
                                                             ApprovalRequest.status == "pending"))).scalars().all()
-        held = (await s.execute(select(PayableInvoice).where(PayableInvoice.business_id == user.business_id,
+        held = (await s.execute(select(PayableInvoice).where(PayableInvoice.business_id == business_id,
                                                              PayableInvoice.status == "held"))).scalars().all()
-        suggested = (await s.execute(select(BankTransaction).where(BankTransaction.business_id == user.business_id,
+        suggested = (await s.execute(select(BankTransaction).where(BankTransaction.business_id == business_id,
                                                                    BankTransaction.match_status == "suggested"))).scalars().all()
-    return J(with_freshness({"questions": [approvals.to_dict(q) for q in qs],
-              "held_invoices": [{"id": i.id, "number": i.invoice_number, "total": i.total, "hold_reason": i.hold_reason}
-                                for i in held],
-              "suggested_matches": [{"id": t.id, "date": t.date, "amount": t.amount, "description": t.description,
-                                     "confidence": t.match_confidence, "suggestion": (t.meta or {}).get("suggestion")}
-                                    for t in suggested]},
-                            {"books": max([*(q.updated_at for q in qs), *(i.updated_at for i in held),
-                                           *(t.updated_at for t in suggested)], default=None)}))
+    return with_freshness({"questions": [approvals.to_dict(q) for q in qs],
+                           "held_invoices": [{"id": i.id, "number": i.invoice_number, "total": i.total,
+                                              "hold_reason": i.hold_reason} for i in held],
+                           "suggested_matches": [{"id": t.id, "date": t.date, "amount": t.amount,
+                                                  "description": t.description, "confidence": t.match_confidence,
+                                                  "suggestion": (t.meta or {}).get("suggestion")} for t in suggested]},
+                          {"books": max([*(q.updated_at for q in qs), *(i.updated_at for i in held),
+                                         *(t.updated_at for t in suggested)], default=None)})
+
+
+@router.get("/review-queue")
+async def review_queue(user: CurrentUser = RequireManager) -> Response:
+    return J(await review_queue_data(user.business_id))
+
+
+async def _recon_counts(s: AsyncSession, business_id: uuid.UUID,
+                        start: date | None) -> tuple[int, int, int, datetime | None]:
+    """(total, matched, open, newest import) over the bank lines since the books start, counted in SQL."""
+    q = select(func.count(), func.sum(case((BankTransaction.match_status.in_(MATCHED), 1), else_=0)),
+               func.sum(case((BankTransaction.match_status.in_(OPEN), 1), else_=0)),
+               func.max(BankTransaction.created_at)).where(BankTransaction.business_id == business_id)
+    if start:
+        q = q.where(BankTransaction.date >= start)
+    total, matched, open_, last = (await s.execute(q)).one()
+    return int(total or 0), int(matched or 0), int(open_ or 0), last
+
+
+def _pct(matched: int, total: int) -> float:
+    return round(100 * matched / total, 1) if total else 100.0
+
+
+async def reconciliation_summary(business_id: uuid.UUID) -> dict[str, Any]:
+    """The Reconciliation view's headline figures (for Home), without loading any bank line."""
+    start = await acc_graphs.books_start(business_id)
+    async with read_session() as s:
+        total, matched, open_, last_bank = await _recon_counts(s, business_id, start)
+    return with_freshness({"percent_matched": _pct(matched, total), "total": total, "matched": matched,
+                           "open_count": open_}, {"bank": last_bank})
 
 
 @router.get("/reconciliation")
-async def reconciliation(user: CurrentUser = RequireManager) -> Response:
+async def reconciliation(limit: int = DEFAULT_LIMIT, offset: int = 0, user: CurrentUser = RequireManager) -> Response:
+    """`open` is paged with limit/offset, newest first; `total` and `matched` always count every line."""
+    limit, offset = page(limit, offset)
     start = await acc_graphs.books_start(user.business_id)
+    scope = [BankTransaction.business_id == user.business_id]
+    if start:
+        scope.append(BankTransaction.date >= start)
     async with read_session() as s:
-        q = select(BankTransaction).where(BankTransaction.business_id == user.business_id)
-        if start:
-            q = q.where(BankTransaction.date >= start)
-        txns = (await s.execute(q.order_by(BankTransaction.date.desc()))).scalars().all()
+        total, matched, _, last_bank = await _recon_counts(s, user.business_id, start)
+        open_txns = (await s.execute(select(BankTransaction).where(*scope, BankTransaction.match_status.in_(OPEN))
+                                     .order_by(BankTransaction.date.desc()).offset(offset).limit(limit))).scalars().all()
+        recent_txns = (await s.execute(select(BankTransaction).where(*scope, BankTransaction.match_status.in_(MATCHED))
+                                       .order_by(BankTransaction.date.desc()).limit(30))).scalars().all()
         accounts = {a.id: a for a in (await s.execute(select(BankAccount).where(BankAccount.business_id == user.business_id))).scalars()}
-        last_bank = max((t.created_at for t in txns), default=None)
-    matched = [t for t in txns if t.match_status in ("auto_matched", "confirmed")]
-    pct = round(100 * len(matched) / len(txns), 1) if txns else 100.0
     open_items = [{"id": t.id, "date": t.date, "account": accounts[t.account_id].name if t.account_id in accounts else "",
                    "amount": t.amount, "description": t.description, "status": t.match_status,
                    "confidence": t.match_confidence, "suggestion": (t.meta or {}).get("suggestion")}
-                  for t in txns if t.match_status in ("unmatched", "suggested")]
+                  for t in open_txns]
     recent = [{"id": t.id, "date": t.date, "amount": t.amount, "description": t.description, "matched_type": t.matched_type,
-               "source": t.match_source, "confidence": t.match_confidence} for t in matched[:30]]
+               "source": t.match_source, "confidence": t.match_confidence} for t in recent_txns]
     cur = (await get_business(user.business_id)).currency
     bank_vs_ledger = {name: {"ledger": _money(v["ledger_minor"], cur), "bank": _money(v["bank_minor"], cur)}
                       for name, v in (await acc_graphs.ledger_bank_balances(user.business_id)).items()}
-    return J(with_freshness({"percent_matched": pct, "total": len(txns), "matched": len(matched), "open": open_items,
-                             "recent_matches": recent, "bank_vs_ledger": bank_vs_ledger}, {"bank": last_bank}))
+    return J(with_freshness({"percent_matched": _pct(matched, total), "total": total, "matched": matched,
+                             "open": open_items, "recent_matches": recent, "bank_vs_ledger": bank_vs_ledger},
+                            {"bank": last_bank}))
 
 
 class MatchIn(BaseModel):
@@ -293,16 +335,20 @@ async def create_receivable(body: RecIn, user: CurrentUser = RequireManager) -> 
 
 
 @router.get("/receivables")
-async def list_receivables(status: str | None = None, overdue: bool | None = None, user: CurrentUser = RequireManager) -> Response:
+async def list_receivables(status: str | None = None, overdue: bool | None = None, limit: int = DEFAULT_LIMIT,
+                           offset: int = 0, user: CurrentUser = RequireManager) -> Response:
+    """Ordered by due date and paged with limit/offset."""
+    limit, offset = page(limit, offset)
     today = clock.today()
     async with read_session() as s:
         q = select(ReceivableInvoice).where(ReceivableInvoice.business_id == user.business_id)
         if status:
             q = q.where(ReceivableInvoice.status == status)
-        rows = (await s.execute(q.order_by(ReceivableInvoice.due_date))).scalars().all()
+        if overdue:  # _rec_out's days_overdue > 0, filtered in SQL so a page holds only overdue invoices
+            q = q.where(ReceivableInvoice.status.in_(("open", "partially_paid")), ReceivableInvoice.due_date < today)
+        rows = (await s.execute(q.order_by(ReceivableInvoice.due_date)
+                                .offset(offset).limit(limit))).scalars().all()
     out = [_rec_out(r, today) for r in rows]
-    if overdue:
-        out = [r for r in out if r["days_overdue"] > 0]
     return J(with_freshness({"receivables": out}, {"books": max((r.updated_at for r in rows), default=None)}))
 
 

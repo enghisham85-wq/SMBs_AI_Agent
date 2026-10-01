@@ -1,8 +1,13 @@
 """Transactional outbox and in-process dispatch (research R11, contracts/events.md).
 
 `publish()` writes an Event row in the caller's transaction. After the transaction commits,
-`write_session()` calls `dispatch_pending()`, which delivers each event once per subscribed
+`write_session()` calls `dispatch_if_pending()`, which delivers each event once per subscribed
 consumer and records an EventDelivery. Handlers are idempotent on (event, consumer).
+
+Dispatch stays inline (the caller waits for the handlers): the daily run and the API rely on a
+handler's effects being visible once the publishing write returns. The deliveries of one event and
+its `dispatched` flag are written in a single commit after all its consumers ran, so a crash in
+between re-runs that event's handlers on the next dispatch.
 """
 
 from __future__ import annotations
@@ -12,7 +17,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.harness.audit import jsonable
@@ -44,6 +49,11 @@ REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
 Handler = Callable[[dict[str, Any]], Awaitable[None]]
 _subscribers: dict[str, list[tuple[str, Handler]]] = {}
 _dispatching = False
+# Set when a committed transaction published an event (and at startup, for leftovers), so the
+# post-commit hook can skip the outbox query after the many writes that publish nothing.
+_maybe_pending = True
+_PUBLISHED = "events_published"
+_BATCH = 500
 
 
 class EventPayloadError(ValueError):
@@ -85,6 +95,25 @@ def publish(
             action_id=action_id,
         )
     )
+    _mark_pending(session)
+
+
+def _mark_pending(session: AsyncSession) -> None:
+    session.info[_PUBLISHED] = True
+
+
+def committed(session: AsyncSession) -> None:
+    """Called by write_session after a commit: events this session published are now visible."""
+    global _maybe_pending
+    if session.info.get(_PUBLISHED):
+        _maybe_pending = True
+
+
+async def dispatch_if_pending() -> int:
+    """write_session's post-commit hook: skips the outbox query when nothing new can be waiting."""
+    if not _maybe_pending:
+        return 0
+    return await dispatch_pending()
 
 
 async def dispatch_pending() -> int:
@@ -93,7 +122,7 @@ async def dispatch_pending() -> int:
     Re-entrant calls (a handler's own write_session) return immediately; the outer loop picks up
     any events those handlers publish.
     """
-    global _dispatching
+    global _dispatching, _maybe_pending
     if _dispatching or not _subscribers:
         return 0
     from app.db.engine import read_session, write_session
@@ -103,60 +132,63 @@ async def dispatch_pending() -> int:
     delivered = 0
     try:
         while True:
+            # Cleared before the query: a commit that lands while it runs sets the flag again.
+            _maybe_pending = False
             async with read_session() as s:
                 events = list(
-                    (await s.execute(select(Event).where(Event.dispatched.is_(False)).order_by(Event.occurred_at)))
+                    (await s.execute(select(Event).where(Event.dispatched.is_(False))
+                                     .order_by(Event.occurred_at).limit(_BATCH)))
                     .scalars()
                     .all()
                 )
+                done = {
+                    (eid, consumer)
+                    for eid, consumer in (await s.execute(
+                        select(EventDelivery.event_id, EventDelivery.consumer)
+                        .where(EventDelivery.event_id.in_([e.id for e in events]))
+                    )).all()
+                } if events else set()
             if not events:
+                if _maybe_pending:
+                    continue
                 break
+            idle: list[uuid.UUID] = []
             for ev in events:
-                for consumer, handler in list(_subscribers.get(ev.type, [])):
-                    async with read_session() as s:
-                        done = (
-                            await s.execute(
-                                select(EventDelivery.id).where(
-                                    EventDelivery.event_id == ev.id, EventDelivery.consumer == consumer
-                                )
-                            )
-                        ).first()
-                    if done:
-                        continue
-                    envelope = {
-                        "event_id": str(ev.id),
-                        "type": ev.type,
-                        "version": ev.version,
-                        "business_id": str(ev.business_id),
-                        "producer": ev.producer,
-                        "action_id": str(ev.action_id) if ev.action_id else None,
-                        "occurred_at": ev.occurred_at.isoformat(),
-                        "payload": ev.payload,
-                    }
+                todo = [(c, h) for c, h in list(_subscribers.get(ev.type, [])) if (ev.id, c) not in done]
+                if not todo:
+                    idle.append(ev.id)
+                    continue
+                envelope = {
+                    "event_id": str(ev.id),
+                    "type": ev.type,
+                    "version": ev.version,
+                    "business_id": str(ev.business_id),
+                    "producer": ev.producer,
+                    "action_id": str(ev.action_id) if ev.action_id else None,
+                    "occurred_at": ev.occurred_at.isoformat(),
+                    "payload": ev.payload,
+                }
+                results: list[EventDelivery] = []
+                for consumer, handler in todo:
                     status, error = "handled", None
                     try:
                         from app.core.ownership import acting_as
 
                         with acting_as(consumer.split(":", 1)[0]):  # a handler acts as its consuming agent
-                            await handler(envelope)
+                            await handler(dict(envelope))
                     except Exception as exc:  # a failing consumer must not block the others
                         log.exception("event handler %s failed for %s", consumer, ev.type)
                         status, error = "failed", repr(exc)
-                    async with write_session() as s:
-                        s.add(
-                            EventDelivery(
-                                business_id=ev.business_id,
-                                event_id=ev.id,
-                                consumer=consumer,
-                                status=status,
-                                error=error,
-                            )
-                        )
+                    results.append(EventDelivery(business_id=ev.business_id, event_id=ev.id, consumer=consumer,
+                                                 status=status, error=error))
                     delivered += 1
+                # One commit per event records every consumer's delivery and the dispatched flag.
                 async with write_session() as s:
-                    row = await s.get(Event, ev.id)
-                    if row is not None:
-                        row.dispatched = True
+                    s.add_all(results)
+                    await s.execute(update(Event).where(Event.id == ev.id).values(dispatched=True))
+            if idle:  # no consumer left to run: flag the lot in one statement
+                async with write_session() as s:
+                    await s.execute(update(Event).where(Event.id.in_(idle)).values(dispatched=True))
     finally:
         _dispatching = False
     return delivered

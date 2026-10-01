@@ -50,26 +50,101 @@ async function parseError(res: Response): Promise<ApiError> {
   );
 }
 
-export async function request<T>(method: string, path: string, body?: unknown, init?: RequestInit): Promise<T> {
+/** Deadline for ordinary calls; a hung request becomes a retryable error instead of an endless spinner. */
+export const DEFAULT_TIMEOUT_MS = 15_000;
+/** Calls that run LLM work before answering (document reading, chaos runs, graph resumes, day runs). */
+export const LONG_TIMEOUT_MS = 150_000;
+
+export interface RequestOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+/** A request that got no usable HTTP answer: it timed out, the network failed, or the body was not JSON. */
+export class RequestError extends Error {
+  constructor(public kind: "timeout" | "network" | "bad_response") {
+    super(`request failed: ${kind}`);
+  }
+}
+
+export type ErrorKind = "auth" | "forbidden" | "server" | "timeout" | "network" | "other";
+
+export function errorKind(e: unknown): ErrorKind {
+  if (e instanceof ApiError) {
+    if (e.status === 401) return "auth";
+    if (e.status === 403) return "forbidden";
+    if (e.status >= 500) return "server";
+    return "other";
+  }
+  if (e instanceof RequestError) return e.kind === "bad_response" ? "server" : e.kind;
+  return "other";
+}
+
+/** Only transient failures are worth retrying; 4xx answers will not change on a second try. */
+export function isTransient(e: unknown): boolean {
+  const kind = errorKind(e);
+  return kind === "server" || kind === "network";
+}
+
+export async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  { signal, timeoutMs = DEFAULT_TIMEOUT_MS }: RequestOptions = {},
+): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   const isForm = body instanceof FormData;
   if (body !== undefined && !isForm) headers["Content-Type"] = "application/json";
   if (method !== "GET" && csrfToken) headers["X-CSRF-Token"] = csrfToken;
-  const res = await fetch(`/api/v1${path}`, {
-    method,
-    headers,
-    credentials: "same-origin",
-    body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
-    ...init,
-  });
-  if (!res.ok) throw await parseError(res);
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+
+  // One controller fed by both the deadline and the caller (React Query cancels on unmount/refetch).
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctrl.abort();
+  }, timeoutMs);
+  const forward = () => ctrl.abort(signal?.reason);
+  if (signal?.aborted) forward();
+  else signal?.addEventListener("abort", forward, { once: true });
+  const failure = (e: unknown, kind: "network" | "bad_response") => {
+    if (timedOut) return new RequestError("timeout");
+    if (signal?.aborted) return e; // a cancellation, not a failure: React Query expects the abort error
+    return new RequestError(kind);
+  };
+
+  try {
+    let res: Response;
+    try {
+      res = await fetch(`/api/v1${path}`, {
+        method,
+        headers,
+        credentials: "same-origin",
+        body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+    } catch (e) {
+      throw failure(e, "network");
+    }
+    if (!res.ok) throw await parseError(res);
+    if (res.status === 204) return undefined as T;
+    try {
+      return (await res.json()) as T;
+    } catch (e) {
+      throw failure(e, "bad_response");
+    }
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", forward);
+  }
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>("GET", path),
-  post: <T>(path: string, body?: unknown) => request<T>("POST", path, body ?? {}),
-  patch: <T>(path: string, body: unknown) => request<T>("PATCH", path, body),
-  upload: <T>(path: string, form: FormData) => request<T>("POST", path, form),
+  get: <T>(path: string, signal?: AbortSignal) => request<T>("GET", path, undefined, { signal }),
+  post: <T>(path: string, body?: unknown, opts?: RequestOptions) =>
+    request<T>("POST", path, body ?? {}, opts),
+  patch: <T>(path: string, body: unknown, opts?: RequestOptions) => request<T>("PATCH", path, body, opts),
+  // Uploads are read (OCR/LLM) or imported before the response, so they get the long deadline by default.
+  upload: <T>(path: string, form: FormData, opts?: RequestOptions) =>
+    request<T>("POST", path, form, { timeoutMs: LONG_TIMEOUT_MS, ...opts }),
 };

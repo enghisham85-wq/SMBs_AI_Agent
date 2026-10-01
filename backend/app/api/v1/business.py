@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Response
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, select
+from sqlalchemy import exists, or_, select
 
 from app.api.common import J, with_freshness
 from app.core import clock, country_profiles
@@ -21,6 +21,11 @@ from app.harness.audit import add_audit
 from app.models.tenancy import Business
 
 router = APIRouter(tags=["business"])
+
+# A quantified group that itself contains a quantifier, e.g. (\d+)+ or (a|a*)*: on a non-matching
+# number it backtracks exponentially. Tax-id formats never need one.
+_NESTED_QUANTIFIER = re.compile(r"\((?:\\.|[^()\\])*(?:[*+]|\{\d*,?\d*\})(?:\\.|[^()\\])*\)(?:[*+]|\{\d*,\d*\})")
+MAX_TAX_ID_PATTERN_LEN = 100
 
 
 def _business_out(b: Business) -> dict[str, Any]:
@@ -51,12 +56,12 @@ async def has_financial_records(business_id: Any) -> bool:
     money_tables = [t for t in Base.metadata.sorted_tables
                     if t.name not in ("business", "setting", "item", "supplier_price")
                     and any(c.name.endswith("_currency") for c in t.columns) and "business_id" in t.columns]
+    if not money_tables:
+        return False
+    # One statement; SQLite stops at the first table with a row (each EXISTS is a business_id index probe).
     async with read_session() as s:
-        for t in money_tables:
-            n = (await s.execute(select(func.count()).select_from(t).where(t.c.business_id == business_id))).scalar_one()
-            if n:
-                return True
-    return False
+        return bool((await s.execute(select(or_(*(exists().where(t.c.business_id == business_id)
+                                                  for t in money_tables))))).scalar())
 
 
 @router.get("/business")
@@ -70,11 +75,14 @@ async def get_business(user: CurrentUser = RequireManager) -> Response:
 
 @router.get("/countries")
 async def countries(user: CurrentUser = RequireManager) -> Response:
-    return J({"countries": [
+    resp = J({"countries": [
         {"code": p.code, "name_en": p.name_en, "name_ar": p.name_ar, "currency": p.currency,
          "vat_rate_percent": p.vat_rate_percent, "vat_period": p.vat_period, "weekend_days": p.weekend_days}
         for p in country_profiles.available()
     ]})
+    # The profiles ship with the code; private because the route sits behind a login.
+    resp.headers["Cache-Control"] = "private, max-age=3600"
+    return resp
 
 
 class BusinessPatch(BaseModel):
@@ -97,6 +105,10 @@ class BusinessPatch(BaseModel):
     @classmethod
     def _regex(cls, v: str | None) -> str | None:
         if v is not None:
+            if len(v) > MAX_TAX_ID_PATTERN_LEN:
+                raise ValueError(f"tax_id_pattern must be at most {MAX_TAX_ID_PATTERN_LEN} characters")
+            if _NESTED_QUANTIFIER.search(v):
+                raise ValueError("tax_id_pattern must not repeat a group that already repeats, e.g. (\\d+)+")
             re.compile(v)
         return v
 

@@ -230,3 +230,26 @@ async def test_bank_lines_are_matched_automatically_with_source_and_the_rest_lis
     for e in entries:
         assert await _balanced(e.id)
     _ = timedelta
+
+
+async def test_answering_a_question_does_not_classify_the_lines_again(cafe: dict[str, Any], monkeypatch: Any) -> None:
+    """Each owner answer re-validates the invoice; line classifications (model calls) are kept from the first pass."""
+    from app.agents.accountant import checks
+
+    classified: list[str] = []
+    real = classification.classify_many
+
+    async def counting(business_id: uuid.UUID, supplier_id: uuid.UUID | None, descriptions: list[str]) -> Any:
+        classified.extend(descriptions)
+        return await real(business_id, supplier_id, descriptions)
+
+    async def no_stock_lines(s: Any, business_id: uuid.UUID, lines: list[dict[str, Any]]) -> list[None]:
+        return [None] * len(lines)  # every line is an expense to classify
+
+    monkeypatch.setattr(classification, "classify_many", counting)
+    monkeypatch.setattr(checks, "match_items", no_stock_lines)
+    res = await _submit(cafe, "bi_packaging_duplicate_wrong_total")
+    assert res["issues"] == ["arithmetic"]
+    await _answer(cafe, res["document_id"], "use_calculated")
+    assert (await _invoice(res["invoice_id"])).status == "posted"
+    assert len(classified) == 2 and len(set(classified)) == 2  # validated twice, each line classified once

@@ -107,12 +107,7 @@ async def fc_evaluate(state: DayState) -> dict[str, Any]:
     async with read_session() as s:
         products = list((await s.execute(select(Item).where(Item.business_id == bid, Item.is_sold.is_(True)))).scalars())
         gap = await checks.sales_data_gap(s, bid, d - timedelta(days=1))
-        per_item = {}
-        if gap.passed:
-            for p in products:
-                y = await demand.yesterday_error(s, bid, p.id, d)
-                m7 = await demand.mape_7d(s, bid, p.id, d)
-                per_item[p.id] = (y, m7)
+        per_item = await demand.forecast_errors(s, bid, [p.id for p in products], d) if gap.passed else {}
     if not gap.passed:
         return {"notes": {"paused": "sales data gap yesterday"}}
     found = []

@@ -15,13 +15,25 @@ interface SupplierRow {
 
 interface Scorecard {
   supplier: { id: string; name_en: string; name_ar: string; payment_terms_days: number };
-  lead_time: { stated_days: number; observed_days: number | null; average_actual_days: number | null; planning_days: number };
+  lead_time: {
+    stated_days: number;
+    observed_days: number | null;
+    average_actual_days: number | null;
+    planning_days: number;
+  };
   reliability_score: number;
   deliveries: {
     count: number;
     on_time: number;
     complete: number;
-    recent: { po: string; received_on: string; lead_days: number | null; on_time: boolean; complete: boolean; price_ok: boolean }[];
+    recent: {
+      po: string;
+      received_on: string;
+      lead_days: number | null;
+      on_time: boolean;
+      complete: boolean;
+      price_ok: boolean;
+    }[];
   };
   orders: { count: number; open: number };
   prices: {
@@ -39,20 +51,28 @@ export function SupplierScorecard() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
   const ar = lang === "ar";
-  const list = useQuery({ queryKey: ["suppliers"], queryFn: () => api.get<{ suppliers: SupplierRow[] }>("/suppliers") });
+  const list = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: ({ signal }) => api.get<{ suppliers: SupplierRow[] }>("/suppliers", signal),
+  });
   const [picked, setPicked] = useState<string | null>(null);
   const id = picked ?? list.data?.suppliers[0]?.id ?? null;
   const card = useQuery({
     queryKey: ["suppliers", id, "scorecard"],
     enabled: !!id,
-    queryFn: () => api.get<Scorecard>(`/suppliers/${id}/scorecard`),
+    queryFn: ({ signal }) => api.get<Scorecard>(`/suppliers/${id}/scorecard`, signal),
   });
   const d = card.data;
   const num = (n: number | null, digits = 1) =>
     n === null ? "—" : n.toLocaleString(ar ? "ar-EG" : "en-US", { maximumFractionDigits: digits });
   const pct = (n: number | null) => (n === null ? "—" : `${n > 0 ? "+" : ""}${num(n)}%`);
-  const day = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString(ar ? "ar-EG" : "en-GB", { day: "numeric", month: "short" });
-  const slower = d && d.lead_time.observed_days !== null && d.lead_time.observed_days > d.lead_time.stated_days;
+  const day = (iso: string) =>
+    new Date(iso + "T00:00:00").toLocaleDateString(ar ? "ar-EG" : "en-GB", {
+      day: "numeric",
+      month: "short",
+    });
+  const slower =
+    d && d.lead_time.observed_days !== null && d.lead_time.observed_days > d.lead_time.stated_days;
 
   return (
     <div className="flex flex-col gap-3" data-testid="supplier-scorecard">
@@ -69,14 +89,25 @@ export function SupplierScorecard() {
       {d && (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Stat label={t("scorecard.stated_lead")} value={t("scorecard.days", { n: num(d.lead_time.stated_days) })} />
+            <Stat
+              label={t("scorecard.stated_lead")}
+              value={t("scorecard.days", { n: num(d.lead_time.stated_days) })}
+            />
             <Stat
               label={t("scorecard.observed_lead")}
-              value={d.lead_time.observed_days === null ? "—" : t("scorecard.days", { n: num(d.lead_time.observed_days) })}
+              value={
+                d.lead_time.observed_days === null
+                  ? "—"
+                  : t("scorecard.days", { n: num(d.lead_time.observed_days) })
+              }
               warn={!!slower}
               note={slower ? t("scorecard.slower") : undefined}
             />
-            <Stat label={t("scorecard.reliability")} value={`${num(d.reliability_score * 100, 0)}%`} warn={d.reliability_score < 0.8} />
+            <Stat
+              label={t("scorecard.reliability")}
+              value={`${num(d.reliability_score * 100, 0)}%`}
+              warn={d.reliability_score < 0.8}
+            />
             <Stat
               label={t("scorecard.deliveries")}
               value={`${num(d.deliveries.on_time, 0)}/${num(d.deliveries.count, 0)}`}
@@ -105,10 +136,16 @@ export function SupplierScorecard() {
                       <td>{day(r.received_on)}</td>
                       <td>{r.lead_days === null ? "—" : t("scorecard.days", { n: num(r.lead_days, 0) })}</td>
                       <td className="text-xs">
-                        <span className={r.on_time ? "text-good-700" : "text-bad-700"}>{r.on_time ? t("scorecard.on_time") : t("scorecard.late")}</span>
+                        <span className={r.on_time ? "text-good-700" : "text-bad-700"}>
+                          {r.on_time ? t("scorecard.on_time") : t("scorecard.late")}
+                        </span>
                         {" · "}
-                        <span className={r.complete ? "text-good-700" : "text-bad-700"}>{r.complete ? t("scorecard.complete") : t("scorecard.short")}</span>
-                        {!r.price_ok && <span className="text-bad-700"> · {t("scorecard.price_differs")}</span>}
+                        <span className={r.complete ? "text-good-700" : "text-bad-700"}>
+                          {r.complete ? t("scorecard.complete") : t("scorecard.short")}
+                        </span>
+                        {!r.price_ok && (
+                          <span className="text-bad-700"> · {t("scorecard.price_differs")}</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -136,9 +173,17 @@ export function SupplierScorecard() {
                       <td className="whitespace-nowrap">
                         {formatMoney(last?.price, lang)} / {last?.unit}
                       </td>
-                      <td className={p.latest_change_pct !== null && p.latest_change_pct > 0 ? "text-bad-700" : ""}>{pct(p.latest_change_pct)}</td>
+                      <td
+                        className={
+                          p.latest_change_pct !== null && p.latest_change_pct > 0 ? "text-bad-700" : ""
+                        }
+                      >
+                        {pct(p.latest_change_pct)}
+                      </td>
                       <td className="text-xs text-ink-700">
-                        {p.history.map((h) => `${day(h.valid_from)}: ${formatMoney(h.price, lang)}`).join(" → ")}
+                        {p.history
+                          .map((h) => `${day(h.valid_from)}: ${formatMoney(h.price, lang)}`)
+                          .join(" → ")}
                       </td>
                     </tr>
                   );
@@ -152,7 +197,17 @@ export function SupplierScorecard() {
   );
 }
 
-function Stat({ label, value, note, warn = false }: { label: string; value: string; note?: string; warn?: boolean }) {
+function Stat({
+  label,
+  value,
+  note,
+  warn = false,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  warn?: boolean;
+}) {
   return (
     <div className={`card flex flex-col gap-1 border-s-4 ${warn ? "border-warn-500" : "border-slate-200"}`}>
       <span className="text-xs font-semibold uppercase text-ink-500">{label}</span>

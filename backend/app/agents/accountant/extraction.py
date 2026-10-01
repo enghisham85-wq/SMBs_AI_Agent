@@ -56,7 +56,8 @@ def offline_extraction(sha256: str) -> InvoiceExtraction:
 async def extract(data: bytes, mime: str, sha256: str, hints: list[str], attempt: int) -> tuple[InvoiceExtraction, str]:
     """Returns (extraction, source) where source is llm | offline | refusal | unavailable."""
     hint_text = "\n".join(f"- {h}" for h in hints) or "- none"
-    content = [document_block(data, mime),
+    # The breakpoint sits on the document, so a re-read (attempt 2) reuses it; the hints and attempt vary.
+    content = [document_block(data, mime, cache=True),
                text_block(f"Known suppliers and parsing hints:\n{hint_text}\n\nAttempt {attempt}. Extract the invoice.")]
     llm = get_llm()
     try:

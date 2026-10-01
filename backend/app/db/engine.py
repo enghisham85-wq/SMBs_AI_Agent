@@ -21,6 +21,8 @@ _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 _write_lock: asyncio.Lock | None = None
 _lock_loop: asyncio.AbstractEventLoop | None = None
 _is_sqlite = True
+# Bumped after every commit; read-side caches key on it so any write invalidates them.
+_write_generation = 0
 
 
 def _get_lock() -> asyncio.Lock:
@@ -96,8 +98,12 @@ async def write_session() -> AsyncIterator[AsyncSession]:
     """The only way to commit. Holds the process-wide write lock for the whole transaction.
 
     After the commit (and after the lock is released) pending outbox events are dispatched,
-    so event handlers can open their own write sessions without deadlocking.
+    so event handlers can open their own write sessions without deadlocking. The caller waits
+    for those handlers; a commit that published nothing skips the outbox check.
     """
+    global _write_generation
+    from app.core import events
+
     lock = _get_lock() if _is_sqlite else None
     if lock is not None:
         await lock.acquire()
@@ -105,12 +111,16 @@ async def write_session() -> AsyncIterator[AsyncSession]:
         async with sessionmaker()() as session:
             async with session.begin():
                 yield session
+            events.committed(session)
     finally:
         if lock is not None:
             lock.release()
-    from app.core.events import dispatch_pending
+    _write_generation += 1
+    await events.dispatch_if_pending()
 
-    await dispatch_pending()
+
+def write_generation() -> int:
+    return _write_generation
 
 
 def write_lock_held() -> bool:

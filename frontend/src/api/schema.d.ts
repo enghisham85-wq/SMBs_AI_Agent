@@ -606,7 +606,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Reconciliation */
+        /**
+         * Reconciliation
+         * @description `open` is paged with limit/offset, newest first; `total` and `matched` always count every line.
+         */
         get: operations["reconciliation_api_v1_reconciliation_get"];
         put?: never;
         post?: never;
@@ -697,7 +700,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Receivables */
+        /**
+         * List Receivables
+         * @description Ordered by due date and paged with limit/offset.
+         */
         get: operations["list_receivables_api_v1_receivables_get"];
         put?: never;
         /** Create Receivable */
@@ -971,7 +977,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Rules */
+        /**
+         * List Rules
+         * @description Newest first, paged with limit/offset.
+         */
         get: operations["list_rules_api_v1_harness_rules_get"];
         put?: never;
         post?: never;
@@ -1227,9 +1236,17 @@ export interface components {
         /** CountIn */
         CountIn: {
             /** Counts */
-            counts: {
-                [key: string]: unknown;
-            }[];
+            counts: components["schemas"]["CountLine"][];
+        };
+        /** CountLine */
+        CountLine: {
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /** Counted Qty */
+            counted_qty: number | string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1380,11 +1397,11 @@ export interface components {
              */
             description: string;
             /** Qty */
-            qty: number;
+            qty: number | string;
             /** Unit Price */
-            unit_price: number;
+            unit_price: number | string;
             /** Vat Rate Percent */
-            vat_rate_percent?: number | null;
+            vat_rate_percent?: number | string | null;
         };
         /** ResetIn */
         ResetIn: {
@@ -2591,7 +2608,10 @@ export interface operations {
     };
     reconciliation_api_v1_reconciliation_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2605,6 +2625,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2743,6 +2772,8 @@ export interface operations {
             query?: {
                 status?: string | null;
                 overdue?: boolean | null;
+                limit?: number;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -3254,6 +3285,8 @@ export interface operations {
         parameters: {
             query?: {
                 status?: string | null;
+                limit?: number;
+                offset?: number;
             };
             header?: never;
             path?: never;
