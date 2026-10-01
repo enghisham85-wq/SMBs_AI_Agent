@@ -265,6 +265,7 @@ function Receivables() {
   const [form, setForm] = useState({ customer_name: "", invoice_date: today, due_date: today });
   const [lines, setLines] = useState<Line[]>([{ description: "", qty: "1", unit_price: "", vat_rate_percent: "" }]);
   const [msg, setMsg] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
   const totals = useMemo(() => {
     let sub = 0;
     let vat = 0;
@@ -307,17 +308,18 @@ function Receivables() {
           <thead><tr><th>{t("books.number")}</th><th>{t("books.customer")}</th><th>{t("books.due")}</th><th>{t("books.outstanding")}</th><th>{t("books.state")}</th><th /></tr></thead>
           <tbody>
             {(list.data?.receivables ?? []).map((r) => (
-              <tr key={r.id}>
+              <tr key={r.id} className={`cursor-pointer hover:bg-slate-50 ${open === r.id ? "bg-brand-50" : ""}`} onClick={() => setOpen(r.id)}>
                 <td>{r.number}</td>
                 <td>{r.customer_name}</td>
                 <td className="whitespace-nowrap">{r.due_date}{r.days_overdue > 0 && <span className="block text-xs text-bad-700">{t("books.overdue", { days: r.days_overdue })}</span>}</td>
                 <td className="whitespace-nowrap">{formatMoney(r.outstanding, i18n.language)}</td>
                 <td><span className="badge bg-slate-100 text-ink-700">{t(`books.rec_status.${r.status}`, { defaultValue: r.status })}</span><span className="block text-xs text-ink-500">{r.ageing}</span></td>
-                <td>{r.status === "open" && <button className="btn-danger" disabled={voidInv.isPending} onClick={() => voidInv.mutate(r.id)}>{t("books.void")}</button>}</td>
+                <td>{r.status === "open" && <button className="btn-danger" disabled={voidInv.isPending} onClick={(e) => { e.stopPropagation(); voidInv.mutate(r.id); }}>{t("books.void")}</button>}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        {open && <ReceivableDetail id={open} />}
       </div>
       <form className="card flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
         <h2 className="font-semibold">{t("books.new_invoice")}</h2>
@@ -344,5 +346,54 @@ function Receivables() {
         {msg && <p className="text-sm text-ink-700" role="status">{msg}</p>}
       </form>
     </div>
+  );
+}
+
+/** One customer invoice: its lines, the payments matched to it, reminders sent or planned, and promises. */
+function ReceivableDetail({ id }: { id: string }) {
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language;
+  const q = useQuery({ queryKey: ["books", "receivable", id], queryFn: () => api.get<any>(`/receivables/${id}`) });
+  const d = q.data;
+  if (!d) return <p className="p-3 text-sm text-ink-500">{t("app.loading")}</p>;
+  const money = (minor: number) => formatMoney({ ...d.total, amount_minor: minor }, lang);
+  return (
+    <section className="flex flex-col gap-3 border-t border-slate-200 p-3 text-sm" data-testid="receivable-detail">
+      <h3 className="font-semibold">{d.number} · {d.customer_name}</h3>
+      <table className="table">
+        <tbody>
+          {(d.lines as any[]).map((l, i) => (
+            <tr key={i}>
+              <td>{l.description}</td>
+              <td className="text-end">{Number(l.qty)} × {money(l.unit_price_minor)}</td>
+              <td className="text-end">{money(l.line_total_minor)}</td>
+            </tr>
+          ))}
+          <tr><th>{t("books.total")}</th><td /><td className="text-end font-semibold">{formatMoney(d.total, lang)}</td></tr>
+        </tbody>
+      </table>
+      <div>
+        <h4 className="label">{t("books.payments")}</h4>
+        {d.payments.length === 0 ? <p className="text-ink-500">{t("common.none")}</p> : (
+          <ul>{(d.payments as any[]).map((p, i) => <li key={i}>{p.date} · {formatMoney(p.amount, lang)} · {p.description}</li>)}</ul>
+        )}
+      </div>
+      <div>
+        <h4 className="label">{t("cash.reminders")}</h4>
+        {d.reminders.length === 0 ? <p className="text-ink-500">{t("common.none")}</p> : (
+          <ul>
+            {(d.reminders as any[]).map((r, i) => (
+              <li key={i}>{t("cash.level", { level: r.level })} · {r.scheduled_for} · {t(`cash.reminder_status.${r.status}`, { defaultValue: r.status })}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {d.promises.length > 0 && (
+        <div>
+          <h4 className="label">{t("books.promises")}</h4>
+          <ul>{(d.promises as any[]).map((p, i) => <li key={i}>{p.promised_date} · {formatMoney(p.amount, lang)}</li>)}</ul>
+        </div>
+      )}
+    </section>
   );
 }

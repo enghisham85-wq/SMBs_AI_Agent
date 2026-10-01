@@ -25,7 +25,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 - Code reads "now" only from `BusinessClock` (`backend/app/core/clock.py`), never from `datetime.now()`.
 - Money is `amount_minor` (int) + `currency`; the number of decimals comes from the currency (EGP 2, OMR 3, …). Floats are never used for money. Never hard-code a country, currency, VAT rate, weekend or holiday; read them from the Business row, which is filled from its country profile (default Egypt, EGP).
 - Every row has `business_id`. Every endpoint declares a minimum role, following contracts/rest-api.md.
-- LLM calls go only through `LLMClient` (`backend/app/llm/client.py`) with model `claude-opus-5`.
+- LLM calls go only through `LLMClient` (`backend/app/llm/client.py`) with model `claude-opus-5-5`.
 - Figures returned to the UI carry `data_as_of`.
 
 ---
@@ -139,7 +139,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 ### LLM client
 
 - [X] T024 Implement `LLMClient` in `backend/app/llm/client.py` using the official `anthropic` SDK:
-  - `parse(role, system, content_blocks, output_model)` calls `client.messages.parse` with model `claude-opus-5` and `output_config={"effort": EFFORT[role]}`. Effort: extraction and verifier `high`; classification `low`; message and incident `medium`.
+  - `parse(role, system, content_blocks, output_model)` calls `client.messages.parse` with model `claude-opus-5-5` and `output_config={"effort": EFFORT[role]}`. Effort: extraction and verifier `high`; classification `low`; message and incident `medium`.
   - Server-side refusal fallback: `betas=["server-side-fallback-2026-07-01"]`, `fallbacks="default"`.
   - Checks `stop_reason` and raises `LLMRefusal` on `"refusal"`.
   - Puts `cache_control` on the stable system and schema prefix.
@@ -436,7 +436,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - a supplier matched from its Arabic name
   - three owner corrections of the same supplier to the same account open one `recurring_correction` incident and a proposed classification rule, and a fourth correction does not open another (FR-039)
   - two faults on one record: a duplicate invoice that also has a wrong total fires both `duplicate_invoice` and `extraction_arithmetic`; both are reported, and the invoice stays `held` until both are resolved (spec Edge Cases)
-- [ ] T067 [P] [US2] Write the live accuracy eval in `backend/tests/eval/test_extraction_accuracy.py` (marker `llm_live`). It scores field accuracy separately for English, bilingual and Arabic-only groups against ground truth, and asserts each group is ≥ 90% (SC-008).
+- [X] T067 [P] [US2] Write the live accuracy eval in `backend/tests/eval/test_extraction_accuracy.py` (marker `llm_live`). It scores field accuracy separately for English, bilingual and Arabic-only groups against ground truth, and asserts each group is ≥ 90% (SC-008).
 
 ### Implementation for User Story 2
 
@@ -499,7 +499,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - **`reconciliation_graph`**.
   - **`trial_balance_graph`**: a daily check that quarantines the entry causing an imbalance.
   - Register into the daily_run slot `trial_balance` and a new `reconcile` step after `bank_import`.
-- [ ] T080 [US2] Implement books endpoints in `backend/app/api/v1/books.py`:
+- [X] T080 [US2] Implement books endpoints in `backend/app/api/v1/books.py`:
   - `POST /documents` (manager, multipart, returns 202 and starts `document_graph`)
   - `GET /documents?status=`
   - `GET /documents/{id}` (fields, raw text, confidence, checks, file URL)
@@ -508,7 +508,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
   - `POST /reconciliation/{bank_txn_id}/match`
   - `GET /reports/pnl?from&to` and `GET /reports/balance-sheet?as_of`, built from journal lines in `backend/app/agents/accountant/reports.py`
 - [X] T081 [US2] Add the Telegram photo/PDF upload handler in `backend/app/approvals/telegram_bot.py`. For managers and above it creates a Document with channel `telegram` and starts `document_graph`, replying "Received, reading…" and then the result.
-- [ ] T082 [US2] Implement customer (receivable) invoices, so receivables can be created in the app rather than only seeded:
+- [X] T082 [US2] Implement customer (receivable) invoices, so receivables can be created in the app rather than only seeded:
   - **Service** in `backend/app/agents/accountant/receivables.py`:
     - `create(customer, invoice_date, due_date, lines)` computes line totals, subtotal, VAT per line at the line's `vat_rate_percent` (defaulting to `Business.vat_rate_percent`, e.g. 14) and total in integer minor units, and assigns the next `INV-###` number when none is given.
     - Validation:
@@ -537,7 +537,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
     - a bank payment match → `paid`, reminder cancelled
     - voiding a paid invoice → refused
     - staff → 403
-- [ ] T083 [P] [US2] Build `frontend/src/pages/Books.tsx` with `frontend/src/components/DocumentDetail.tsx`:
+- [X] T083 [P] [US2] Build `frontend/src/pages/Books.tsx` with `frontend/src/components/DocumentDetail.tsx`:
   - document inbox with extraction confidence
   - original file side by side with fields (low-confidence fields highlighted); every field and every bank match shows its confidence and source (extraction attempt, owner answer, learned rule, auto or manual match) (FR-046)
   - review queue
@@ -839,7 +839,7 @@ description: "Task list for the Small Business Agent Suite (hackathon MVP)"
 - [ ] T132 Record LLM replay fixtures for every demo path (`LLM_MODE=record`, running quickstart steps 2–8) into `backend/tests/fixtures/llm/`. Document re-recording in `backend/tests/fixtures/llm/README.md`.
 - [X] T133 [P] Performance check in `backend/tests/integration/test_performance.py`: a one-day advance takes < 10 s excluding LLM; main GET endpoints respond < 2 s on seeded data.
 - [X] T134 [P] Write the root `README.md`: overview, architecture diagram (LangGraph harness + agent subgraphs + outbox events), setup, and a link to quickstart.md.
-- [ ] T135 Run the quickstart.md validation end to end (automated commands, then the manual walkthrough steps 1–8) and fix any gaps found.
+- [X] T135 Run the quickstart.md validation end to end (automated commands, then the manual walkthrough steps 1–8) and fix any gaps found.
 
 ---
 

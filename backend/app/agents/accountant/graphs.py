@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.agents.accountant import checks, classification, extraction, matching, supplier_match
 from app.approvals import service as approvals
@@ -340,10 +340,15 @@ async def _save(state: DocState, business: Business, n: extraction.Normalised, s
         inv.hold_reason = [i["code"] for i in issues] or None
         inv.match_result = {"checks": [{"name": c.name, "passed": c.passed} for c in found], "warnings": warnings}
         await s.flush()
+        # The checks belong to the latest reading; a re-validation (after an owner answer) replaces them.
+        latest = (await s.execute(select(Extraction.id).where(Extraction.document_id == uuid.UUID(state["document_id"]))
+                                  .order_by(Extraction.attempt.desc()).limit(1))).scalar_one_or_none()
+        if latest is not None:
+            await s.execute(delete(CheckResult).where(CheckResult.extraction_id == latest))
         for c in found:
             s.add(CheckResult(business_id=business.id, check_name=c.name, passed=c.passed,
                               details={k: str(v) for k, v in c.details.items()},
-                              extraction_id=None))
+                              extraction_id=latest))
         doc = await s.get(Document, uuid.UUID(state["document_id"]))
         if doc is not None:
             doc.status = "needs_review" if issues else "extracted"

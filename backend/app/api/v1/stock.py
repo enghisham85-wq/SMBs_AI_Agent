@@ -57,7 +57,8 @@ async def list_items(user: CurrentUser = RequireStaff) -> Response:
         demand_by_day = fc.get(item.id, {})
         cover = reorder.days_of_cover(qty, demand_by_day, today)
         avg = sum(demand_by_day.get(today + timedelta(days=i), Decimal(0)) for i in range(7)) / 7
-        risk = waste.expiry_risk(item, qty, avg)
+        # Without a forecast yet, expected use reads as zero; that says nothing about expiry.
+        risk = waste.expiry_risk(item, qty, avg) if gen else None
         stockout = next((d for d, v in reorder.projection(qty, demand_by_day, {}, today, 30) if v < 0), None)
         status = "ok"
         if item.id in open_lines:

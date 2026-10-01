@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.agents.stock.sales_import import file_already_imported, parse_csv
-from app.api.common import J
+from app.api.common import J, with_freshness
 from app.core import clock
 from app.core.auth import CurrentUser, RequireManager
 from app.core.errors import AppError
@@ -91,8 +91,8 @@ async def list_sales(date: date, user: CurrentUser = RequireManager) -> Response
     async with read_session() as s:
         rows = (await s.execute(select(Sale).where(Sale.business_id == user.business_id, Sale.date == date))).scalars().all()
         items = {str(i.id): i for i in (await s.execute(select(Item).where(Item.business_id == user.business_id))).scalars()}
-    return J({"date": date, "sales": [
+    return J(with_freshness({"date": date, "sales": [
         {"id": r.id, "payment_method": r.payment_method, "source": r.source, "amount_total": r.amount_total,
          "lines": [{**ln, "name_en": items[ln["sold_item_id"]].name_en if ln["sold_item_id"] in items else "",
                     "name_ar": items[ln["sold_item_id"]].name_ar if ln["sold_item_id"] in items else ""} for ln in r.lines]}
-        for r in rows]})
+        for r in rows]}, {"sales": max((r.updated_at for r in rows), default=None)}))
