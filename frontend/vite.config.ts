@@ -7,6 +7,8 @@ declare const process: { env: Record<string, string | undefined> };
 
 export default defineConfig({
   plugins: [react()],
+  // The vendored Boosthis kit is source-only; its package.json uses pnpm "catalog:" specs npm cannot install.
+  resolve: { alias: { "@workspace/boosthis-runtime-web": "/lib/boosthis-runtime-web/src/index.ts" } },
   server: {
     port: Number(process.env.VITE_PORT ?? 5173),
     // The e2e suite points the proxy at its own seeded backend (playwright.config.ts).

@@ -37,7 +37,12 @@ export default defineConfig({
     {
       command: `npx vite --port ${WEB_PORT} --strictPort`,
       url: `http://localhost:${WEB_PORT}`,
-      env: { API_TARGET: `http://localhost:${API_PORT}`, VITE_PORT: String(WEB_PORT) },
+      // An empty Boosthis key keeps its bubble off the pages under test.
+      env: {
+        API_TARGET: `http://localhost:${API_PORT}`,
+        VITE_PORT: String(WEB_PORT),
+        VITE_BOOSTHIS_INVITE_KEY: "",
+      },
       timeout: 120_000,
       reuseExistingServer: false,
     },
