@@ -1,0 +1,13 @@
+include README.md
+include LICENSE
+include pyproject.toml
+recursive-include boosthis *.py
+recursive-include boosthis *.html
+recursive-exclude tests *
+recursive-exclude examples *
+prune boosthis.egg-info
+prune dist
+prune build
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude .DS_Store

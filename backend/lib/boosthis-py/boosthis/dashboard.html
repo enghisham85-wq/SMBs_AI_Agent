@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Boosthis · perf dashboard</title>
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --panel: #141821;
+      --panel-2: #1b2030;
+      --border: #232a3a;
+      --fg: #e6e8ee;
+      --muted: #8b95a8;
+      --accent: #7c6bff;
+      --good: #4ade80;
+      --warn: #fbbf24;
+      --poor: #f87171;
+      --pending: #64748b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    header {
+      padding: 24px 28px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+    header .badge {
+      font-size: 11px; color: var(--accent);
+      padding: 2px 8px; border: 1px solid var(--accent);
+      border-radius: 999px; letter-spacing: 0.04em;
+    }
+    header .runtime { color: var(--muted); margin-left: auto; font-size: 12px; }
+    main { padding: 24px 28px; max-width: 1200px; margin: 0 auto; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .card .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .card .value { font-size: 26px; font-weight: 600; margin-top: 6px; }
+    .card .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 18px;
+    }
+    .panel h2 {
+      margin: 0 0 14px;
+      font-size: 14px; font-weight: 600;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .panel h2 .count {
+      color: var(--muted); font-weight: 400; font-size: 12px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+    tr:last-child td { border-bottom: none; }
+    .pill {
+      display: inline-block; padding: 2px 8px;
+      border-radius: 999px; font-size: 11px; font-weight: 500;
+    }
+    .pill.good { background: rgba(74,222,128,0.12); color: var(--good); }
+    .pill.needs-work { background: rgba(251,191,36,0.12); color: var(--warn); }
+    .pill.poor { background: rgba(248,113,113,0.12); color: var(--poor); }
+    .pill.cat {
+      background: var(--panel-2); color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .empty {
+      color: var(--muted); font-size: 13px;
+      padding: 24px; text-align: center;
+    }
+    .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+    .tab {
+      padding: 6px 12px; border-radius: 6px;
+      background: var(--panel-2); color: var(--muted);
+      cursor: pointer; font-size: 12px; border: 1px solid var(--border);
+    }
+    .tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .rule-row { cursor: pointer; }
+    .rule-row:hover { background: rgba(124,107,255,0.04); }
+    .footer {
+      color: var(--muted); font-size: 11px; padding: 14px 28px;
+      border-top: 1px solid var(--border); text-align: center;
+    }
+    .privacy {
+      color: var(--muted); font-size: 12px;
+      padding: 14px 16px; background: var(--panel-2);
+      border-radius: 8px; margin-bottom: 16px;
+      border-left: 3px solid var(--accent);
+    }
+    .filter-input {
+      width: 100%; padding: 8px 12px; margin-bottom: 12px;
+      background: var(--panel-2); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 6px;
+      font-size: 13px;
+    }
+    /* Registration-rejected card. Fixed, code-defined copy only — it never
+       renders any server- or developer-provided string. */
+    .rejected {
+      color: var(--fg); font-size: 13px;
+      padding: 14px 16px; background: var(--panel-2);
+      border-radius: 8px; margin-bottom: 16px;
+      border-left: 3px solid var(--poor);
+    }
+    .rejected .title { font-weight: 600; color: var(--poor); margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Boosthis</h1>
+    <span class="badge">PERF</span>
+    <span class="runtime" id="runtime-info">loading…</span>
+  </header>
+
+  <main>
+    <div class="privacy">
+      Everything on this page is in-process. Nothing leaves your machine unless
+      you have called <code>boosthis.enable_telemetry()</code>.
+    </div>
+
+    <div class="rejected" id="rejected-card" style="display:none">
+      <div class="title">Registration rejected — install ID must be a UUID</div>
+      <div>Mint a real UUID and restart.</div>
+    </div>
+
+    <div class="grid" id="kpis"></div>
+
+    <section class="panel" id="connect-panel" style="display:none">
+      <h2>Connect your AI</h2>
+      <p style="color:var(--muted);margin:0 0 10px">
+        Paste this into your AI tool's MCP config, then hand it your install id +
+        read-only token as tool arguments. The token reads only this app's own
+        uploaded perf data — it can't delete or write anything.
+      </p>
+      <pre id="connect-config" style="background:var(--panel-2);padding:12px;border-radius:8px;overflow:auto"></pre>
+      <div style="color:var(--muted);font-size:13px">install id</div>
+      <pre id="connect-install" style="background:var(--panel-2);padding:8px 12px;border-radius:8px;overflow:auto"></pre>
+      <div style="color:var(--muted);font-size:13px">read token</div>
+      <pre id="connect-token" style="background:var(--panel-2);padding:8px 12px;border-radius:8px;overflow:auto"></pre>
+    </section>
+
+    <!-- WHAT THIS VIEW DOES NOT SHOW. Same answer as the shared page's jobs
+         card and the status page's jobs row: this is a local view of one
+         process, and a job's runs, rhythm and lateness are assembled
+         server-side. Always drawn, because a view that simply omits jobs
+         reads as a view reporting there are none. See
+         docs/decisions/kit-page-says-where-jobs-live.md. -->
+    <section class="panel">
+      <h2>Scheduled jobs</h2>
+      <p style="color:var(--muted);margin:0">
+        Not listed here. This kit reports named job runs to Boosthis, so they
+        appear on your dashboard &mdash; this page showing none is not evidence
+        there are none.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Recent samples <span class="count" id="samples-count"></span></h2>
+      <div id="samples-body"></div>
+    </section>
+
+    <section class="panel">
+      <h2>By route <span class="count" id="routes-count"></span></h2>
+      <div id="routes-body"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Checklist <span class="count" id="rules-count"></span></h2>
+      <div class="tabs" id="cat-tabs">
+        <span class="tab active" data-cat="all">All</span>
+        <span class="tab" data-cat="case-study">Case study</span>
+        <span class="tab" data-cat="industry">Industry</span>
+        <span class="tab" data-cat="operational">Operational</span>
+      </div>
+      <input class="filter-input" id="rule-filter" placeholder="filter rules…" />
+      <div id="rules-body"></div>
+    </section>
+  </main>
+
+  <div class="footer">
+    Auto-refreshing every 5s · <a id="lnk-ctx" href="" style="color:var(--muted)">/api/context</a> · <a id="lnk-rules" href="" style="color:var(--muted)">/api/rules</a><br>
+    This detailed view is specific to the Python kit and stays on this machine.
+    The shared Boosthis page is at <a id="lnk-page" href="" style="color:var(--muted)">/_boosthis</a>.
+  </div>
+
+  <script>
+    // Mounted in a host app this view is served at `<prefix>/dev`, and every
+    // read it makes lives one level up, beside the shared in-app page at
+    // `<prefix>`. Served standalone by `boosthis serve` it sits at `/` (or
+    // `/dashboard`). Strip whichever suffix is present so the same HTML works
+    // in all of them.
+    const BASE = window.location.pathname
+      .replace(/\/+$/, '')
+      .replace(/\/(dev|dashboard)$/, '');
+    const API = `${BASE}/api`;
+
+    async function j(path) {
+      const res = await fetch(`${API}/${path}`, { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) throw new Error(`${path} → ${res.status}`);
+      return res.json();
+    }
+
+    function ratingPill(rating) {
+      const cls = rating === 'needs-work' ? 'needs-work' : rating;
+      return `<span class="pill ${cls}">${rating}</span>`;
+    }
+
+    function fmtTime(ts) {
+      const d = new Date(ts);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      const ss = String(d.getSeconds()).padStart(2, '0');
+      return `${hh}:${mm}:${ss}`;
+    }
+
+    let allRules = [];
+    let activeCat = 'all';
+
+    // Additive gauges (Code Health + Resilience). Captions carry only
+    // counts/ratios (no route names). score is null while pending.
+    function axisCardHtml(ax) {
+      if (!ax) return '';
+      const color =
+        ax.rating === 'good' ? 'var(--good)' :
+        ax.rating === 'needs-work' ? 'var(--warn)' :
+        ax.rating === 'poor' ? 'var(--poor)' : 'var(--pending)';
+      const val = ax.score == null ? '—' : ax.score;
+      return `
+        <div class="card">
+          <div class="label">${ax.label}</div>
+          <div class="value" style="color:${color}">${val}</div>
+          <div class="sub">${ax.caption}</div>
+        </div>`;
+    }
+
+    // Registration-rejected banner. The card's copy is FIXED in the HTML above;
+    // this only toggles its visibility off a coarse, code-defined marker, so no
+    // server- or developer-provided string can ever reach the page.
+    function renderRejected(ctx) {
+      const el = document.getElementById('rejected-card');
+      if (!el) return;
+      const reason = ctx && ctx.boosthis && ctx.boosthis.registration_rejected;
+      el.style.display = reason === 'invalid_install_id' ? 'block' : 'none';
+    }
+
+    function renderKpis(summary, ctx) {
+      const axes = summary.axes || {};
+      const kpis = document.getElementById('kpis');
+      kpis.innerHTML = `
+        ${axisCardHtml(axes.codeHealth)}
+        ${axisCardHtml(axes.resilience)}
+        <div class="card">
+          <div class="label">Samples</div>
+          <div class="value">${summary.total}</div>
+          <div class="sub">${summary.good} good · ${summary.needsWork} needs work · ${summary.poor} poor</div>
+        </div>
+        <div class="card">
+          <div class="label">p50</div>
+          <div class="value">${summary.p50_ms ?? '—'}<span style="font-size:13px;color:var(--muted)">ms</span></div>
+        </div>
+        <div class="card">
+          <div class="label">p95</div>
+          <div class="value">${summary.p95_ms ?? '—'}<span style="font-size:13px;color:var(--muted)">ms</span></div>
+        </div>
+        <div class="card">
+          <div class="label">p99</div>
+          <div class="value">${summary.p99_ms ?? '—'}<span style="font-size:13px;color:var(--muted)">ms</span></div>
+        </div>
+        <div class="card">
+          <div class="label">Rules shipped</div>
+          <div class="value">${ctx.boosthis.checklist_count}</div>
+          <div class="sub">checklist v${ctx.boosthis.checklist_version}</div>
+        </div>
+      `;
+      document.getElementById('runtime-info').textContent =
+        `${ctx.boosthis.runtime} runtime v${ctx.boosthis.version}`;
+    }
+
+    function renderSamples(samples) {
+      const body = document.getElementById('samples-body');
+      document.getElementById('samples-count').textContent = samples.length;
+      if (samples.length === 0) {
+        body.innerHTML = '<div class="empty">No samples yet — call <code>@track_perf</code> or <code>perf()</code> to start recording.</div>';
+        return;
+      }
+      const rows = samples.slice(0, 25).map(s => `
+        <tr>
+          <td style="color:var(--muted);width:90px">${fmtTime(s.timestamp_ms)}</td>
+          <td>${s.name}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">${s.duration_ms}<span style="color:var(--muted)">ms</span></td>
+          <td style="width:110px">${ratingPill(s.rating)}</td>
+        </tr>
+      `).join('');
+      body.innerHTML = `<table><thead><tr><th>Time</th><th>Route</th><th style="text-align:right">Duration</th><th>Rating</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    function renderRoutes(byRoute) {
+      const body = document.getElementById('routes-body');
+      const entries = Object.entries(byRoute);
+      document.getElementById('routes-count').textContent = entries.length;
+      if (entries.length === 0) {
+        body.innerHTML = '<div class="empty">No routes tracked yet.</div>';
+        return;
+      }
+      entries.sort((a, b) => b[1].max_ms - a[1].max_ms);
+      const rows = entries.map(([name, r]) => `
+        <tr>
+          <td>${name}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">${r.count}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">${r.max_ms}<span style="color:var(--muted)">ms</span></td>
+          <td style="width:110px">${ratingPill(r.worst_rating)}</td>
+        </tr>
+      `).join('');
+      body.innerHTML = `<table><thead><tr><th>Route</th><th style="text-align:right">Calls</th><th style="text-align:right">Max</th><th>Worst rating</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    function renderRules() {
+      const body = document.getElementById('rules-body');
+      const filter = document.getElementById('rule-filter').value.toLowerCase();
+      const filtered = allRules.filter(r => {
+        if (activeCat !== 'all' && r.category !== activeCat) return false;
+        if (filter && !r.id.toLowerCase().includes(filter) && !r.title.toLowerCase().includes(filter)) return false;
+        return true;
+      });
+      document.getElementById('rules-count').textContent = `${filtered.length} of ${allRules.length}`;
+      if (filtered.length === 0) {
+        body.innerHTML = '<div class="empty">No rules match.</div>';
+        return;
+      }
+      const rows = filtered.map(r => `
+        <tr class="rule-row" data-id="${r.id}">
+          <td><code style="font-size:11px;color:var(--muted)">${r.id}</code></td>
+          <td>${r.title}</td>
+          <td style="width:130px"><span class="pill cat">${r.category}</span></td>
+        </tr>
+      `).join('');
+      body.innerHTML = `<table><tbody>${rows}</tbody></table>`;
+      body.querySelectorAll('.rule-row').forEach(row => {
+        row.addEventListener('click', () => {
+          window.open(`${API}/rules/${row.dataset.id}`, '_blank');
+        });
+      });
+    }
+
+    document.getElementById('cat-tabs').addEventListener('click', e => {
+      if (!e.target.classList.contains('tab')) return;
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      e.target.classList.add('active');
+      activeCat = e.target.dataset.cat;
+      renderRules();
+    });
+    document.getElementById('rule-filter').addEventListener('input', renderRules);
+
+    // "Connect your AI" card. Loopback-only endpoint; if it 403s (remote) or
+    // returns { connected:false } (no read token yet) the panel stays hidden.
+    async function loadConnect() {
+      try {
+        const res = await fetch(`${API}/connect`, { headers: { 'Accept': 'application/json' } });
+        const c = res.ok ? await res.json() : null;
+        if (!c || !c.connected) {
+          document.getElementById('connect-panel').style.display = 'none';
+          return;
+        }
+        document.getElementById('connect-config').textContent = c.mcp_config || '';
+        document.getElementById('connect-install').textContent = c.install_id || '';
+        document.getElementById('connect-token').textContent = c.read_token || '';
+        document.getElementById('connect-panel').style.display = 'block';
+      } catch (err) {
+        document.getElementById('connect-panel').style.display = 'none';
+      }
+    }
+
+    async function refresh() {
+      try {
+        const [ctx, samples] = await Promise.all([
+          j('context?limit=25'),
+          j('samples?limit=25'),
+        ]);
+        renderRejected(ctx);
+        renderKpis(ctx.session, ctx);
+        renderSamples(samples);
+        renderRoutes(ctx.session.byRoute || {});
+        if (allRules.length === 0) {
+          allRules = await j('rules');
+          renderRules();
+        }
+      } catch (err) {
+        console.error('boosthis dashboard refresh failed', err);
+      }
+    }
+
+    // Footer links, resolved against the mount prefix rather than this page's
+    // own address (which sits one level deeper when mounted in a host app).
+    document.getElementById('lnk-ctx').href = `${API}/context`;
+    document.getElementById('lnk-rules').href = `${API}/rules`;
+    const pageLink = document.getElementById('lnk-page');
+    pageLink.href = `${BASE}/`;
+    pageLink.textContent = BASE || '/';
+
+    refresh();
+    loadConnect();
+    setInterval(refresh, 5000);
+    setInterval(loadConnect, 15000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+# Vendored Boosthis kits are verified byte-for-byte against their checksums: never convert line endings.
+frontend/lib/** -text
+backend/lib/** -text
+frontend/BOOSTHIS_* -text
+backend/BOOSTHIS_* -text

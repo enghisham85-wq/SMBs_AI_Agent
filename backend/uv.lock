@@ -217,6 +217,25 @@ wheels = [
 ]
 
 [[package]]
+name = "boosthis"
+version = "1.0.0a154"
+source = { editable = "lib/boosthis-py" }
+
+[package.metadata]
+requires-dist = [
+    { name = "aiohttp", marker = "extra == 'dev'", specifier = ">=3.9" },
+    { name = "django", marker = "extra == 'dev'", specifier = ">=4.2" },
+    { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.100" },
+    { name = "flask", marker = "extra == 'dev'", specifier = ">=2.3" },
+    { name = "gradio", marker = "extra == 'dev'", specifier = ">=4.0" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.24" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
+    { name = "streamlit", marker = "extra == 'dev'", specifier = ">=1.30" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "certifi"
 version = "2026.7.22"
 source = { registry = "https://pypi.org/simple" }
@@ -632,8 +651,8 @@ name = "httpcore2"
 version = "2.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11" },
-    { name = "truststore" },
+    { name = "h11", marker = "sys_platform != 'emscripten'" },
+    { name = "truststore", marker = "sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cb/f3/1db7aa2bc2524062192bb0e0323969492d1883152a232fe36eea65f4e35c/httpcore2-2.13.1.tar.gz", hash = "sha256:e0aa977abe17e69a3b820a24542a6fa88702676d83880b8d194dcd18408e5103", size = 68071, upload-time = "2026-09-23T07:47:22.372Z" }
 wheels = [
@@ -2130,6 +2149,7 @@ dependencies = [
     { name = "anthropic" },
     { name = "arabic-reshaper" },
     { name = "argon2-cffi" },
+    { name = "boosthis" },
     { name = "fastapi" },
     { name = "hijridate" },
     { name = "itsdangerous" },
@@ -2166,6 +2186,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.60" },
     { name = "arabic-reshaper", specifier = ">=3.0" },
     { name = "argon2-cffi", specifier = ">=23.1" },
+    { name = "boosthis", editable = "lib/boosthis-py" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "hijridate", specifier = ">=2.5" },
     { name = "itsdangerous", specifier = ">=2.2" },

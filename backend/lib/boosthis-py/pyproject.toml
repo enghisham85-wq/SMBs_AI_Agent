@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "boosthis"
+version = "1.0.0a154"
+description = "Performance toolkit for Python — same scoring model and PII guard as @boosthis/runtime, with a Python-native decorator + context manager API, plus an MCP server so AI agents can read live perf state."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Boosthis" }]
+requires-python = ">=3.10"
+keywords = [
+    "performance",
+    "profiling",
+    "fastapi",
+    "django",
+    "celery",
+    "observability",
+    "mcp",
+    "ai-agents",
+]
+classifiers = [
+    "Private :: Do Not Upload",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: System :: Monitoring",
+    "Framework :: FastAPI",
+]
+dependencies = []
+
+[project.optional-dependencies]
+# Test-only deps. Packaging/publishing tools (build, twine) are intentionally
+# omitted — Boosthis is a private workspace package and must not be published.
+# httpx and aiohttp are the two modern clients that bypass http.client and
+# open their own sockets. They are dev deps so the outbound-call proof runs
+# against the REAL libraries over REAL sockets — a mocked transport cannot
+# prove the kit sees calls it was previously blind to. Never runtime deps: the
+# kit watches whichever of them the APP already imported, and imports neither.
+#
+# Every framework the kit has an adapter for is declared here, because
+# tests/test_adapter_wiring_parity.py mounts a REAL app of each one and drives a
+# real unit of work through it. A missing framework there would turn the one
+# guard against a panel-without-measuring adapter into a silent skip, which is
+# the exact failure it exists to catch.
+dev = [
+    "pytest>=7",
+    "pytest-asyncio>=0.23",
+    "fastapi>=0.100",
+    "flask>=2.3",
+    "django>=4.2",
+    "streamlit>=1.30",
+    "gradio>=4.0",
+    "httpx>=0.24",
+    "aiohttp>=3.9",
+]
+
+[project.urls]
+Homepage = "https://www.boosthis.com"
+
+[project.scripts]
+boosthis = "boosthis.cli:main"
+
+[tool.setuptools]
+packages = ["boosthis"]
+
+# Ship the dashboard HTML alongside the package so `boosthis.mount()`
+# and `boosthis serve` can both find it when installed via pip.
+[tool.setuptools.package-data]
+boosthis = ["dashboard.html", "panel_page.html"]

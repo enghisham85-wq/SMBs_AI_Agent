@@ -1,0 +1,30 @@
+{
+  "name": "@workspace/boosthis-runtime-web",
+  "version": "1.0.0-alpha.130",
+  "private": true,
+  "type": "module",
+  "description": "Boosthis performance runtime for websites / web apps (browser Web Vitals). Same scoring model and PII guard as the React Native, Python, and Node runtimes.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./mcp": "./src/mcp.ts",
+    "./checklist": "./src/checklist.ts",
+    "./call-groups": "./src/callGroups.ts",
+    "./hosted-script": "./src/hostedScript.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "mcp": "tsx src/mcp-stdio.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router-dom": "^7.18.3",
+    "tsx": "^4.21.0",
+    "vitest": "catalog:",
+    "vue": "^3.5.42",
+    "vue-router": "^4.5.1"
+  }
+}
