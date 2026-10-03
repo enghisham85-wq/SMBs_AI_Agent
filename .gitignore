@@ -32,5 +32,4 @@ frontend/playwright-report/
 
 backend/openapi.json.bak
 
-# Build metadata from the editable install of the vendored Boosthis kit
 *.egg-info/

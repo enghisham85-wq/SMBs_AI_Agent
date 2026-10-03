@@ -34,8 +34,6 @@ class Settings(BaseSettings):
     LLM_API_KEY: str | None = None
     LLM_MODEL: str | None = None
     TELEGRAM_BOT_TOKEN: str | None = None
-    # Boosthis performance monitoring; unset (or APP_ENV=test) leaves the kit out of the app entirely.
-    BOOSTHIS_PROJECT_KEY: str | None = None
 
     FILES_DIR: str = "./var/files"
     # Sample invoices written by the generator (the offline extractor reads their ground truth).

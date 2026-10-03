@@ -1,7 +1,7 @@
 [project]
-name = "sb-agents"
+name = "daftar"
 version = "0.1.0"
-description = "Small Business Agent Suite: Stock, Cash-Flow and Accountant agents under one self-correcting LangGraph harness"
+description = "Daftar: Stock, Cash-Flow and Accountant AI agents for small businesses, under one self-correcting LangGraph supervisor"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
@@ -26,7 +26,6 @@ dependencies = [
     "python-bidi>=0.4",
     "pillow>=10.4",
     "itsdangerous>=2.2",
-    "boosthis",
     "openai>=1.60",
 ]
 
@@ -43,14 +42,9 @@ dev = [
 [tool.uv]
 package = false
 
-[tool.uv.sources]
-# Vendored Boosthis kit (not on PyPI); its files must stay byte-for-byte as shipped.
-boosthis = { path = "lib/boosthis-py", editable = true }
-
 [tool.ruff]
 line-length = 110
 target-version = "py312"
-extend-exclude = ["lib"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ASYNC"]

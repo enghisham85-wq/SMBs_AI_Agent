@@ -10,21 +10,6 @@ import "./i18n";
 import "./index.css";
 import { prefetchRoute } from "./pages/registry";
 
-// Boosthis performance monitoring: loaded only when a project key is set at build time.
-const boosthisKey = import.meta.env.VITE_BOOSTHIS_INVITE_KEY as string | undefined;
-if (boosthisKey) {
-  void import("@workspace/boosthis-runtime-web").then(({ startWebVitals, enableTelemetry }) => {
-    startWebVitals({ bubble: true });
-    enableTelemetry({
-      // Generated once; never change it, or this browser app registers as a second install.
-      installId: "8501f537-b218-4d28-be35-e054fa150ed4",
-      inviteKey: boosthisKey,
-      endpoint: "https://www.boosthis.com/api",
-      appName: "SMBAgents Dashboard",
-    });
-  });
-}
-
 const queryClient: QueryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error) => {

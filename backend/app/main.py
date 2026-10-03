@@ -92,17 +92,6 @@ def create_app() -> FastAPI:
     from app.api import router as api_router
 
     app.include_router(api_router, prefix="/api/v1")
-
-    settings = get_settings()
-    if settings.BOOSTHIS_PROJECT_KEY and settings.APP_ENV != "test":
-        try:
-            import boosthis
-        except ImportError as exc:  # the kit needs the Unix-only `resource` module, so not on native Windows
-            log.warning("Boosthis not started: %s", exc)
-        else:
-            boosthis.enable_telemetry(invite_key=settings.BOOSTHIS_PROJECT_KEY,
-                                      endpoint="https://www.boosthis.com/api", app_name="SMBAgents API")
-            boosthis.mount(app, bubble=True)
     return app
 
 
