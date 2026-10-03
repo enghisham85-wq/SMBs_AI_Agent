@@ -15,6 +15,9 @@ os.environ.setdefault("LLM_MODE", "offline")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "")
 os.environ.setdefault("DEMO_MODE", "true")
 os.environ.setdefault("APP_ENV", "test")
+# A developer's backend/.env may point live calls at a gateway; tests assume the Anthropic defaults.
+os.environ.setdefault("LLM_PROVIDER", "anthropic")
+os.environ.setdefault("LLM_MODEL", "")
 
 from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 

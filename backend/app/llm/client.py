@@ -1,4 +1,4 @@
-"""The single path to Claude (research R4, contracts/llm-outputs.md).
+"""The single path to the model (research R4, contracts/llm-outputs.md).
 
 Modes (LLM_MODE):
 - live:    call the API.
@@ -7,10 +7,17 @@ Modes (LLM_MODE):
 - offline: never call the API; use the caller's deterministic `offline` fallback. Clearly a
            stand-in for development and demos without an API key.
 
-Every call uses model `claude-opus-5-5` with structured output (Pydantic), an effort level per
-role and server-side refusal fallback. Callers mark their stable prefix (a document, the chart of
-accounts) with `cache=True`; a top-level marker would land on the unique per-request text and never
-be read back. Each call has a deadline; a timeout counts as the model being unavailable.
+Providers (LLM_PROVIDER):
+- anthropic: model `claude-opus-5-5` through the Anthropic SDK, with structured output (Pydantic), an
+  effort level per role and server-side refusal fallback. Callers mark their stable prefix (a document,
+  the chart of accounts) with `cache=True`; a top-level marker would land on the unique per-request
+  text and never be read back.
+- openai_compatible: an OpenAI-style chat-completions gateway at LLM_BASE_URL (model LLM_MODEL). The
+  same blocks are sent as text/image/file parts in JSON mode, with the output schema in the system
+  prompt; the answer is validated against the Pydantic model and re-asked once if it doesn't fit. Cache markers and refusal
+  fallback have no equivalent there, and the gateway may ignore the effort level.
+
+Each call has a deadline; a timeout counts as the model being unavailable.
 """
 
 from __future__ import annotations
@@ -102,10 +109,15 @@ def _content_for_hash(blocks: list[dict[str, Any]]) -> list[Any]:
     return out
 
 
+def active_model() -> str:
+    """The model id sent to the provider: LLM_MODEL when set, otherwise the Anthropic default."""
+    return get_settings().LLM_MODEL or MODEL
+
+
 def request_hash(role: str, system: str, blocks: list[dict[str, Any]], schema_name: str) -> str:
     raw = json.dumps(
         # The model and effort change the answer, so a recorded fixture only replays for the same pair.
-        {"model": MODEL, "effort": EFFORT.get(role, "medium"), "role": role, "system": system,
+        {"model": active_model(), "effort": EFFORT.get(role, "medium"), "role": role, "system": system,
          "content": _content_for_hash(blocks), "schema": schema_name},
         sort_keys=True,
         ensure_ascii=False,
@@ -128,6 +140,39 @@ def _wire_content(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def _openai_parts(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Anthropic-style blocks (files already base64) as chat-completions content parts."""
+    parts: list[dict[str, Any]] = []
+    for b in blocks:
+        src = b.get("source") or {}
+        if b["type"] == "text":
+            parts.append({"type": "text", "text": b["text"]})
+        elif b["type"] == "image":
+            parts.append({"type": "image_url", "image_url": {"url": f"data:{src['media_type']};base64,{src['data']}"}})
+        elif b["type"] == "document":
+            parts.append({"type": "file", "file": {"filename": "document.pdf",
+                                                    "file_data": f"data:{src['media_type']};base64,{src['data']}"}})
+        else:
+            raise ValueError(f"unsupported content block {b['type']!r}")
+    return parts
+
+
+def _json_text(text: str) -> str:
+    """The JSON in a reply, without a markdown fence some gateways wrap it in."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else ""
+        text = text.rsplit("```", 1)[0]
+    return text.strip()
+
+
+def _log_chat_usage(role: str, response: Any) -> None:
+    usage = getattr(response, "usage", None)
+    if usage is not None:
+        log.info("llm %s: input=%s output=%s", role, getattr(usage, "prompt_tokens", None),
+                 getattr(usage, "completion_tokens", None))
+
+
 def _log_usage(role: str, response: Any) -> None:
     usage = getattr(response, "usage", None)
     if usage is None:
@@ -146,13 +191,22 @@ class LLMClient:
 
     def _api(self) -> Any:
         if self._client is None:
-            import anthropic
-
             settings = get_settings()
-            kwargs: dict[str, Any] = {"max_retries": 2, "timeout": anthropic.Timeout(REQUEST_TIMEOUT_S, connect=5.0)}
-            if settings.ANTHROPIC_API_KEY:
-                kwargs["api_key"] = settings.ANTHROPIC_API_KEY
-            self._client = anthropic.AsyncAnthropic(**kwargs)
+            if settings.LLM_PROVIDER == "openai_compatible":
+                import openai
+
+                if not settings.LLM_BASE_URL or not settings.LLM_API_KEY or not settings.LLM_MODEL:
+                    raise LLMUnavailableError("LLM_PROVIDER=openai_compatible needs LLM_BASE_URL, LLM_API_KEY and LLM_MODEL")
+                self._client = openai.AsyncOpenAI(base_url=settings.LLM_BASE_URL, api_key=settings.LLM_API_KEY,
+                                                  timeout=REQUEST_TIMEOUT_S, max_retries=2)
+            else:
+                import anthropic
+
+                kwargs: dict[str, Any] = {"max_retries": 2,
+                                          "timeout": anthropic.Timeout(REQUEST_TIMEOUT_S, connect=5.0)}
+                if settings.ANTHROPIC_API_KEY:
+                    kwargs["api_key"] = settings.ANTHROPIC_API_KEY
+                self._client = anthropic.AsyncAnthropic(**kwargs)
         return self._client
 
     async def parse(
@@ -183,17 +237,76 @@ class LLMClient:
         return result
 
     async def _call(self, role: str, system: str, content: list[dict[str, Any]], output_model: type[T]) -> T:
-        import anthropic
-
         wire = await asyncio.to_thread(_wire_content, content) if _has_raw_bytes(content) else content
         deadline = DEADLINE_S.get(role, DEFAULT_DEADLINE_S)
+        if get_settings().LLM_PROVIDER == "openai_compatible":
+            return await self._call_openai_compatible(role, system, wire, output_model, deadline)
+        return await self._call_anthropic(role, system, wire, output_model, deadline)
+
+    async def _call_openai_compatible(self, role: str, system: str, wire: list[dict[str, Any]],
+                                      output_model: type[T], deadline: float) -> T:
+        import openai
+        from pydantic import ValidationError
+
+        api = self._api()  # raises LLMUnavailableError when the gateway settings are incomplete
+        # The schema goes in the instructions with plain JSON mode: CodeCraft's json_schema mode fails (502) on
+        # schemas with anyOf/patterns, which most of ours have. The Pydantic check below enforces it instead.
+        schema = json.dumps(output_model.model_json_schema(), ensure_ascii=False)
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": f"{system}\n\nReply with only a JSON object that matches this JSON schema:\n{schema}"},
+            {"role": "user", "content": _openai_parts(wire)},
+        ]
+        response_format = {"type": "json_object"}
+        timeout = REQUEST_TIMEOUT_S_BY_ROLE.get(role, REQUEST_TIMEOUT_S)
+        try:
+            async with asyncio.timeout(deadline):
+                for attempt in range(2):
+                    response = await api.chat.completions.create(
+                        model=active_model(),
+                        max_tokens=MAX_TOKENS.get(role, DEFAULT_MAX_TOKENS),
+                        messages=messages,
+                        response_format=response_format,
+                        extra_body={"reasoning": {"effort": EFFORT.get(role, "medium")}},
+                        timeout=timeout,
+                    )
+                    _log_chat_usage(role, response)
+                    choice = response.choices[0]
+                    if choice.finish_reason == "content_filter" or getattr(choice.message, "refusal", None):
+                        raise LLMRefusalError(str(getattr(choice.message, "refusal", "") or "content filtered"))
+                    text = choice.message.content or ""
+                    try:
+                        return output_model.model_validate_json(_json_text(text))
+                    except ValidationError as exc:
+                        if attempt:
+                            raise LLMUnavailableError(f"answer did not match {output_model.__name__}") from exc
+                        # No server-side schema guarantee through a gateway: show the model its mistake once.
+                        messages += [{"role": "assistant", "content": text},
+                                     {"role": "user", "content": "That reply did not match the required JSON schema "
+                                      f"({exc.error_count()} errors: {str(exc)[:1500]}). Reply again with only the "
+                                      "JSON object."}]
+        except TimeoutError as exc:
+            raise LLMUnavailableError(f"no answer within {deadline:.0f}s") from exc
+        except openai.RateLimitError as exc:
+            raise LLMUnavailableError("rate limited") from exc
+        except openai.APITimeoutError as exc:
+            raise LLMUnavailableError("request timed out") from exc
+        except openai.APIConnectionError as exc:
+            raise LLMUnavailableError("connection failed") from exc
+        except openai.APIStatusError as exc:
+            raise LLMUnavailableError(f"API error {exc.status_code}") from exc
+        raise LLMUnavailableError("no answer")  # unreachable: the loop returns or raises
+
+    async def _call_anthropic(self, role: str, system: str, wire: list[dict[str, Any]],
+                              output_model: type[T], deadline: float) -> T:
+        import anthropic
+
         per_request: dict[str, Any] = {}
         if role in REQUEST_TIMEOUT_S_BY_ROLE:
             per_request["timeout"] = anthropic.Timeout(REQUEST_TIMEOUT_S_BY_ROLE[role], connect=5.0)
         try:
             async with asyncio.timeout(deadline):
                 response = await self._api().beta.messages.parse(
-                    model=MODEL,
+                    model=active_model(),
                     max_tokens=MAX_TOKENS.get(role, DEFAULT_MAX_TOKENS),
                     system=system,
                     messages=[{"role": "user", "content": wire}],

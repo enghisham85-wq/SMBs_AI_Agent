@@ -54,6 +54,8 @@ async function parseError(res: Response): Promise<ApiError> {
 export const DEFAULT_TIMEOUT_MS = 15_000;
 /** Calls that run LLM work before answering (document reading, chaos runs, graph resumes, day runs). */
 export const LONG_TIMEOUT_MS = 150_000;
+/** Advancing the demo clock runs every agent's whole day (many LLM calls per day) before answering. */
+export const DAY_RUN_TIMEOUT_MS = 15 * 60_000;
 
 export interface RequestOptions {
   signal?: AbortSignal;

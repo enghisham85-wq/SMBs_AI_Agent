@@ -27,6 +27,7 @@ dependencies = [
     "pillow>=10.4",
     "itsdangerous>=2.2",
     "boosthis",
+    "openai>=1.60",
 ]
 
 [dependency-groups]

@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     LLM_MODE: Literal["live", "record", "replay", "offline"] = "offline"
     LLM_FIXTURES_DIR: str = "./tests/fixtures/llm"
     ANTHROPIC_API_KEY: str | None = None
+    # Who serves the model in live/record mode: Anthropic directly, or an OpenAI-compatible gateway
+    # (LLM_BASE_URL + LLM_API_KEY, e.g. CodeCraft). LLM_MODEL overrides the model id; gateways name it their own way.
+    LLM_PROVIDER: Literal["anthropic", "openai_compatible"] = "anthropic"
+    LLM_BASE_URL: str | None = None
+    LLM_API_KEY: str | None = None
+    LLM_MODEL: str | None = None
     TELEGRAM_BOT_TOKEN: str | None = None
     # Boosthis performance monitoring; unset (or APP_ENV=test) leaves the kit out of the app entirely.
     BOOSTHIS_PROJECT_KEY: str | None = None

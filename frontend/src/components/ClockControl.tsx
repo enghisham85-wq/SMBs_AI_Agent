@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, LONG_TIMEOUT_MS } from "../api/client";
+import { api, DAY_RUN_TIMEOUT_MS } from "../api/client";
 import { errorText } from "../api/errorText";
 import type { ClockState } from "../api/types";
 import { useAuth } from "../hooks/useAuth";
@@ -21,7 +21,7 @@ export function ClockControl() {
 
   const advance = useMutation({
     mutationFn: (body: { days?: number; to_date?: string }) =>
-      api.post("/clock/advance", body, { timeoutMs: LONG_TIMEOUT_MS }),
+      api.post("/clock/advance", body, { timeoutMs: DAY_RUN_TIMEOUT_MS }),
     onSuccess: () => {
       setError(null);
       void qc.invalidateQueries();

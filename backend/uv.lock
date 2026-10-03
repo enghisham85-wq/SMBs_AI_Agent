@@ -1485,6 +1485,23 @@ wheels = [
 ]
 
 [[package]]
+name = "openai"
+version = "3.24.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "httpx2" },
+    { name = "jiter" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/73/4f/e57670227cb7b61362d8f9bfba54d4e9f7bde799798c342782788bc12d6c/openai-3.24.0.tar.gz", hash = "sha256:1e7463f7d78773ab2ce4fe85710481aa5bd5ffefd54c8de4b067506cd2d42895", size = 1797218, upload-time = "2026-10-02T15:55:18.851Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f2/01/32baec3bdb83d36da27281d7eeac2647241345cf8ff538bc21d1013ddeec/openai-3.24.0-py3-none-any.whl", hash = "sha256:b59703a3e3b5df78b269e90049d383a1dda58c90104cc4be59db21078db4b7a4", size = 2127166, upload-time = "2026-10-02T15:55:16.228Z" },
+]
+
+[[package]]
 name = "orjson"
 version = "3.12.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2155,6 +2172,7 @@ dependencies = [
     { name = "itsdangerous" },
     { name = "langgraph" },
     { name = "langgraph-checkpoint-sqlite" },
+    { name = "openai" },
     { name = "pandas" },
     { name = "pillow" },
     { name = "pydantic" },
@@ -2192,6 +2210,7 @@ requires-dist = [
     { name = "itsdangerous", specifier = ">=2.2" },
     { name = "langgraph", specifier = ">=1.0" },
     { name = "langgraph-checkpoint-sqlite", specifier = ">=2.0" },
+    { name = "openai", specifier = ">=1.60" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "pillow", specifier = ">=10.4" },
     { name = "pydantic", specifier = ">=2.7" },
