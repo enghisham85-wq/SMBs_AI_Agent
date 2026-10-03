@@ -1,4 +1,4 @@
-"""Moves the business clock and runs each day's work (FR-012a).
+"""Moves the business clock and runs each day's work.
 
 Demo mode: the presenter advances the simulated clock; every skipped date runs daily_run_graph
 in order. Real mode: a background loop runs the same graph once per real day.

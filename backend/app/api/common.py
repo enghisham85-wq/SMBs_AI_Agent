@@ -29,7 +29,7 @@ def J(data: Any, status: int = 200) -> JSONResponse:
 
 
 def with_freshness(data: dict[str, Any], sources: dict[str, datetime | date | str | None]) -> dict[str, Any]:
-    """Attach `data_as_of` (FR-046): when each source behind the figures was last updated."""
+    """Attach `data_as_of`: when each source behind the figures was last updated."""
     data["data_as_of"] = {k: (v.isoformat() if isinstance(v, date | datetime) else v) for k, v in sources.items()}
     return data
 

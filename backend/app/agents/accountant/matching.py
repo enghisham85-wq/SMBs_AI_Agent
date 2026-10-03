@@ -1,9 +1,9 @@
-"""Bank reconciliation (T076, FR-037).
+"""Bank reconciliation.
 
 Each bank line is scored against possible counterparts from amount, date proximity and name
 similarity. Matches at or above the high threshold are applied automatically; between the
 thresholds they are suggested for the owner; below they stay unmatched. Every match records its
-source (auto, suggested_confirmed, manual) and confidence (FR-046).
+source (auto, suggested_confirmed, manual) and confidence.
 """
 
 from __future__ import annotations

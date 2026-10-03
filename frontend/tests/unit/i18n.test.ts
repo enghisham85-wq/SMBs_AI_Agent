@@ -1,7 +1,7 @@
 import ar from "../../src/i18n/ar.json";
 import en from "../../src/i18n/en.json";
 
-// T126: the Arabic interface is complete. Every English key has an Arabic string, and every literal
+// The Arabic interface is complete. Every English key has an Arabic string, and every literal
 // key the code passes to t() exists. Plural suffixes differ by language (en: one/other; ar adds
 // zero/two/few/many), so they are compared on the base key.
 const PLURAL = /_(zero|one|two|few|many|other)$/;

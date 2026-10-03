@@ -1,4 +1,4 @@
-"""Cash-Flow Agent actions run through harness_graph (T093)."""
+"""Cash-Flow Agent actions run through harness_graph."""
 
 from __future__ import annotations
 
@@ -123,7 +123,7 @@ async def _rem_packet(ctx: ActionContext, inputs: dict[str, Any], plan: dict[str
 
 
 async def _rem_auto(ctx: ActionContext, inputs: dict[str, Any], settings: dict[str, Any]) -> bool:
-    """Only first (polite) reminders, and only when the owner turned that on (FR-027)."""
+    """Only first (polite) reminders, and only when the owner turned that on."""
     if settings.get("reminder_auto_approve") != "polite_only":
         return False
     rem, _ = await _reminder(inputs["reminder_id"])
@@ -265,7 +265,7 @@ async def _budget_compensate(ctx: ActionContext, inputs: dict[str, Any], result:
 
 
 async def budget_remaining(business_id: uuid.UUID, d: date) -> int | None:
-    """Stock Agent budget provider (FR-029)."""
+    """Stock Agent budget provider."""
     async with read_session() as s:
         return await budget_mod.remaining(s, business_id, d)
 

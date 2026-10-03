@@ -1,4 +1,4 @@
-"""Weekly purchasing budget for the Stock Agent (FR-029).
+"""Weekly purchasing budget for the Stock Agent.
 
 Normal weeks allow the usual weekly supplier spending plus headroom; when the pessimistic forecast
 breaches the buffer the budget is tightened in proportion to the gap.

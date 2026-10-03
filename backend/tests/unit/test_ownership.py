@@ -1,4 +1,4 @@
-"""Ownership guard (T112, FR-044): each agent writes only its own tables; other agents change them
+"""Ownership guard: each agent writes only its own tables; other agents change them
 through logged events handled in that agent's handlers.py.
 
 Two checks:

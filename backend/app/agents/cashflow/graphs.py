@@ -1,8 +1,8 @@
-"""Cash-Flow Agent workflows as LangGraph graphs (T094). State-changing steps run through harness_graph.
+"""Cash-Flow Agent workflows as LangGraph graphs. State-changing steps run through harness_graph.
 
 - cash_forecast_graph: freshness check -> project -> checks -> save -> weekly purchasing budget
 - shortfall_plan_graph: detect -> plan -> save -> publish shortfall.predicted -> ask the owner (interrupt) -> apply
-- balance_compare_graph: yesterday's projected closing balance vs the actual one (FR-030)
+- balance_compare_graph: yesterday's projected closing balance vs the actual one
 - reminders_graph: schedule escalating reminders -> send the ones due (each through send_reminder)
 """
 
@@ -595,7 +595,7 @@ async def chase_now(bid: uuid.UUID, invoice_id: uuid.UUID, d: date) -> dict[str,
 
 # ============================================================= events
 async def on_customer_payment(env: dict[str, Any]) -> None:
-    """customer_payment.received: cancel reminders for a now-paid invoice and tell the owner (FR-027)."""
+    """customer_payment.received: cancel reminders for a now-paid invoice and tell the owner."""
     bid = uuid.UUID(env["business_id"])
     inv_id = uuid.UUID(env["payload"]["receivable_invoice_id"])
     async with write_session() as s:

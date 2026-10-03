@@ -1,4 +1,4 @@
-"""Escalating payment reminders and promise tracking (FR-027).
+"""Escalating payment reminders and promise tracking.
 
 Level 1 is polite, level 3 firm. Customers with a late-payment history get a friendly note before
 the due date and the next levels sooner. An open promise to pay pauses reminders until the

@@ -1,9 +1,9 @@
-"""The 8 Chaos mode fault injectors (FR-012, spec User Story 6).
+"""The 8 Chaos mode fault injectors.
 
 Each injector changes data the way the fault would happen in real life, then runs the normal graph
 that would see it: a supplier re-sends an invoice, a price list changes, a delivery arrives short.
 There are no special detection paths; incidents, explanations and rule proposals come from the
-agents themselves (research: "Injectors mutate data, then run the normal graphs"). Faults that live
+agents themselves. Faults that live
 in future days (demand spike, missing bank day) are written as FeedOverride rows and the business
 clock is advanced until an agent notices.
 """

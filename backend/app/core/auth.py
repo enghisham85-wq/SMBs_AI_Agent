@@ -1,4 +1,4 @@
-"""Login sessions, CSRF and role checks (FR-049, FR-049a, research R14)."""
+"""Login sessions, CSRF and role checks."""
 
 from __future__ import annotations
 

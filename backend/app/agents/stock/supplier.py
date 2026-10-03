@@ -1,4 +1,4 @@
-"""Supplier performance (spec Stock "Supplier performance", FR-021, FR-017)."""
+"""Supplier performance."""
 
 from __future__ import annotations
 

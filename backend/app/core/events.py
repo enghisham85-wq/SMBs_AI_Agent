@@ -1,4 +1,4 @@
-"""Transactional outbox and in-process dispatch (research R11, contracts/events.md).
+"""Transactional outbox and in-process dispatch.
 
 `publish()` writes an Event row in the caller's transaction. After the transaction commits,
 `write_session()` calls `dispatch_if_pending()`, which delivers each event once per subscribed
@@ -24,7 +24,7 @@ from app.harness.audit import jsonable
 
 log = logging.getLogger(__name__)
 
-# Required payload fields per event type (contracts/events.md).
+# Required payload fields per event type.
 REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "po.drafted": ("po_id", "supplier_id", "total", "expected_date", "is_critical"),
     "budget.check_result": ("po_id", "within_budget", "remaining_budget", "recommendation"),

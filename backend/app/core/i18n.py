@@ -1,4 +1,4 @@
-"""Bilingual message catalog and Arabic text normalisation (research R7)."""
+"""Bilingual message catalog and Arabic text normalisation."""
 
 from __future__ import annotations
 

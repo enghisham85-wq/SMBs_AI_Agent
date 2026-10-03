@@ -1,4 +1,4 @@
-"""Harness records: actions, checks, approvals, incidents, rules, calibration, audit (data-model.md §5)."""
+"""Harness records: actions, checks, approvals, incidents, rules, calibration, audit."""
 
 from __future__ import annotations
 

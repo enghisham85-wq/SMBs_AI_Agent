@@ -1,4 +1,4 @@
-"""Accountant Agent event handlers (T110, contracts/events.md). Each runs as the Accountant Agent.
+"""Accountant Agent event handlers. Each runs as the Accountant Agent.
 
 Orders and deliveries stay in the Stock Agent's tables; the Accountant reads them for the three-way
 match. These handlers note that they are available and keep a price context used when checking

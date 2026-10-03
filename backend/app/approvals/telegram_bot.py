@@ -1,4 +1,4 @@
-"""Telegram bot: a second front end to ApprovalService (contracts/telegram-bot.md, research R13).
+"""Telegram bot: a second front end to ApprovalService.
 
 Long polling (no public webhook needed). Holds no business state: every answer goes through
 ApprovalService's first-answer-wins claim, so role checks and first-answer-wins are identical to the dashboard.
@@ -28,7 +28,7 @@ from app.models.tenancy import User
 
 log = logging.getLogger(__name__)
 
-# Upload handlers registered by the stories: key -> (min_role, fn(user, file_bytes, mime, name, caption) -> reply)
+# Upload handlers registered by the agents: key -> (min_role, fn(user, file_bytes, mime, name, caption) -> reply)
 UploadFn = Callable[[User, bytes, str, str, str], Awaitable[str]]
 UPLOAD_HANDLERS: dict[str, tuple[str, UploadFn]] = {}
 STATUS_PROVIDERS: list[Callable[[uuid.UUID, str], Awaitable[str]]] = []

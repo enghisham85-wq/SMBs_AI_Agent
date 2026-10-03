@@ -1,12 +1,12 @@
-"""harness_graph: the lifecycle every agent action goes through (FR-001 ... FR-009, research R12/R17).
+"""harness_graph: the lifecycle every agent action goes through.
 
 plan -> precheck -> [prepare_hold -> hold] -> classify_risk -> premortem_verify -> prepare_approval
      -> approval_gate -> execute -> post_verify -> (finalize | rollback -> retry -> execute ... -> escalate)
      -> finalize
 
 Every node updates Action.stage and writes an audit entry. Irreversible/external actions pause at
-`approval_gate` (LangGraph interrupt) unless the spec's own auto_approve rule allows them.
-Reversible writes are undone by the spec's `compensate` step when read-back verification fails.
+`approval_gate` (LangGraph interrupt) unless the ActionSpec's own auto_approve rule allows them.
+Reversible writes are undone by the ActionSpec's `compensate` step when read-back verification fails.
 
 LangGraph re-runs an interrupted node from the top when it resumes, so each owner question is built
 in a `prepare_*` node (wording, which may call the model, rule counters, stage and audit) and kept in
@@ -39,7 +39,7 @@ from app.models.harness import Action, CheckResult
 log = logging.getLogger(__name__)
 GRAPH = "harness"
 
-# Extension points filled by US4 (learned rules, calibration, incident analysis).
+# Extension points for learned rules, calibration and incident analysis.
 PrecheckHook = Callable[[ActionSpec, ActionContext, dict[str, Any]], Awaitable[list[Check]]]
 StateHook = Callable[[ActionSpec, ActionState], Awaitable[None]]
 PRECHECK_HOOKS: list[PrecheckHook] = []
@@ -137,7 +137,7 @@ async def precheck_node(state: ActionState) -> dict[str, Any]:
 
 
 async def _check_incident(state: ActionState, spec: ActionSpec, check: dict[str, Any], route: str) -> None:
-    """A precondition caught a fault: log it as an incident, then find the cause and propose a rule (FR-007)."""
+    """A precondition caught a fault: log it as an incident, then find the cause and propose a rule."""
     from app.harness.analysis import analyse_and_propose
 
     taken = {"finalize": "cancelled the action", "hold": "held the action and asked the owner"}.get(
@@ -421,7 +421,7 @@ def _route(state: ActionState) -> str:
 
 
 def _as_agent(fn: Callable[[ActionState], Awaitable[dict[str, Any]]]) -> Callable[[ActionState], Awaitable[dict[str, Any]]]:
-    """Run a node as the action's agent, so writes can be checked against table ownership (FR-044)."""
+    """Run a node as the action's agent, so writes can be checked against table ownership."""
     from app.core.ownership import acting_as
 
     async def node(state: ActionState) -> dict[str, Any]:

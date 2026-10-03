@@ -1,4 +1,4 @@
-"""Stock endpoints (contracts/rest-api.md "Stock", T062)."""
+"""Stock endpoints."""
 
 from __future__ import annotations
 
@@ -367,7 +367,7 @@ async def suppliers(user: CurrentUser = RequireManager) -> Response:
 
 @router.get("/suppliers/{supplier_id}/scorecard")
 async def supplier_scorecard(supplier_id: uuid.UUID, user: CurrentUser = RequireManager) -> Response:
-    """Stated vs observed lead time, delivery record, price changes and reliability (US8)."""
+    """Stated vs observed lead time, delivery record, price changes and reliability."""
     async with read_session() as s:
         sp = await s.get(Supplier, supplier_id)
         if sp is None or sp.business_id != user.business_id:

@@ -1,4 +1,4 @@
-"""Profit and loss and balance sheet from journal lines (FR-035). Quarantined entries are excluded."""
+"""Profit and loss and balance sheet from journal lines. Quarantined entries are excluded."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Customer invoices (T082) and Books endpoints (T080)."""
+"""Customer invoices and Books endpoints."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Money arithmetic/display and Arabic normalisation (T021)."""
+"""Money arithmetic/display and Arabic normalisation."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Books endpoints (T080) and customer invoices (T082)."""
+"""Books endpoints and customer invoices."""
 
 from __future__ import annotations
 
@@ -264,10 +264,10 @@ async def pnl(from_: date | None = Query(default=None, alias="from"), to: date |
 
 @router.get("/vat/summary")
 async def vat_summary(period: str | None = None, user: CurrentUser = RequireManager) -> Response:
-    """Input VAT, output VAT, net payable and the supporting invoices for a period (FR-053).
+    """Input VAT, output VAT, net payable and the supporting invoices for a period.
 
     `period` is `2026-10` (monthly) or `2026-Q4` (quarterly); default: the current period. The figures
-    are reviewed by the independent second check (FR-003) before `status` becomes `ready`.
+    are reviewed by the independent second check before `status` becomes `ready`.
     """
     from app.agents.accountant import vat
 
@@ -361,7 +361,7 @@ async def get_receivable(rec_id: uuid.UUID, user: CurrentUser = RequireManager) 
         payments = (await s.execute(select(BankTransaction).where(BankTransaction.matched_id == rec_id))).scalars().all()
         reminders: list[Any] = []
         try:
-            from app.models.cash import PaymentPromise, PaymentReminder  # US3
+            from app.models.cash import PaymentPromise, PaymentReminder
 
             reminders = [{"level": x.level, "status": x.status, "scheduled_for": x.scheduled_for}
                          for x in (await s.execute(select(PaymentReminder).where(PaymentReminder.receivable_invoice_id == rec_id))).scalars()]

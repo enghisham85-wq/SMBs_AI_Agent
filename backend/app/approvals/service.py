@@ -1,4 +1,4 @@
-"""ApprovalService: owner approvals, questions and alerts for both channels (FR-010, FR-011, R13).
+"""ApprovalService: owner approvals, questions and alerts for both channels.
 
 - `ask_owner()` is called from inside any graph node. It creates the request idempotently
   (keyed by thread + gate, because LangGraph re-runs the node on resume) and pauses the graph
@@ -88,7 +88,7 @@ def _notify(kind: str, req: dict[str, Any]) -> None:
     """Publish to the dashboard now and queue the channel notifiers; never waits on the network.
 
     Callers are graph nodes and resolve paths, and a slow or down channel (e.g. Telegram) must not
-    hold them up or block the other channel (FR-010a).
+    hold them up or block the other channel.
     """
     global _queue, _worker
     broker.publish("chat", {"kind": kind, "request": req})
@@ -156,7 +156,7 @@ REASK_EFFECTS = ("reask",)
 
 
 def validate_ask(ask: OwnerAsk) -> None:
-    """SC-005: every request is answerable in one tap (2-4 options) or one short reply."""
+    """Every request is answerable in one tap (2-4 options) or one short reply."""
     if ask.kind == "alert":
         if not 1 <= len(ask.options) <= 4:
             raise InvalidRequestError("alerts need 1-4 options")
@@ -169,7 +169,7 @@ def validate_ask(ask: OwnerAsk) -> None:
             raise InvalidRequestError("each option needs key, label_en, label_ar and effect")
     if not (ask.text_en and ask.text_ar):
         raise InvalidRequestError("requests need English and Arabic text")
-    # FR-011: a timeout never does anything irreversible.
+    # A timeout never does anything irreversible.
     default = next((o for o in ask.options if o["key"] == ask.safe_default), None)
     if default is not None and default["effect"] in UNSAFE_DEFAULT_EFFECTS:
         raise InvalidRequestError(f"safe default {ask.safe_default!r} would approve an action")
@@ -446,7 +446,7 @@ async def withdraw(ref: str, reason: str) -> bool:
 
 
 async def expire_due(business_id: uuid.UUID) -> int:
-    """Apply the safe default to overdue requests (FR-011). Returns how many expired.
+    """Apply the safe default to overdue requests. Returns how many expired.
 
     The request is marked `timed_out` and its graph resumes with the safe default, which is never
     irreversible. When that default is "ask again" the question is re-sent with urgency + 1 and

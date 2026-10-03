@@ -1,4 +1,4 @@
-"""US3 acceptance (T084): 30-day cash projection, shortfall plan, reminders, stale bank data, no double counting."""
+"""Cash flow: 30-day cash projection, shortfall plan, reminders, stale bank data, no double counting."""
 
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ async def _status(rid: uuid.UUID) -> PaymentReminder:
     return r
 
 
-# ------------------------------------------------------------------ scenario 1
+# ------------------------------------------------------------------ 30-day projection
 async def test_30_day_projection_with_lowest_point(api: Any, cafe: dict[str, Any]) -> None:
     bid = cafe["business_id"]
     run = await _forecast(bid)
@@ -115,7 +115,7 @@ async def test_30_day_projection_with_lowest_point(api: Any, cafe: dict[str, Any
     assert 13 <= len(weeks["weeks"]) <= 14
 
 
-# ------------------------------------------------------------------ scenarios 2 and 3, SC-004
+# ------------------------------------------------------------------ shortfall plan
 async def test_shortfall_flagged_14_days_ahead_with_ranked_simulated_plan(api: Any, cafe: dict[str, Any]) -> None:
     bid = cafe["business_id"]
     run = await _forecast(bid)
@@ -128,7 +128,7 @@ async def test_shortfall_flagged_14_days_ahead_with_ranked_simulated_plan(api: A
                                                            ApprovalRequest.status == "pending"))).scalars().all()
     # rent + salaries week: salaries on the 28th, rent on the 1st
     assert plan.gap_date >= date(2026, 10, 28)
-    assert plan.days_to_act >= 14  # SC-004
+    assert plan.days_to_act >= 14
     assert plan.gap_amount.amount_minor == 5_000_000 - run.lowest_balance.amount_minor > 0
     assert [a.rank for a in acts] == list(range(1, len(acts) + 1))
     assert acts[-1].type == "financing" and all(a.type != "financing" for a in acts[:-1])
@@ -190,7 +190,7 @@ async def test_no_recommendation_pays_beyond_terms(api: Any, cafe: dict[str, Any
         assert all(adj["move_to"] <= (today + timedelta(days=11)).isoformat() for adj in a.adjustments)
 
 
-# ------------------------------------------------------------------ scenario 4 and the approval rule
+# ------------------------------------------------------------------ payment reminders and their approval rule
 async def test_reminder_waits_for_approval_then_cancelled_when_paid(api: Any, cafe: dict[str, Any]) -> None:
     bid = cafe["business_id"]
     await cash_graphs.step_reminders(bid, clock.today())
@@ -249,7 +249,7 @@ async def test_reminder_auto_approve_rule(api: Any, cafe: dict[str, Any], mode: 
     assert out["outcome"] == "cancelled" and (await _status(rid)).status == "cancelled_paid"
 
 
-# ------------------------------------------------------------------ scenario 5
+# ------------------------------------------------------------------ stale bank data
 async def test_stale_bank_data_marks_low_confidence_and_asks_for_statement(api: Any, cafe: dict[str, Any]) -> None:
     bid = cafe["business_id"]
     later = date(2026, 10, 7)  # Sun-Wed without bank data: 4 business days
@@ -280,7 +280,7 @@ async def test_stale_bank_data_marks_low_confidence_and_asks_for_statement(api: 
     assert bad.status_code == 422 and bad.json()["error"]["code"] == "currency_mismatch"
 
 
-# ------------------------------------------------------------------ scenario 6 (FR-031)
+# ------------------------------------------------------------------ each payable counted once
 async def test_po_and_invoice_counted_once(api: Any, cafe: dict[str, Any]) -> None:
     bid = cafe["business_id"]
     today = clock.today()

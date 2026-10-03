@@ -1,4 +1,4 @@
-"""Persisted business clock (data-model.md §1)."""
+"""Persisted business clock."""
 
 from __future__ import annotations
 

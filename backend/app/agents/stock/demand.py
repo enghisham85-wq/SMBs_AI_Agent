@@ -1,4 +1,4 @@
-"""Bridges sales history and stored forecasts (FR-014, FR-020).
+"""Bridges sales history and stored forecasts.
 
 Sold products are forecast directly; ingredient demand is derived through recipes. The daily run
 stores a 30-day horizon so the cash projection never runs short of sales forecast.

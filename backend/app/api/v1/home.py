@@ -1,4 +1,4 @@
-"""Home (contracts/rest-api.md "Home", T120): health strip, today's decisions and alerts by urgency.
+"""Home: health strip, today's decisions and alerts by urgency.
 
 The strip's figures come from the same functions the Stock, Cash and Books views use, so Home
 never shows a number those views would contradict.

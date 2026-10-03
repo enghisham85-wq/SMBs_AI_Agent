@@ -1,4 +1,4 @@
-"""Telegram: a photo captioned `/delivery <PO number>` is attached to that PO's delivery (T063)."""
+"""Telegram: a photo captioned `/delivery <PO number>` is attached to that PO's delivery."""
 
 from __future__ import annotations
 

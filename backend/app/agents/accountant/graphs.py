@@ -1,4 +1,4 @@
-"""Accountant Agent workflows as LangGraph graphs (T079).
+"""Accountant Agent workflows as LangGraph graphs.
 
 document_graph: extract -> validate -> [re-extract once] -> ask the owner one question at a time
 (interrupt) -> validate again -> post_invoice through the harness. The invoice stays `held` until every

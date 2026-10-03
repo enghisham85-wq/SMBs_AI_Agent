@@ -1,4 +1,4 @@
-"""Bank statement CSV import (T087, FR-048: statements only, never bank credentials).
+"""Bank statement CSV import (statements only, never bank credentials).
 
 Columns (renameable through `mapping`): date, description, amount (signed) or debit/credit,
 balance, reference, currency. Lines already known for the account (same date, amount,

@@ -1,4 +1,4 @@
-"""Cash forecast runs, shortfall plans, purchasing budget and payment reminders (data-model.md §3).
+"""Cash forecast runs, shortfall plans, purchasing budget and payment reminders.
 
 Written by the Cash-Flow Agent.
 """
@@ -39,7 +39,7 @@ class CashForecastRun(TenantMixin, Base):
     # Latest bank data behind the opening balance (end of that business day).
     bank_data_as_of: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     low_confidence_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
-    # expected, or pessimistic when an inflow assumption looks unrealistic (FR-031)
+    # expected, or pessimistic when an inflow assumption looks unrealistic
     primary_scenario: Mapped[str] = mapped_column(Enum(*SCENARIOS, native_enum=False), default="expected")
     opening_balance: Mapped[Money] = money_col("opening_balance")
     lowest_balance: Mapped[Money] = money_col("lowest_balance")

@@ -1,4 +1,4 @@
-"""Chaos mode endpoints (contracts/rest-api.md "Chaos mode"): owner only, demo mode only."""
+"""Chaos mode endpoints: owner only, demo mode only."""
 
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
-"""Chaos mode injections (data-model.md "ChaosInjection"): which fault was injected and what the agents
-did about it, for SC-001 (detected, explained, corrected, rule proposed) and SC-011 (under 2 minutes)."""
+"""Chaos mode injections: which fault was injected and what the agents did about it (detected,
+explained, corrected, rule proposed) and how long that took."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.types import Base, TenantMixin, _clock_now
 
-# The 8 spec scenarios, in the spec's order.
+# The 8 fault scenarios, in a fixed order.
 SCENARIOS = (
     "duplicate_invoice",
     "price_spike",

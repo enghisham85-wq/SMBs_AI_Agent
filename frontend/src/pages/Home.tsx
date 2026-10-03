@@ -7,7 +7,7 @@ import { FreshnessLabel } from "../components/FreshnessLabel";
 import { HealthStrip } from "../components/HealthStrip";
 import { QueryError } from "../components/QueryError";
 
-/** Home (FR-045): health strip, today's decisions (one tap each) and alerts by urgency.
+/** Home: health strip, today's decisions (one tap each) and alerts by urgency.
  * The chat panel (docked on desktop, a drawer on mobile) and the owner's clock control come from Layout. */
 export function Home() {
   const { t } = useTranslation();

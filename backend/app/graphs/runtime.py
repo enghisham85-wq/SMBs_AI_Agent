@@ -1,4 +1,4 @@
-"""LangGraph runtime: checkpointer, graph registry, start / resume (research R17).
+"""LangGraph runtime: checkpointer, graph registry, start / resume.
 
 Checkpoints live in their own SQLite file (CHECKPOINT_DB_PATH) so they never compete with
 business-data writes. Tests inject an InMemorySaver via `init(saver=...)`.

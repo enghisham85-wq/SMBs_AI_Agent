@@ -1,4 +1,4 @@
-"""Expiry risk and dead stock (FR-022)."""
+"""Expiry risk and dead stock."""
 
 from __future__ import annotations
 

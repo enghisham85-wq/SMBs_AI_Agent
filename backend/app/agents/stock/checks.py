@@ -1,4 +1,4 @@
-"""Stock Agent self-checks (spec "Self-checks", FR-018, FR-019, FR-020, FR-017)."""
+"""Stock Agent self-checks."""
 
 from __future__ import annotations
 

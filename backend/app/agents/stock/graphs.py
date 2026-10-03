@@ -1,4 +1,4 @@
-"""Stock Agent workflows as LangGraph graphs (T061). State-changing steps run through harness_graph."""
+"""Stock Agent workflows as LangGraph graphs. State-changing steps run through harness_graph."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from app.models.tenancy import Business
 
 AR_DAYS = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"]
 
-# Weekly purchasing budget provider (the Cash-Flow Agent registers one in US3). None = unlimited.
+# Weekly purchasing budget provider (the Cash-Flow Agent registers one). None = unlimited.
 BudgetProvider = Callable[[uuid.UUID, date], Awaitable[int | None]]
 BUDGET_PROVIDER: list[BudgetProvider] = []
 
@@ -337,7 +337,7 @@ async def ro_deferred(state: DayState) -> dict[str, Any]:
 
 
 async def ro_expiry(state: DayState) -> dict[str, Any]:
-    """Flag stock that will expire before it is used, and dead stock (FR-022)."""
+    """Flag stock that will expire before it is used, and dead stock."""
     bid, d = _ids(state)
     async with read_session() as s:
         gen = await demand.latest_generation(s, bid, d)

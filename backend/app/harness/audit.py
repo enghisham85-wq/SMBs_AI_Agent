@@ -1,4 +1,4 @@
-"""Append-only audit log writer (FR-009)."""
+"""Append-only audit log writer."""
 
 from __future__ import annotations
 

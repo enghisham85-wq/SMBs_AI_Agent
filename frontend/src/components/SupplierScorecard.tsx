@@ -46,7 +46,7 @@ interface Scorecard {
   data_as_of: DataAsOf;
 }
 
-/** Supplier scorecard (US8): stated vs observed lead time, delivery record, price changes, reliability. */
+/** Supplier scorecard: stated vs observed lead time, delivery record, price changes, reliability. */
 export function SupplierScorecard() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;

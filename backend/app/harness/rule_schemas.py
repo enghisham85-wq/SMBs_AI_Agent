@@ -1,4 +1,4 @@
-"""Machine-checkable triggers for learned rules, one JSON schema per kind (FR-008).
+"""Machine-checkable triggers for learned rules, one JSON schema per kind.
 
 A rule proposed by the model is only stored when its trigger validates, so every active rule can be
 applied by code rather than by re-reading its text.

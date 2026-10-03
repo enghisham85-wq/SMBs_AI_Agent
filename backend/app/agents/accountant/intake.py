@@ -1,4 +1,4 @@
-"""Document intake from the dashboard or Telegram (FR-032)."""
+"""Document intake from the dashboard or Telegram."""
 
 from __future__ import annotations
 

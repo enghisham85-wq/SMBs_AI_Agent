@@ -1,4 +1,4 @@
-"""Reorder planning (FR-015, FR-016, FR-021).
+"""Reorder planning.
 
 For each purchased item: project stock day by day (arrivals of open orders included), find the
 stockout date, and reorder when the item would run short within the lead time plus a buffer.
@@ -87,7 +87,7 @@ FORECAST_MARGIN_DAYS = 1
 
 def trigger_window(lead_time_days: float) -> int:
     """Order when the projected stockout is closer than this many days. With a daily review the first warning
-    comes MIN_WARNING_DAYS + FORECAST_MARGIN_DAYS ahead (SC-002: at least 3 days' warning)."""
+    comes MIN_WARNING_DAYS + FORECAST_MARGIN_DAYS ahead (at least 3 days' warning)."""
     return max(math.ceil(lead_time_days) + BUFFER_DAYS, MIN_WARNING_DAYS + FORECAST_MARGIN_DAYS) + 1
 
 
@@ -175,7 +175,7 @@ def group_by_supplier(proposals: list[Proposal], budget_remaining_minor: int | N
 
     Only top-ups (an item dipping below safety stock) are held back for the budget. An item that will run
     out is always drafted: if that goes over the budget, the Cash-Flow budget check puts the conflict to the
-    owner with both positions (FR-043) instead of the order being dropped silently.
+    owner with both positions instead of the order being dropped silently.
     """
     ranked = sorted(proposals, key=lambda p: (not p.is_critical, p.margin_class != "high",
                                               p.projected_stockout or date.max))

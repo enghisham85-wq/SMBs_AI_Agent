@@ -16,17 +16,17 @@ uv run python -m scripts.record_llm_fixtures
 ```
 
 The script (`backend/scripts/record_llm_fixtures.py`) builds a throwaway database in `var/record/`,
-seeds the sample cafe and drives the demo paths from quickstart.md steps 2–8:
+seeds the sample cafe and walks through the demo in this order:
 
 | Step | What runs | Claude roles recorded |
 |---|---|---|
-| 2 Stock | two simulated days of reorders | verifier (purchase orders) |
-| 3 Books | every sample invoice, including the faulty ones | extraction, classification |
-| 4 Cash | five more days: forecast, shortfall plan | verifier |
-| 5 Harness | answers waiting requests, so escalations run | incident, verifier |
-| 6 Chaos | all 8 scenarios | incident analysis, rule proposal |
+| Stock | two simulated days of reorders | verifier (purchase orders) |
+| Books | every sample invoice, including the faulty ones | extraction, classification |
+| Cash | five more days: forecast, shortfall plan | verifier |
+| Harness | answers waiting requests, so escalations run | incident, verifier |
+| Chaos | all 8 scenarios | incident analysis, rule proposal |
 | VAT | the current period's summary | verifier (tax figures) |
-| 7–8 Roles, timeout | one more day | none of their own |
+| Roles, approval timeout | one more day | none of their own |
 
 It prints what it did and how many new fixture files it wrote.
 

@@ -1,4 +1,4 @@
-"""Business settings and country profiles (FR-051, contracts/rest-api.md "Business and country")."""
+"""Business settings and country profiles."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def _business_out(b: Business) -> dict[str, Any]:
 
 
 async def has_financial_records(business_id: Any) -> bool:
-    """Any Money-bearing record exists -> the currency is locked (no FX conversion in the MVP)."""
+    """Any Money-bearing record exists -> the currency is locked (there is no FX conversion)."""
     from app.db.types import Base
 
     money_tables = [t for t in Base.metadata.sorted_tables

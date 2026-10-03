@@ -1,7 +1,7 @@
-"""BusinessClock: the only source of "now" (FR-012a, research R10).
+"""BusinessClock: the only source of "now".
 
 In demo mode the date is simulated and moved forward by the presenter; outside demo mode it is
-the real calendar date. The MVP runs one business per process, so the current clock state is
+the real calendar date. The app runs one business per process, so the current clock state is
 kept in-process and mirrored in the `business_clock` table.
 """
 

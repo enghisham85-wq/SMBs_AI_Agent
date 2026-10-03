@@ -1,4 +1,4 @@
-"""Stock tracking (FR-013): sales deduct ingredients via recipes, deliveries add stock,
+"""Stock tracking: sales deduct ingredients via recipes, deliveries add stock,
 waste/spoilage/adjustments are recorded with reasons. Every change is a StockMovement and the
 StockLevel is kept equal to the running sum.
 """

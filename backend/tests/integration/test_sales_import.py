@@ -1,4 +1,4 @@
-"""Sales CSV import and manual entry (T064) and Stock endpoints (T062)."""
+"""Sales CSV import and manual entry, and Stock endpoints."""
 
 from __future__ import annotations
 

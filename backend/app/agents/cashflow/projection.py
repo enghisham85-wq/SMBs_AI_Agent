@@ -1,9 +1,9 @@
-"""Daily cash projection (FR-024, research R9).
+"""Daily cash projection.
 
 opening + inflows - outflows, one day at a time, from the day after the last bank data:
 - inflows: forecast sales x payment-method settlement lag; receivables by due date x on-time probability
 - outflows: payables per the recommended schedule; open POs not yet invoiced (each payable counted
-  once, FR-031); recurring obligations; the usual weekly supplier spending not covered by known orders
+  once); recurring obligations; the usual weekly supplier spending not covered by known orders
 Scenarios use the P10/P50/P90 sales forecast and pessimistic/expected receivable delays.
 
 `build_flows` and `simulate` are pure; `load_inputs` reads the database.

@@ -1,5 +1,5 @@
-"""US5 acceptance: budget checks, conflicts with both positions, critical stockouts outrank the budget,
-and a predicted shortfall defers non-critical orders."""
+"""Coordination between the agents: budget checks, conflicts with both positions, critical stockouts
+outrank the budget, and a predicted shortfall defers non-critical orders."""
 
 from __future__ import annotations
 

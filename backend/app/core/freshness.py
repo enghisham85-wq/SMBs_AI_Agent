@@ -1,4 +1,4 @@
-"""Dev/test guard for FR-046: a JSON response that carries money figures must also say how fresh they are.
+"""Dev/test freshness guard: a JSON response that carries money figures must also say how fresh they are.
 
 A figure is any Money object in the body ({"amount_minor", "currency", ...}). Such a response without
 a top-level `data_as_of` is replaced by a 500 error so a missing freshness label fails tests and shows
@@ -70,7 +70,7 @@ class FreshnessCheck:
             if bad:
                 log.error("response for %s has figures but no data_as_of", scope["path"])
                 raw = json.dumps({"error": {"code": "missing_data_as_of", "path": scope["path"],
-                                            "message_en": "This response shows figures without data_as_of (FR-046).",
+                                            "message_en": "This response shows figures without data_as_of.",
                                             "message_ar": "هذه الاستجابة تعرض أرقاماً دون وقت تحديث البيانات."}}).encode()
                 start = {**start, "status": 500,
                          "headers": [(k, v) for k, v in start["headers"] if k.lower() != b"content-length"]

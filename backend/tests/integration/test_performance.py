@@ -1,4 +1,4 @@
-"""Performance targets (T133, plan "Performance Goals"): one simulated day of jobs < 10 s excluding LLM
+"""Performance targets: one simulated day of jobs < 10 s excluding LLM
 calls (tests run the LLM offline), and the dashboard's main views respond in < 2 s on the sample cafe."""
 
 from __future__ import annotations

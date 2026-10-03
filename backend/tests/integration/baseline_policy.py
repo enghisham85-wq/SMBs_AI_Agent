@@ -1,4 +1,4 @@
-"""The "no assistant" baseline for the sample metrics (T129) and the stock accounting both runs share.
+"""The "no assistant" baseline for the sample metrics and the stock accounting both runs share.
 
 Baseline policy: every Sunday, order each purchased item's average weekly consumption over the previous
 4 weeks from its preferred supplier; it arrives after the supplier's stated lead time. No forecast, no

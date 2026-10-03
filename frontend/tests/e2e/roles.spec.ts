@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// T128: each role sees only its pages, and forbidden actions are refused by the API as well
+// Each role sees only its pages, and forbidden actions are refused by the API as well
 // (hiding a link is not the protection). Runs against the sample cafe from serve-backend.mjs.
 const USERS = {
   owner: "owner-demo-2026",

@@ -1,4 +1,4 @@
-"""Daily digest (FR-005) and the end-of-day harness steps.
+"""Daily digest and the end-of-day harness steps.
 
 - `approval_timeouts` step: overdue requests get their safe default and are re-asked with raised urgency.
 - `digest` step: close the day's self-calibration, then send the owner one message listing what was

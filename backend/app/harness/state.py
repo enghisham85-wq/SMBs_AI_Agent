@@ -1,4 +1,4 @@
-"""ActionState carried through harness_graph (data-model.md §5)."""
+"""ActionState carried through harness_graph."""
 
 from __future__ import annotations
 

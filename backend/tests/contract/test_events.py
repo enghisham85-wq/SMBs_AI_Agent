@@ -1,4 +1,4 @@
-"""Event contract (T106): contracts/events.md vs the code.
+"""Event contract: docs/events.md vs the code.
 
 - every event type in the contract has the same required payload fields in REQUIRED_FIELDS
 - a publish missing a field is refused; a delivered event carries the full envelope
@@ -22,7 +22,7 @@ from app.db.types import Money
 from app.models.events import Event, EventDelivery
 
 ROOT = Path(__file__).resolve().parents[3]
-CONTRACT = ROOT / "specs" / "001-small-business-agents" / "contracts" / "events.md"
+CONTRACT = ROOT / "docs" / "events.md"
 APP = ROOT / "backend" / "app"
 ENVELOPE = {"event_id", "type", "version", "business_id", "producer", "action_id", "occurred_at", "payload"}
 
@@ -48,7 +48,7 @@ def test_contract_and_code_agree_on_required_fields() -> None:
     for kind, fields in rows.items():
         assert kind in events.REQUIRED_FIELDS, f"{kind} is in the contract but not in REQUIRED_FIELDS"
         assert set(events.REQUIRED_FIELDS[kind]) == fields, kind
-    assert set(events.REQUIRED_FIELDS) <= set(rows), "an event type is missing from contracts/events.md"
+    assert set(events.REQUIRED_FIELDS) <= set(rows), "an event type is missing from docs/events.md"
 
 
 def test_every_contracted_event_is_published_in_code() -> None:

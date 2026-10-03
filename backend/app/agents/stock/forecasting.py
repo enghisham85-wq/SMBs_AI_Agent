@@ -1,4 +1,4 @@
-"""Demand forecasting (FR-014, FR-020, research R8).
+"""Demand forecasting.
 
 Primary: Holt-Winters with weekly seasonality on a calendar-adjusted series, times uplift factors
 for public holidays and Ramadan learned from history (weekends are captured by the weekly

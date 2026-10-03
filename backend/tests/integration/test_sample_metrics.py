@@ -1,4 +1,4 @@
-"""Sample metrics (T129): replay 3 months of the sample cafe with the simulated clock and compare the
+"""Sample metrics: replay 3 months of the sample cafe with the simulated clock and compare the
 assistants with a "no assistant" baseline on the same demand, opening stock and lead times.
 
 People are simulated the simple way: staff record each delivery on its expected day (as ordered), and
@@ -6,7 +6,12 @@ the owner answers every open request once a day, following the assistants' advic
 reminders, take the recommended option, act on the top plan step, accept offers to stop asking about routine
 orders; otherwise the safe default). Each answer is one tap; reading an alert counts only towards time.
 
-Writes backend/var/reports/sample_metrics.json and asserts SC-002, SC-003, SC-004, SC-006 and SC-009.
+Writes backend/var/reports/sample_metrics.json and asserts:
+- stockout warnings at least 3 days ahead in at least 90% of cases
+- fewer stockout days and less waste than the baseline
+- cash shortfalls flagged at least 14 days ahead in at least 90% of cases
+- owner effort of at most 15 minutes and at most 25 answers per simulated week
+- at least 85% of bank lines matched automatically, and none matched wrongly
 Run it explicitly: `uv run pytest -m slow tests/integration/test_sample_metrics.py` (about 10 minutes).
 """
 
@@ -219,10 +224,11 @@ async def test_three_month_replay_meets_the_success_criteria(cafe: dict[str, Any
     base_events = baseline_orders(usage, ingredients, lead, first, DAYS)
     baseline = simulate_stock(opening, usage, base_events, items, first, DAYS)
 
-    # SC-002: each warning is an order line that says when that item runs out ("Milk runs out on ..."); it
-    # counts when it came at least 3 days before. A stockout nobody warned about is a miss. Products that keep
-    # for 3 days or less (the bakery's daily bread and pastries) cannot be stocked 3 days ahead: they are
-    # re-ordered daily, so their lines are reported but not scored.
+    # Stockout warnings, at least 3 days ahead in at least 90% of cases. Each warning is an order line that
+    # says when that item runs out ("Milk runs out on ..."); it counts when it came at least 3 days before.
+    # A stockout nobody warned about is a miss. Products that keep for 3 days or less (the bakery's daily
+    # bread and pastries) cannot be stocked 3 days ahead: they are re-ordered daily, so their lines are
+    # reported but not scored.
     def keeps(iid: uuid.UUID) -> bool:
         life = items[iid].shelf_life_days if iid in items else None
         return life is None or life > 3
@@ -246,10 +252,11 @@ async def test_three_month_replay_meets_the_success_criteria(cafe: dict[str, Any
     unwarned = [(items[iid].name_en, d.isoformat()) for iid, d in assistant.stockout_episodes
                 if keeps(iid) and not any(d - timedelta(days=30) <= wd <= d - timedelta(days=3) for wd in warned[str(iid)])]
     scored = [w for w in warnings if w["scored"]]
-    sc002_cases = len(scored) + len(unwarned)
-    sc002_ok = sum(1 for w in scored if w["lead_days"] >= 3)
+    warning_cases = len(scored) + len(unwarned)
+    warned_3_days_ahead = sum(1 for w in scored if w["lead_days"] >= 3)
 
-    # SC-004: each shortfall flagged at least 14 days ahead; a real dip below the buffer nobody flagged is a miss.
+    # Cash shortfalls, each flagged at least 14 days ahead in at least 90% of cases; a real dip below the
+    # buffer nobody flagged is a miss.
     # While cash stays below the buffer, each day's forecast says "first below tomorrow": those plans belong to
     # the shortfall already flagged, so plans whose gap dates run on within 3 days form one episode.
     first_flag: dict[date, date] = {}
@@ -271,15 +278,16 @@ async def test_three_month_replay_meets_the_success_criteria(cafe: dict[str, Any
     missed_dips = [d.isoformat() for d in dips
                    if not any(e["gap_date"] - timedelta(days=3) <= d <= e["last_gap"] + timedelta(days=3)
                               and (e["gap_date"] - e["flagged_on"]).days >= 14 for e in episodes)]
-    sc004_cases = len(flagged) + len(missed_dips)
-    sc004_ok = sum(1 for f in flagged if f["lead_days"] >= 14)
+    shortfall_cases = len(flagged) + len(missed_dips)
+    flagged_14_days_ahead = sum(1 for f in flagged if f["lead_days"] >= 14)
 
-    # SC-006: owner effort per simulated week.
+    # Owner effort per simulated week: at most 15 minutes and at most 25 answers.
     weeks = [{"week": w + 1, "answers": weekly_answers[w], "alerts": weekly_alerts[w],
               "minutes": round((weekly_answers[w] * SECONDS_PER_ANSWER + weekly_alerts[w] * SECONDS_PER_ALERT) / 60, 1)}
              for w in sorted(weekly_answers)]
 
-    # SC-009: bank lines matched automatically, and none matched wrongly (the feed records what each line is).
+    # Bank matching: at least 85% of bank lines matched automatically, and none matched wrongly (the feed
+    # records what each line is).
     fed = [t for t in txns if (t.meta or {}).get("feed")]
     auto = [t for t in fed if t.match_status == "auto_matched"]
     wrong = []
@@ -312,25 +320,25 @@ async def test_three_month_replay_meets_the_success_criteria(cafe: dict[str, Any
                          "waste": {"amount_minor": baseline.waste_minor, "currency": business.currency},
                          "policy": "every Sunday order the average weekly use of the previous 4 weeks"},
         },
-        "sc002_stockout_warnings": {"cases": sc002_cases, "at_least_3_days": sc002_ok, "unwarned_stockouts": unwarned,
+        "stockout_warnings": {"cases": warning_cases, "at_least_3_days": warned_3_days_ahead, "unwarned_stockouts": unwarned,
                                     "all_lines_including_daily_perishables": {
                                         "lines": len(warnings), "at_least_3_days": sum(1 for w in warnings if w["lead_days"] >= 3)},
                                     "warnings": warnings},
-        "sc004_shortfall_warnings": {"cases": sc004_cases, "at_least_14_days": sc004_ok, "flagged": flagged,
+        "shortfall_warnings": {"cases": shortfall_cases, "at_least_14_days": flagged_14_days_ahead, "flagged": flagged,
                                      "unflagged_dips": missed_dips},
-        "sc006_owner_effort": {"weeks": weeks, "max_minutes": max(w["minutes"] for w in weeks),
+        "owner_effort": {"weeks": weeks, "max_minutes": max(w["minutes"] for w in weeks),
                                "max_answers": max(w["answers"] for w in weeks),
                                "manual_bookkeeping_hours_per_week": manual_hours,
                                "assumptions": {"seconds_per_answer": SECONDS_PER_ANSWER, "seconds_per_alert": SECONDS_PER_ALERT}},
-        "sc009_bank_matching": {"bank_lines": len(fed), "auto_matched": len(auto), "rate": round(auto_rate, 3),
+        "bank_matching": {"bank_lines": len(fed), "auto_matched": len(auto), "rate": round(auto_rate, 3),
                                 "incorrect": wrong, "not_auto_matched_by_kind": dict(not_auto)},
     }
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    assert sc002_cases > 0 and sc002_ok / sc002_cases >= 0.9, report["sc002_stockout_warnings"]
+    assert warning_cases > 0 and warned_3_days_ahead / warning_cases >= 0.9, report["stockout_warnings"]
     assert assistant.stockout_days < baseline.stockout_days, report["stock"]
     assert assistant.waste_minor < baseline.waste_minor, report["stock"]
-    assert sc004_cases > 0 and sc004_ok / sc004_cases >= 0.9, report["sc004_shortfall_warnings"]
-    assert report["sc006_owner_effort"]["max_minutes"] <= 15 and report["sc006_owner_effort"]["max_answers"] <= 25, weeks
-    assert auto_rate >= 0.85 and wrong == [], report["sc009_bank_matching"]
+    assert shortfall_cases > 0 and flagged_14_days_ahead / shortfall_cases >= 0.9, report["shortfall_warnings"]
+    assert report["owner_effort"]["max_minutes"] <= 15 and report["owner_effort"]["max_answers"] <= 25, weeks
+    assert auto_rate >= 0.85 and wrong == [], report["bank_matching"]

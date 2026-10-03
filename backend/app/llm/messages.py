@@ -1,4 +1,4 @@
-"""Owner-message wording (FR-010). The model only words the message; code owns the numbers."""
+"""Owner-message wording. The model only words the message; code owns the numbers."""
 
 from __future__ import annotations
 

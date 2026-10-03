@@ -1,4 +1,4 @@
-"""Business clock and demo reset (contracts/rest-api.md "Clock and demo")."""
+"""Business clock and demo reset."""
 
 from __future__ import annotations
 

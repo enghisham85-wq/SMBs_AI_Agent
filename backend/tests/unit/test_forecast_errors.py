@@ -1,4 +1,4 @@
-"""Forecast accuracy for the daily check (FR-020): one read of the week's sales and forecasts for all products."""
+"""Forecast accuracy for the daily check: one read of the week's sales and forecasts for all products."""
 
 from __future__ import annotations
 

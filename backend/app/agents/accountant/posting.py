@@ -1,4 +1,4 @@
-"""Double-entry journal builders (T075, FR-035). Every entry balances before it is saved; entries are
+"""Double-entry journal builders. Every entry balances before it is saved; entries are
 never edited — a reversal posts the opposite entry."""
 
 from __future__ import annotations

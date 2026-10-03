@@ -1,4 +1,4 @@
-"""Sales import and manual entry (T064). Managers only; staff never see amounts."""
+"""Sales import and manual entry. Managers only; staff never see amounts."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Purchase orders and deliveries (data-model.md §2). Written by the Stock Agent."""
+"""Purchase orders and deliveries. Written by the Stock Agent."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ PO_STATUSES = (
 )
 OPEN_STATUSES = ("draft", "pending_approval", "approved", "sent", "partially_received", "on_hold")
 
-# data-model.md §2 state transitions
+# Allowed purchase order status transitions
 TRANSITIONS: dict[str, set[str]] = {
     "draft": {"pending_approval", "approved", "on_hold", "cancelled", "rejected"},
     "on_hold": {"draft", "cancelled"},

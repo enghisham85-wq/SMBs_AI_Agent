@@ -1,4 +1,4 @@
-"""US1 acceptance (T051): stockout warning >= 3 days ahead with a one-tap PO, recipe deduction,
+"""Stock assistant: stockout warning >= 3 days ahead with a one-tap PO, recipe deduction,
 price-spike hold, duplicate-PO merge, delivery discrepancy, forecast-error fallback, late delivery."""
 
 from __future__ import annotations

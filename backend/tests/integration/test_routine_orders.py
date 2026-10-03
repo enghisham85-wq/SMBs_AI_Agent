@@ -1,6 +1,6 @@
-"""Routine-order auto-approval offered to the owner (owner effort, SC-006): after 5 orders to a supplier
-approved unchanged, the Stock Agent proposes a rule; once the owner approves it, orders within the limit go
-out without a question, larger ones still ask, and a declined offer is not repeated."""
+"""Routine-order auto-approval offered to the owner, to keep the owner's effort down: after 5 orders to a
+supplier approved unchanged, the Stock Agent proposes a rule; once the owner approves it, orders within the
+limit go out without a question, larger ones still ask, and a declined offer is not repeated."""
 
 from __future__ import annotations
 

@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Small Business Agent Suite", version="0.1.0", lifespan=lifespan,
+    app = FastAPI(title="Daftar", version="0.1.0", lifespan=lifespan,
                   openapi_url="/api/v1/openapi.json", docs_url="/api/v1/docs")
 
     @app.exception_handler(AppError)
@@ -75,7 +75,7 @@ def create_app() -> FastAPI:
             status_code=422,
         )
 
-    if get_settings().APP_ENV != "prod":  # FR-046 guard: figures without data_as_of fail loudly
+    if get_settings().APP_ENV != "prod":  # Freshness guard: in dev and test, any figure served without data_as_of fails loudly
         from app.core.freshness import FreshnessCheck
 
         app.add_middleware(FreshnessCheck)

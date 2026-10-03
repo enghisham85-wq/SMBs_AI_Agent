@@ -1,4 +1,4 @@
-"""US2 acceptance (T066): invoice capture, checks, posting, bank reconciliation, corrections."""
+"""Bookkeeping: invoice capture, checks, posting, bank reconciliation, corrections."""
 
 from __future__ import annotations
 

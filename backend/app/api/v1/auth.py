@@ -1,4 +1,4 @@
-"""Login, logout, current user and Telegram link codes (contracts/rest-api.md "Auth and users")."""
+"""Login, logout, current user and Telegram link codes."""
 
 from __future__ import annotations
 

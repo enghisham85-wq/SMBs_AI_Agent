@@ -1,9 +1,9 @@
-"""VAT summary per period (FR-053, US8) and the reminder before a VAT period closes.
+"""VAT summary per period and the reminder before a VAT period closes.
 
 Input and output VAT come from the ledger (VAT input / VAT output accounts), so they match the books
 exactly. The supporting list shows the period's supplier invoices and customer invoices; each supplier
 invoice is flagged when VAT is charged without a valid tax registration number, or when its VAT
-breakdown is missing or does not add up. Tax figures are high-impact (FR-003): the summary is prepared
+breakdown is missing or does not add up. Tax figures are high-impact: the summary is prepared
 by the reversible `prepare_vat_summary` action, whose proposal the independent second check reviews
 before the summary is marked ready; a disagreement escalates to the owner.
 """
@@ -115,7 +115,7 @@ def totals(summary: dict[str, Any]) -> dict[str, int]:
             for k in ("input_vat", "output_vat", "net_payable", "invoice_input_vat")}
 
 
-# ------------------------------------------------------------------ prepare_vat_summary (FR-003)
+# ------------------------------------------------------------------ prepare_vat_summary
 async def _execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     return {"period": inputs["period"], "totals": totals(await compute(ctx.business_id, inputs["period"]))}
 

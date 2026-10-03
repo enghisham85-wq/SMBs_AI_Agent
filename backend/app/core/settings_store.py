@@ -1,4 +1,4 @@
-"""Per-business settings with defaults (data-model.md Setting)."""
+"""Per-business settings with defaults."""
 
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
-"""REST contract (T130): schemathesis generates requests from /api/v1/openapi.json and sends them, as
+"""REST contract: schemathesis generates requests from /api/v1/openapi.json and sends them, as
 the seeded owner, to the real app (lifespan, migrations and the sample cafe). No request may produce a
-server error; that includes the FR-046 guard, which turns figures without data_as_of into a 500.
+server error; that includes the freshness guard, which turns figures without data_as_of into a 500.
 
 Endpoints that move the clock, reset or re-seed the demo, inject Chaos faults or end the session are
 left out: they are slow or undo the setup, and each has its own tests.

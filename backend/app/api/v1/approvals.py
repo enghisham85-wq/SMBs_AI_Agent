@@ -1,4 +1,4 @@
-"""Approvals and the chat stream, shared with Telegram (contracts/rest-api.md "Approvals")."""
+"""Approvals and the chat stream, shared with Telegram."""
 
 from __future__ import annotations
 

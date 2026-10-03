@@ -1,4 +1,4 @@
-"""Cash-Flow checks (FR-030, FR-031). Plain functions returning harness `Check`s."""
+"""Cash-Flow checks. Plain functions returning harness `Check`s."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Stock levels, movements, counts and demand forecasts (data-model.md §2). Written by the Stock Agent."""
+"""Stock levels, movements, counts and demand forecasts. Written by the Stock Agent."""
 
 from __future__ import annotations
 

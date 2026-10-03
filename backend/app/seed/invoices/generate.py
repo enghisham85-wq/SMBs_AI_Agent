@@ -1,4 +1,4 @@
-"""Sample supplier invoices with ground truth (T070): English, bilingual and Arabic-only, plus faulty variants.
+"""Sample supplier invoices with ground truth: English, bilingual and Arabic-only, plus faulty variants.
 
 English and bilingual invoices are PDFs (reportlab); Arabic-only receipts are photo-style JPEGs
 (Pillow, slightly rotated with noise). Arabic text is shaped with arabic-reshaper + python-bidi.

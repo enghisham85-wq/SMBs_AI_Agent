@@ -1,4 +1,4 @@
-"""Three-band confidence routing (FR-005).
+"""Three-band confidence routing.
 
 Live thresholds: the owner's `confidence_high` / `confidence_low` settings, raised by self-calibration
 while an agent is degraded (the stricter of the two wins). Items handled in the middle band are

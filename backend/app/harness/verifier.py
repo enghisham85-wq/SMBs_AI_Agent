@@ -1,4 +1,4 @@
-"""Independent second check (FR-003, research R5).
+"""Independent second check.
 
 The verifier gets a fresh request built only from the VerificationPacket: action type, source
 inputs, proposed output and active rules. It never sees the primary agent's reasoning or messages.

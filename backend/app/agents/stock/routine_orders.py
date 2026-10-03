@@ -1,8 +1,8 @@
-"""Routine orders: offer to stop asking about them (owner effort, SC-006).
+"""Routine orders: offer to stop asking about them, to save the owner effort.
 
 When the owner has approved the last few orders to a supplier exactly as drafted, the Stock Agent
 proposes a learned policy rule: "Approve routine orders from Golden Bakery up to EGP 1,500 without
-asking me". Only the owner can approve it (FR-008). Once active, `send_po` goes ahead for that supplier
+asking me". Only the owner can approve it. Once active, `send_po` goes ahead for that supplier
 within the limit, scaled by the Stock Agent's current calibration (a degraded agent asks again), after
 the independent check has agreed; anything larger, or any order a "require approval" rule covers, still
 waits for the owner. A rejected suggestion is not offered again.

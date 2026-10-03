@@ -1,4 +1,4 @@
-"""Documents, invoices, journal and classification corrections (data-model.md §4). Written by the Accountant Agent."""
+"""Documents, invoices, journal and classification corrections. Written by the Accountant Agent."""
 
 from __future__ import annotations
 

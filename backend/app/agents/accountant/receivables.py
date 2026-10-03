@@ -1,4 +1,4 @@
-"""Customer (receivable) invoices (T082)."""
+"""Customer (receivable) invoices."""
 
 from __future__ import annotations
 

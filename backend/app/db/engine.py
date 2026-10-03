@@ -1,4 +1,4 @@
-"""Async engine, sessions and the serialised write session (research R3)."""
+"""Async engine, sessions and the serialised write session."""
 
 from __future__ import annotations
 

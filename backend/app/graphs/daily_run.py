@@ -1,4 +1,4 @@
-"""daily_run_graph: the fixed, ordered work for one business date (FR-012a, research R10/R17).
+"""daily_run_graph: the fixed, ordered work for one business date.
 
 Agents register callables into named steps; empty steps are no-ops. The clock runs this graph
 once per date, in date order, so jumping ahead never skips a day's checks.

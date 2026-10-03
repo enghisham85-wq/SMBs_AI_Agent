@@ -1,4 +1,4 @@
-"""Expense classification and recurring-correction detection (T077, FR-039)."""
+"""Expense classification and recurring-correction detection."""
 
 from __future__ import annotations
 

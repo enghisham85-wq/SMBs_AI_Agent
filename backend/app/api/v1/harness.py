@@ -1,4 +1,4 @@
-"""Harness endpoints (T103): live actions and stream, incidents, learned rules, calibration, audit log."""
+"""Harness endpoints: live actions and stream, incidents, learned rules, calibration, audit log."""
 
 from __future__ import annotations
 

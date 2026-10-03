@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// T083: the Books page — a sample invoice with its checks next to the original, and a customer invoice
+// The Books page — a sample invoice with its checks next to the original, and a customer invoice
 // created in the app with its detail (lines, payments, reminders).
 async function login(page: Page) {
   await page.goto("/");

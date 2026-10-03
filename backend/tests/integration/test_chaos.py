@@ -1,6 +1,6 @@
-"""US6 acceptance (T113): each of the 8 Chaos scenarios is detected, explained, corrected and followed by
-a proposed rule, in under 2 minutes (SC-001, SC-011); an approved date-format rule is then applied
-without asking the owner."""
+"""Chaos mode: each of the 8 scenarios is detected, explained, corrected and followed by a proposed
+rule, end to end in under 2 minutes so a presenter can show it live; an approved date-format rule
+is then applied without asking the owner."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""ActionSpec: what an agent capability plugs into harness_graph (research R12/R17)."""
+"""ActionSpec: what an agent capability plugs into harness_graph."""
 
 from __future__ import annotations
 

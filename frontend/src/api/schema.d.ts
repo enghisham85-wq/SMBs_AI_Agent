@@ -434,7 +434,7 @@ export interface paths {
         };
         /**
          * Supplier Scorecard
-         * @description Stated vs observed lead time, delivery record, price changes and reliability (US8).
+         * @description Stated vs observed lead time, delivery record, price changes and reliability.
          */
         get: operations["supplier_scorecard_api_v1_suppliers__supplier_id__scorecard_get"];
         put?: never;
@@ -662,10 +662,10 @@ export interface paths {
         };
         /**
          * Vat Summary
-         * @description Input VAT, output VAT, net payable and the supporting invoices for a period (FR-053).
+         * @description Input VAT, output VAT, net payable and the supporting invoices for a period.
          *
          *     `period` is `2026-10` (monthly) or `2026-Q4` (quarterly); default: the current period. The figures
-         *     are reviewed by the independent second check (FR-003) before `status` becomes `ready`.
+         *     are reviewed by the independent second check before `status` becomes `ready`.
          */
         get: operations["vat_summary_api_v1_vat_summary_get"];
         put?: never;

@@ -1,4 +1,4 @@
-"""Cash-Flow Agent event handlers (T108, contracts/events.md). Each runs as the Cash-Flow Agent.
+"""Cash-Flow Agent event handlers. Each runs as the Cash-Flow Agent.
 
 The forecast reads purchase orders and invoices directly, so a drafted, sent or invoiced order is
 already a committed outflow once saved; these handlers answer the budget check and refresh today's
@@ -34,7 +34,7 @@ def budget_decision(total_minor: int, remaining_before_minor: int | None, is_cri
         return {"within_budget": True, "recommendation": "proceed", "conflict": False}
     if total_minor <= remaining_before_minor:
         return {"within_budget": True, "recommendation": "proceed", "conflict": False}
-    if is_critical:  # a critical stockout outranks the budget; the owner is told (FR-043)
+    if is_critical:  # a critical stockout outranks the budget; the owner is told
         return {"within_budget": False, "recommendation": "proceed", "conflict": True}
     if remaining_before_minor >= total_minor * REDUCE_MIN_SHARE:
         return {"within_budget": False, "recommendation": "reduce", "conflict": True}

@@ -1,4 +1,4 @@
-"""Demo data feed (T044): deterministic, idempotent, seasonal, overridable."""
+"""Demo data feed: deterministic, idempotent, seasonal, overridable."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Learned rules (FR-008): proposed from incidents, approved/edited/rejected/deactivated by the owner,
+"""Learned rules: proposed from incidents, approved/edited/rejected/deactivated by the owner,
 and applied by code as checks on later actions.
 
 Kinds and how they apply:

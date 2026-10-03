@@ -54,9 +54,9 @@ interface LiveStep {
 }
 
 const STAGES = ["injected", "detected", "explained", "corrected", "rule_proposed"] as const;
-const LIMIT_SECONDS = 120; // SC-011: any scenario end to end in under 2 minutes
+const LIMIT_SECONDS = 120; // a presenter can run any scenario end to end in under 2 minutes
 
-/** Chaos mode (FR-012): inject each of the 8 faults and watch the agents detect, explain, correct and learn. */
+/** Chaos mode: inject each of the 8 faults and watch the agents detect, explain, correct and learn. */
 export function Chaos() {
   const { t, i18n } = useTranslation();
   const ar = i18n.language === "ar";

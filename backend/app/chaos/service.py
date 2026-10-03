@@ -1,4 +1,4 @@
-"""Chaos mode service (T116): inject a scenario, then report what the agents did (SC-001, SC-011).
+"""Chaos mode service: inject a scenario, then report what the agents did.
 
 Only available in demo mode. While a scenario runs, incidents it causes are linked to the injection
 (app.chaos.context), and the live harness stream is watched to time each stage: injection ->

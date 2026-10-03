@@ -1,4 +1,4 @@
-"""Cash endpoints (T095): position, forecast, shortfall plan, receivables/payables, bank statements, obligations."""
+"""Cash endpoints: position, forecast, shortfall plan, receivables/payables, bank statements, obligations."""
 
 from __future__ import annotations
 

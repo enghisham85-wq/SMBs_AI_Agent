@@ -1,4 +1,4 @@
-"""Incident records (FR-007)."""
+"""Incident records."""
 
 from __future__ import annotations
 

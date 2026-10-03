@@ -32,7 +32,7 @@ const TONE: Record<Tone, string> = {
   bad: "border-bad-500",
 };
 
-/** The four numbers the owner checks first, each with its data freshness (FR-045, FR-046). */
+/** The four numbers the owner checks first, each with its data freshness. */
 export function HealthStrip({ health }: { health: Health | undefined }) {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();

@@ -1,4 +1,4 @@
-"""Incident analysis -> root cause and a proposed learned rule (FR-007, FR-008).
+"""Incident analysis -> root cause and a proposed learned rule.
 
 Uses Claude (IncidentAnalysis, RuleProposal) with deterministic templates offline. Per-type templates
 live in TEMPLATES; every escalated action (`<action>.escalated`) has a generic one. A proposed

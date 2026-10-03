@@ -1,4 +1,4 @@
-"""US5 end-to-end (T107): the spec's milk example, checking all three agents after each step.
+"""Milk order end to end: one order followed through all three agents, checking each of them after every step.
 
 1 forecast -> milk PO drafted     2 Cash-Flow budget check (milk is critical)     3 owner approves
 4 short delivery (36 of 40 L)     5 invoice for 40 L held by the three-way match

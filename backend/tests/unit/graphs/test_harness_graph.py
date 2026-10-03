@@ -1,4 +1,4 @@
-"""harness_graph routes (T048): read-only, rollback/retry/escalate, approvals, auto-approve, verifier."""
+"""harness_graph routes: read-only, rollback/retry/escalate, approvals, auto-approve, verifier."""
 
 from __future__ import annotations
 
@@ -207,7 +207,7 @@ async def test_every_node_writes_audit_and_stage(business: dict[str, Any]) -> No
         (0, True, True),
     ],
 )
-def test_sc005_requests_are_one_tap_or_short_reply(options: int, allow_text: bool, ok: bool) -> None:
+def test_requests_are_one_tap_or_short_reply(options: int, allow_text: bool, ok: bool) -> None:
     ask = OwnerAsk(kind="question", text_en="Q?", text_ar="س؟", allow_text=allow_text,
                    options=[option(f"o{i}", "opt_ok", "ack") for i in range(options)])
     if ok:

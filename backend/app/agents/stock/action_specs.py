@@ -1,4 +1,4 @@
-"""Stock Agent actions run through harness_graph (T060)."""
+"""Stock Agent actions run through harness_graph."""
 
 from __future__ import annotations
 

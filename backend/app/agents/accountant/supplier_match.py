@@ -1,4 +1,4 @@
-"""Supplier matching across Arabic and English names (T073, research R7)."""
+"""Supplier matching across Arabic and English names."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Roles on every screen, chat action and approval (T127, FR-049, FR-049a, SC-012).
+"""Roles on every screen, chat action and approval.
 
 - staff record deliveries and waste, and never see money (403 on money endpoints, no money fields)
 - a manager approves purchase orders but cannot approve rules, change settings or manage users

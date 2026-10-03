@@ -1,4 +1,4 @@
-"""Event outbox and demo-feed overrides (data-model.md §5)."""
+"""Event outbox and demo-feed overrides."""
 
 from __future__ import annotations
 

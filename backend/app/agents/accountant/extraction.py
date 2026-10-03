@@ -1,4 +1,4 @@
-"""Invoice extraction (T072, FR-032, research R6/R7).
+"""Invoice extraction.
 
 `extract()` reads the original file with Claude (or the offline stand-in); `normalise()` turns the
 structured output into canonical values in integer minor units, compares printed vs canonical

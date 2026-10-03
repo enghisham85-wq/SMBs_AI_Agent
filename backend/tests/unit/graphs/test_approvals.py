@@ -1,4 +1,4 @@
-"""ApprovalService (T049): first answer wins, role refusal, restart survival, concurrent writers."""
+"""ApprovalService: first answer wins, role refusal, restart survival, concurrent writers."""
 
 from __future__ import annotations
 

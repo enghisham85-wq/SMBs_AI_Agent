@@ -1,4 +1,4 @@
-"""Simulated daily data feed for demo mode (T044, research R10 "Demo data feed").
+"""Simulated daily data feed for demo mode.
 
 For each business date the clock moves into, it generates that day's sales and bank activity from
 the same seasonal model used to create the 3-month history. The random seed is derived from
@@ -36,7 +36,7 @@ PAYMENT_SPLIT = (("cash", Decimal("0.55")), ("card", Decimal("0.40")), ("transfe
 CARD_FEE_PERCENT = Decimal("2")
 CASH_FLOAT = Decimal("3000")
 
-# Extension points: stories add real payables / receivables payments to the simulated bank.
+# Extension points: agents add real payables / receivables payments to the simulated bank.
 BankSource = Callable[[AsyncSession, Business, date], Awaitable[list[dict[str, Any]]]]
 BANK_SOURCES: list[BankSource] = []
 # When a payables source is registered, the weekly consumption-based supplier payment stops.
@@ -219,7 +219,7 @@ async def generate_bank(s: AsyncSession, business: Business, d: date, overrides:
         if _due_on(ob, d):
             add("bank", -ob.amount.amount_minor, f"{ob.type.title()} - {ob.description}", "obligation",
                 obligation_id=str(ob.id), obligation_type=ob.type)
-    # Supplier payments: from payables once the Accountant story provides them; else weekly by consumption.
+    # Supplier payments: from payables once the Accountant Agent provides them; else weekly by consumption.
     if not state["payables_source"] and d.isoweekday() == 7:
         from app.models.master import Supplier
 

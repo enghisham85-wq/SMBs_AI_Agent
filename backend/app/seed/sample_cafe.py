@@ -1,4 +1,4 @@
-"""Sample cafe seed (FR-052, T043): an Egyptian cafe by default, any country profile via --country.
+"""Sample cafe seed: an Egyptian cafe by default, any country profile via --country.
 
 3 months of sales and bank history are produced by the same generator as the daily demo feed,
 so history and future days follow the same patterns.
@@ -36,7 +36,7 @@ SEED_DIR = Path(__file__).resolve().parent
 HISTORY_DAYS = 90
 PASSWORDS = {"owner": "owner-demo-2026", "manager": "manager-demo-2026", "staff": "staff-demo-2026"}
 
-# Stories extend the seed (opening stock, sample invoices, receivables ...): fn(business_id, start_date, catalog_ids)
+# Agents extend the seed (opening stock, sample invoices, receivables ...): fn(business_id, start_date, catalog_ids)
 SeedExtension = Callable[[uuid.UUID, date, dict[str, Any]], Awaitable[None]]
 SEED_EXTENSIONS: list[SeedExtension] = []
 

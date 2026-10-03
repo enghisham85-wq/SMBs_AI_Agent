@@ -1,4 +1,4 @@
-"""Configurable country profiles, default Egypt (T040, FR-051)."""
+"""Configurable country profiles, default Egypt."""
 
 from __future__ import annotations
 

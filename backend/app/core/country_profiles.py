@@ -1,4 +1,4 @@
-"""Configurable country profiles (FR-051, research R18). Default: Egypt (EGP, VAT 14 %).
+"""Configurable country profiles. Default: Egypt (EGP, VAT 14 %).
 
 Nothing country-specific is hard-coded elsewhere: forecasting, the demo feed and weekend logic
 call `calendar_for()` and the Business row (filled from a profile by `apply()`).

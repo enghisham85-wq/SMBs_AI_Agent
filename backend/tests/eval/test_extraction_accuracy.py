@@ -1,4 +1,4 @@
-"""Live extraction accuracy (T067, SC-008). Calls Claude and spends API credit.
+"""Live extraction accuracy. Calls Claude and spends API credit.
 
 Run explicitly:  LLM_MODE=live ANTHROPIC_API_KEY=... uv run pytest tests/eval -m llm_live
 Scores field accuracy against the generator's ground truth, separately for English, bilingual and

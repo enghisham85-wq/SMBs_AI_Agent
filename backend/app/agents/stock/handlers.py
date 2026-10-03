@@ -1,4 +1,4 @@
-"""Stock Agent event handlers (T109, contracts/events.md). Each runs as the Stock Agent."""
+"""Stock Agent event handlers. Each runs as the Stock Agent."""
 
 from __future__ import annotations
 

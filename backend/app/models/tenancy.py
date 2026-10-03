@@ -1,4 +1,4 @@
-"""Business, users and per-business settings (data-model.md §1)."""
+"""Business, users and per-business settings."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ class Business(Base):
     name: Mapped[str] = mapped_column(String(200))
     # ISO 3166 code selecting a country profile (default Egypt). Values below are copied from it.
     country: Mapped[str] = mapped_column(String(2), default="EG")
-    # ISO 4217; changeable only while no financial record exists (no FX conversion in the MVP).
+    # ISO 4217; changeable only while no financial record exists (there is no FX conversion).
     currency: Mapped[str] = mapped_column(String(3), default="EGP")
     vat_registered: Mapped[bool] = mapped_column(Boolean, default=True)
     # Stored and shown as a percentage: 14.00 = 14 %.
@@ -71,7 +71,7 @@ SETTING_DEFAULTS: dict[str, Any] = {
     "confidence_low": 0.60,
     # Cash-Flow Agent: yesterday's projected vs actual closing balance beyond this % is investigated.
     "cash_variance_pct": 10,
-    # Harness: an agent whose daily share of failed actions exceeds this is degraded (FR-006).
+    # Harness: an agent whose daily share of failed actions exceeds this is degraded.
     "action_failure_threshold": 0.2,
 }
 

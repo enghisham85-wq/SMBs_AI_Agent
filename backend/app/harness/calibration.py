@@ -1,4 +1,4 @@
-"""Self-calibration (FR-006): each agent tracks its own error rate.
+"""Self-calibration: each agent tracks its own error rate.
 
 When a metric breaks its threshold the agent is degraded: confidence thresholds go up, the
 auto-approve limit goes down, it falls back to a safer method, and the owner is told the

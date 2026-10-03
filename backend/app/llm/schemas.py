@@ -1,4 +1,4 @@
-"""Structured output schemas for every LLM role (contracts/llm-outputs.md)."""
+"""Structured output schemas for every LLM role."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Sales CSV import and manual daily entry (T064) — the real-data alternative to the demo feed."""
+"""Sales CSV import and manual daily entry — the real-data alternative to the demo feed."""
 
 from __future__ import annotations
 

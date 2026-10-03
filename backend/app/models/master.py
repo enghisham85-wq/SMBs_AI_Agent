@@ -1,4 +1,4 @@
-"""Master data shared by the agents: items, recipes, suppliers (data-model.md §2)."""
+"""Master data shared by the agents: items, recipes, suppliers."""
 
 from __future__ import annotations
 

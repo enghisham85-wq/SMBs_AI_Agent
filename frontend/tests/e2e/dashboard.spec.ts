@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// US7 (T119): Home on a phone, one-tap decisions, freshness on every figure, live harness stages.
+// Home on a phone, one-tap decisions, freshness on every figure, live harness stages.
 // Runs against the sample cafe seeded by serve-backend.mjs (see playwright.config.ts).
 const OWNER = { username: "owner", password: "owner-demo-2026" };
 

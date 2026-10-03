@@ -1,4 +1,4 @@
-"""Accountant Agent self-checks (T074, spec "Self-checks", FR-033, FR-034, FR-038)."""
+"""Accountant Agent self-checks."""
 
 from __future__ import annotations
 
@@ -184,7 +184,7 @@ async def match_items(s: AsyncSession, business_id: uuid.UUID, lines: list[dict[
 
 async def three_way_match(s: AsyncSession, business_id: uuid.UUID, supplier_id: uuid.UUID | None,
                           lines: list[dict[str, Any]], item_ids: list[uuid.UUID | None]) -> tuple[Check, uuid.UUID | None]:
-    """Invoice vs PO vs delivered quantities and prices (FR-038)."""
+    """Invoice vs PO vs delivered quantities and prices."""
     if supplier_id is None or not any(item_ids):
         return Check("three_way_match", True, {"note": "no stock lines"}), None
     pos = list((await s.execute(select(PurchaseOrder).where(

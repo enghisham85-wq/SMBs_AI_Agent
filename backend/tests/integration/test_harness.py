@@ -1,4 +1,4 @@
-"""US4 acceptance (T097): audit, approvals, verifier, rollback/retry/escalate, learned rules, confidence
+"""Action harness: audit, approvals, verifier, rollback/retry/escalate, learned rules, confidence
 bands, self-calibration and approval timeouts."""
 
 from __future__ import annotations
@@ -111,7 +111,7 @@ class _Actor:
         self.id, self.role, self.username = uid, role, role
 
 
-# ------------------------------------------------------------------ scenario 1
+# ------------------------------------------------------------------ audit log
 async def test_audit_records_plan_inputs_risk_result_and_verification(api: Any, owner: dict[str, Any]) -> None:
     bid = owner["id"]
     out = await run_action("t4_rev", {"tag": "audit", "value": 1}, bid)
@@ -133,7 +133,7 @@ async def test_audit_records_plan_inputs_risk_result_and_verification(api: Any, 
     assert len(log) >= 6
 
 
-# ------------------------------------------------------------------ scenario 2
+# ------------------------------------------------------------------ approval of irreversible actions
 async def test_irreversible_action_waits_without_auto_approve_rule(api: Any, owner: dict[str, Any]) -> None:
     bid = owner["id"]
     calls.clear()
@@ -144,7 +144,7 @@ async def test_irreversible_action_waits_without_auto_approve_rule(api: Any, own
     assert auto["outcome"] == "completed" and calls["execute:auto"] == 1
 
 
-# ------------------------------------------------------------------ scenario 3
+# ------------------------------------------------------------------ independent verifier
 async def test_verifier_disagreement_escalates_not_retried(api: Any, owner: dict[str, Any]) -> None:
     bid = owner["id"]
     calls.clear()
@@ -157,7 +157,7 @@ async def test_verifier_disagreement_escalates_not_retried(api: Any, owner: dict
     assert inc.detected_by == "verifier" and "storage capacity" in inc.summary
 
 
-# ------------------------------------------------------------------ scenario 4 and 5
+# ------------------------------------------------------------------ rollback/retry/escalate and learned rules
 async def test_rollback_retry_escalate_then_rule_changes_next_run(api: Any, owner: dict[str, Any]) -> None:
     bid = owner["id"]
     calls.clear()
@@ -249,7 +249,7 @@ async def test_parsing_hint_rule_sets_supplier_date_format(api: Any, owner: dict
     assert await rules.active_rules(bid, "accountant", "parsing_hint") == []
 
 
-# ------------------------------------------------------------------ scenario 6
+# ------------------------------------------------------------------ confidence bands
 async def test_three_confidence_bands_and_digest(api: Any, owner: dict[str, Any]) -> None:
     bid = owner["id"]
     assert await confidence.route(bid, "accountant", 0.95, "a", "a") == "act"
@@ -271,7 +271,7 @@ async def test_three_confidence_bands_and_digest(api: Any, owner: dict[str, Any]
     assert changed and changed[0].outputs["previous"]["confidence_high"] == 0.9
 
 
-# ------------------------------------------------------------------ scenario 7
+# ------------------------------------------------------------------ self-calibration
 async def test_calibration_degrades_and_restores_in_four_healthy_days(api: Any, owner: dict[str, Any]) -> None:
     bid = owner["id"]
     d = clock.today()
@@ -315,7 +315,7 @@ async def test_failure_rate_degrades_agent_the_same_day(api: Any, owner: dict[st
     assert row.degraded and row.auto_approve_factor == 0.0
 
 
-# ------------------------------------------------------------------ scenario 8
+# ------------------------------------------------------------------ approval timeouts
 async def test_timeout_reasks_with_higher_urgency_and_never_executes(api: Any, owner: dict[str, Any]) -> None:
     bid = owner["id"]
     calls.clear()

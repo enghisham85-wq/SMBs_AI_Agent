@@ -1,4 +1,4 @@
-"""The single path to the model (research R4, contracts/llm-outputs.md).
+"""The single path to the model.
 
 Modes (LLM_MODE):
 - live:    call the API.

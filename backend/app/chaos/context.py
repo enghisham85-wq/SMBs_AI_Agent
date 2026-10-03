@@ -1,4 +1,4 @@
-"""Tracks the active Chaos injection so incidents it causes are linked to it (SC-001)."""
+"""Tracks the active Chaos injection so incidents it causes are linked to it."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Safety guard (T131, FR-047, FR-048): no assistant can move money or hold bank credentials, and only
+"""Safety guard: no assistant can move money or hold bank credentials, and only
 actions classed `irreversible_external` may reach outside the system.
 
 Static checks over the source tree and the model metadata, so a future change that adds a payment

@@ -1,4 +1,4 @@
-"""Shortfall detection and the ranked action plan (FR-025, FR-026, research R9).
+"""Shortfall detection and the ranked action plan.
 
 Every candidate action is re-simulated on the projection; ranking is gap closed / risk, and
 short-term financing is always last.

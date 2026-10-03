@@ -1,4 +1,4 @@
-"""conflict_graph (T111, FR-043): Stock wants to order, Cash-Flow says the budget does not cover it.
+"""conflict_graph: Stock wants to order, Cash-Flow says the budget does not cover it.
 
 gather both positions with figures -> recommend -> ask the owner (interrupt) -> apply -> publish.
 

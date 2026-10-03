@@ -1,4 +1,4 @@
-"""Cash position: balances per account, cash on hand and bank-data freshness (FR-023, FR-031)."""
+"""Cash position: balances per account, cash on hand and bank-data freshness."""
 
 from __future__ import annotations
 

@@ -47,7 +47,7 @@ function Confidence({ value }: { value: number | undefined }) {
   return <span className={`badge ${cls}`}>{pct}%</span>;
 }
 
-/** Original file next to what was read from it; every value shows its confidence and source (FR-046). */
+/** Original file next to what was read from it; every value shows its confidence and source. */
 export function DocumentDetail({ id }: { id: string }) {
   const { t, i18n } = useTranslation();
   const ar = i18n.language === "ar";
