@@ -1,5 +1,4 @@
-"""Coordination between the agents: budget checks, conflicts with both positions, critical stockouts
-outrank the budget, and a predicted shortfall defers non-critical orders."""
+"""Agent coordination: budget checks, conflicts, critical stockouts, shortfall deferrals."""
 
 from __future__ import annotations
 
@@ -101,10 +100,10 @@ async def test_over_budget_shows_both_positions_and_owner_decides(cafe: dict[str
     bid = cafe["business_id"]
     await _budget(bid, "100")
     po_id = await _order(bid, "Oranges", "20")
-    assert await stock_graphs.budget_decision_pending(po_id)  # the order is not sent while the owner decides
+    assert await stock_graphs.budget_decision_pending(po_id)  # held while the owner decides
     [q] = await _conflict_questions(bid)
     assert "Stock Agent:" in q.text_en and "Cash-Flow Agent:" in q.text_en and "Recommended:" in q.text_en
-    assert "EGP 100.00" in q.text_en  # the figures behind each position
+    assert "EGP 100.00" in q.text_en
     assert {o["key"] for o in q.options} >= {"defer", "proceed"} and q.safe_default == "defer"
     assert (await approvals.resolve(str(q.id), "proceed", await _owner(bid), "dashboard")).status == "resolved"
     po = await _po(po_id)
@@ -126,12 +125,12 @@ async def test_deferred_order_waits_then_resumes(cafe: dict[str, Any]) -> None:
     clock.set_state("simulated", later)
     out = await stock_graphs.ro_deferred({"business_id": str(bid), "date": later.isoformat(), "notes": {}})
     assert out["notes"]["resumed"] == [po.number]
-    assert (await _po(po_id)).status == "pending_approval"  # back through the normal approval
+    assert (await _po(po_id)).status == "pending_approval"
 
 
 async def test_critical_stockout_outranks_budget_and_others_can_wait(cafe: dict[str, Any]) -> None:
     bid = cafe["business_id"]
-    oranges = await _order(bid, "Oranges", "20")  # drafted before the budget: waits in draft
+    oranges = await _order(bid, "Oranges", "20")  # drafted before the budget, stays a draft
     await _budget(bid, "100")
     milk = await _order(bid, "Milk", "40", stockout=clock.today() + timedelta(days=2))
     assert (await _po(milk)).notes["budget"]["status"] == "proceed"
@@ -139,7 +138,7 @@ async def test_critical_stockout_outranks_budget_and_others_can_wait(cafe: dict[
     async with read_session() as s:
         alerts = [r for r in (await s.execute(select(ApprovalRequest).where(ApprovalRequest.kind == "alert"))).scalars()
                   if r.context.get("kind") == "conflict"]
-    assert alerts and "outranks the budget" in alerts[0].text_en  # the owner is notified
+    assert alerts and "outranks the budget" in alerts[0].text_en
     [q] = await _conflict_questions(bid)
     assert (await _po(oranges)).number in q.text_en
     await approvals.resolve(str(q.id), "defer_others", await _owner(bid), "dashboard")
@@ -158,4 +157,4 @@ async def test_shortfall_defers_non_critical_orders_that_can_wait(cafe: dict[str
                                            "plan_id": str(uuid.uuid4())}, producer="cashflow", business_id=bid)
     assert (await _po(oranges)).status == "on_hold"  # non-critical and can wait
     assert (await _po(urgent)).status == "draft"  # would run out before a deferred delivery
-    assert (await _po(milk)).status == "draft"  # critical
+    assert (await _po(milk)).status == "draft"

@@ -1,9 +1,4 @@
-"""Reorder planning.
-
-For each purchased item: project stock day by day (arrivals of open orders included), find the
-stockout date, and reorder when the item would run short within the lead time plus a buffer.
-The trigger window is never shorter than 4 days, so the owner is warned at least 3 days ahead.
-"""
+"""Reorder planning: reorder when an item would run short within its lead time plus a buffer."""
 
 from __future__ import annotations
 
@@ -81,13 +76,12 @@ def days_of_cover(stock: Decimal, demand: dict[date, Decimal], start: date) -> f
     return float(stock / avg) if avg > 0 else math.inf
 
 
-# Days of margin on top of the warning target, so a forecast that runs a day short still warns in time.
+# spare day so a forecast that runs a day short still warns in time
 FORECAST_MARGIN_DAYS = 1
 
 
 def trigger_window(lead_time_days: float) -> int:
-    """Order when the projected stockout is closer than this many days. With a daily review the first warning
-    comes MIN_WARNING_DAYS + FORECAST_MARGIN_DAYS ahead (at least 3 days' warning)."""
+    """Order when the projected stockout is closer than this. Always gives at least 3 days' warning."""
     return max(math.ceil(lead_time_days) + BUFFER_DAYS, MIN_WARNING_DAYS + FORECAST_MARGIN_DAYS) + 1
 
 
@@ -101,8 +95,7 @@ def plan_item(p: ItemPlanInput, today: date, cal: Calendar | None = None) -> Pro
     lead = math.ceil(p.lead_time_days)
     window = trigger_window(p.lead_time_days)
     horizon = max(window, lead + REVIEW_DAYS) + REVIEW_DAYS
-    # Below zero means the shelf ran empty and those sales were lost (or recorded before a count); there is
-    # no backlog to refill, so plan from an empty shelf rather than ordering extra that would go to waste.
+    # Negative stock means lost sales, not a backlog to refill. Plan from an empty shelf.
     on_hand = max(p.stock, Decimal(0))
     proj = projection(on_hand, p.daily_demand, p.incoming, today, horizon)
     stockout = next((d for d, lvl in proj if lvl < 0), None)
@@ -115,7 +108,7 @@ def plan_item(p: ItemPlanInput, today: date, cal: Calendar | None = None) -> Pro
     window_dates = [arrival + timedelta(days=i) for i in range(cover_days)]
     raised = False
     if cal is not None and any(cal.is_holiday(d) or cal.is_ramadan(d) for d in window_dates):
-        safety = safety * PEAK_SAFETY_MULTIPLIER  # raise safety stock ahead of known peaks
+        safety = safety * PEAK_SAFETY_MULTIPLIER
         raised = True
 
     min_in_window = min((lvl for d, lvl in proj if (d - today).days < window), default=on_hand)
@@ -171,12 +164,7 @@ class SupplierOrder:
 
 
 def group_by_supplier(proposals: list[Proposal], budget_remaining_minor: int | None = None) -> list[SupplierOrder]:
-    """One order per supplier. With a budget, keep critical items first, then high-margin fast movers.
-
-    Only top-ups (an item dipping below safety stock) are held back for the budget. An item that will run
-    out is always drafted: if that goes over the budget, the Cash-Flow budget check puts the conflict to the
-    owner with both positions instead of the order being dropped silently.
-    """
+    """One order per supplier. The budget only holds back top-ups; items about to run out are always drafted."""
     ranked = sorted(proposals, key=lambda p: (not p.is_critical, p.margin_class != "high",
                                               p.projected_stockout or date.max))
     orders: dict[uuid.UUID, SupplierOrder] = {}

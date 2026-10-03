@@ -20,17 +20,16 @@ class CurrencyMismatchError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class Money:
-    """An exact amount in integer minor units (piastres for EGP, baisa for OMR)."""
+    """Exact amount in integer minor units."""
 
     amount_minor: int
     currency: str
 
     def __post_init__(self) -> None:
-        exponent(self.currency)  # validates the code
+        exponent(self.currency)  # raises on unknown codes
         if not isinstance(self.amount_minor, int):
             raise TypeError("amount_minor must be an int")
 
-    # --- construction -------------------------------------------------
     @classmethod
     def zero(cls, currency: str) -> Money:
         return cls(0, currency)
@@ -42,7 +41,6 @@ class Money:
         minor = (Decimal(str(value)).quantize(quantum, rounding=ROUND_HALF_UP) * (10**exp)).to_integral_value()
         return cls(int(minor), currency)
 
-    # --- conversion ---------------------------------------------------
     @property
     def decimals(self) -> int:
         return exponent(self.currency)
@@ -62,7 +60,6 @@ class Money:
             "display": self.to_display(),
         }
 
-    # --- arithmetic ---------------------------------------------------
     def _check(self, other: Money) -> None:
         if not isinstance(other, Money):
             raise TypeError("can only combine Money with Money")
@@ -97,7 +94,7 @@ class Money:
         return self.amount_minor >= other.amount_minor
 
     def times(self, factor: Decimal | int) -> Money:
-        """Multiply by a quantity or rate, rounding half-up to the minor unit."""
+        """Multiply, rounding half-up."""
         value = (Decimal(self.amount_minor) * Decimal(str(factor))).quantize(Decimal(1), rounding=ROUND_HALF_UP)
         return Money(int(value), self.currency)
 
@@ -120,14 +117,14 @@ def new_uuid() -> uuid.UUID:
 
 
 def _clock_now() -> datetime:
-    # Imported lazily to avoid a cycle; the clock module reads the simulated date in demo mode.
+    # lazy import to avoid a cycle
     from app.core.clock import clock_now
 
     return clock_now()
 
 
 class TenantMixin:
-    """UUID id, business_id and business-clock timestamps on every row."""
+    """id, business_id and business-clock timestamps."""
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
 
@@ -140,11 +137,7 @@ class TenantMixin:
 
 
 def money_col(prefix: str) -> Any:
-    """A non-null Money field stored as `<prefix>_minor` (BIGINT) + `<prefix>_currency` (CHAR 3).
-
-    Money fields are never NULL (an empty composite would load as Money(None, None));
-    optional amounts use 0 instead.
-    """
+    """`<prefix>_minor` + `<prefix>_currency`. Not nullable, as NULLs load as Money(None, None); use 0."""
     from sqlalchemy import BigInteger
     from sqlalchemy.orm import composite
 

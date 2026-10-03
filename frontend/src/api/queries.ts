@@ -1,6 +1,5 @@
-// Query definitions shared by a page and whatever prefetches it, so both hit the same cache entry.
-// PREFETCHED keeps a just-prefetched answer from being fetched again when the page mounts a moment later;
-// writes still refresh these at once because they invalidate their keys.
+// Shared by each page and its prefetch so both hit one cache entry.
+// PREFETCHED only avoids a refetch right after a prefetch; writes still invalidate.
 import { queryOptions } from "@tanstack/react-query";
 import type { CashPoint } from "../components/CashChart";
 import type { Health } from "../components/HealthStrip";
@@ -30,7 +29,7 @@ export interface Forecast {
   data_as_of: DataAsOf;
 }
 
-// Under the "approvals" key so answering any request, here or in the chat panel, refreshes Home.
+// "approvals" prefix so answering a request anywhere refreshes Home too.
 export const homeQuery = queryOptions({
   queryKey: ["approvals", "home"],
   queryFn: ({ signal }) => api.get<HomeData>("/home", signal),

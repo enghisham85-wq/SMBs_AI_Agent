@@ -51,7 +51,7 @@ async def test_advancing_7_days_creates_data_every_day_without_duplicates(db: No
         clock.set_state("simulated", d)
         await feed.feed_sales(bid, d)
         await feed.feed_bank(bid, d)
-    # A repeated advance over the same dates must not add anything.
+    # Same dates again: nothing new.
     for i in range(7):
         d = START + timedelta(days=i)
         assert await feed.feed_sales(bid, d) == 0

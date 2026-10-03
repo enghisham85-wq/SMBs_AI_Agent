@@ -16,13 +16,12 @@ interface Subscriber {
   handler: RefObject<Handler>;
 }
 
-// The backend sends a named "ping" after 15 s without traffic; three missed pings means the connection is
-// dead even if the browser has not noticed (proxies and sleeping laptops hold half-open sockets).
+// Server pings every 15 s when idle. Three missed means a half-open socket the browser hasn't noticed.
 const WATCHDOG_MS = 45_000;
 const WATCHDOG_TICK_MS = 15_000;
 const MAX_BACKOFF_MS = 30_000;
 
-/** One EventSource per stream URL, shared by every component listening to it. */
+/** One EventSource per URL, shared by all subscribers. */
 class SharedStream {
   private source: EventSource | null = null;
   private subscribers = new Set<Subscriber>();
@@ -90,8 +89,8 @@ class SharedStream {
     source.addEventListener("ping", this.alive);
     source.addEventListener("hello", this.alive);
     for (const name of this.names.keys()) source.addEventListener(name, this.dispatch as EventListener);
-    // While CONNECTING the browser retries by itself. CLOSED means it gave up: the server answered with
-    // an error status (an expired session is the usual one), so retry ourselves with backoff.
+    // The browser retries CONNECTING by itself. CLOSED means the server refused
+    // (usually an expired session), so we back off and retry.
     source.onerror = () => {
       if (source.readyState === EventSource.CLOSED) this.reconnect(true);
     };
@@ -102,7 +101,7 @@ class SharedStream {
 
   private reconnect(rejected: boolean): void {
     this.dropSource();
-    // Ask /me once per failure streak; a 401 there takes the user to the sign-in screen.
+    // One /me check per failure streak; a 401 there sends the user to sign in.
     if (rejected && this.failures === 0) this.onClosed();
     const delay = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** this.failures) * (0.75 + Math.random() * 0.5);
     this.failures += 1;
@@ -150,7 +149,6 @@ export function EventStreamProvider({ children }: { children: ReactNode }) {
   return <HubContext.Provider value={hub}>{children}</HubContext.Provider>;
 }
 
-/** Subscribe to Server-Sent Events; components on the same path share one connection. */
 export function useEventStream(path: string | null, onEvent: Handler, events: string[]) {
   const hub = useContext(HubContext);
   if (!hub) throw new Error("useEventStream outside EventStreamProvider");

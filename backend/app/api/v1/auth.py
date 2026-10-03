@@ -41,15 +41,13 @@ def _user_out(u: User | CurrentUser) -> dict[str, object]:
 
 
 async def _check_password(user: User, password: str) -> bool:
-    # argon2 is deliberately slow; off the event loop it no longer stalls every other request.
+    # argon2 is slow on purpose; don't block the loop
     return await asyncio.to_thread(verify_password, user.password_hash, password)
 
 
 @router.post("/auth/login")
 async def login(body: LoginIn, response: Response) -> Response:
-    # Usernames are unique per business only (uq business_id+username), so the same name may exist
-    # in several businesses: the password decides which account, and a tie is refused rather than
-    # logging into whichever row comes first.
+    # Usernames are only unique per business. Let the password pick the account and refuse ties.
     async with read_session() as s:
         candidates = (await s.execute(select(User).where(User.username == body.username, User.active.is_(True))
                                       .order_by(User.created_at))).scalars().all()

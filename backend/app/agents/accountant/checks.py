@@ -1,5 +1,3 @@
-"""Accountant Agent self-checks."""
-
 from __future__ import annotations
 
 import functools
@@ -19,9 +17,8 @@ from app.models.books import PayableInvoice
 from app.models.master import Item
 from app.models.purchasing import Delivery, DeliveryLine, PurchaseOrder, PurchaseOrderLine
 
-# Tax registration numbers are short (Egypt 9 digits, Saudi Arabia and the UAE 15). The pattern is the owner's
-# and the number is read off a supplier's document, so capping the length also bounds how long a badly
-# written pattern can backtrack (no regex timeout is available in the standard library).
+# Real tax numbers are 9-15 digits. The cap also limits backtracking on a badly written owner pattern,
+# since `re` has no timeout.
 MAX_TAX_ID_LEN = 20
 
 
@@ -34,7 +31,6 @@ def _tax_id_regex(pattern: str) -> re.Pattern[str] | None:
 
 
 def tax_id_valid(value: str | None, pattern: str) -> bool:
-    """The number fully matches the business's tax-id pattern (an over-long number never does)."""
     if not value or len(value) > MAX_TAX_ID_LEN:
         return False
     rx = _tax_id_regex(pattern)
@@ -100,12 +96,7 @@ def _swap(d: date) -> date | None:
 
 
 def date_sanity(n: Normalised, today: date, supplier_hint: str | None, default_format: str) -> tuple[Check, date | None, str | None]:
-    """Returns (check, corrected invoice date or None, format used).
-
-    Ambiguous day/month dates use the supplier's learned format, else the country default (DMY in
-    Egypt). If that reading is impossible (in the future, or after the due date), the other reading
-    is tried; a plausible swap is applied and reported so a supplier rule can be proposed.
-    """
+    """Returns (check, corrected date or None, format used). An impossible date gets its day/month swapped."""
     d = n.invoice_date
     if d is None:
         return Check("date_sanity", False, {"problem": "missing"}, ask=True, reason_en="the invoice date could not be read",
@@ -184,7 +175,6 @@ async def match_items(s: AsyncSession, business_id: uuid.UUID, lines: list[dict[
 
 async def three_way_match(s: AsyncSession, business_id: uuid.UUID, supplier_id: uuid.UUID | None,
                           lines: list[dict[str, Any]], item_ids: list[uuid.UUID | None]) -> tuple[Check, uuid.UUID | None]:
-    """Invoice vs PO vs delivered quantities and prices."""
     if supplier_id is None or not any(item_ids):
         return Check("three_way_match", True, {"note": "no stock lines"}), None
     pos = list((await s.execute(select(PurchaseOrder).where(
@@ -227,11 +217,7 @@ VALUATION_MIN_MINOR_UNITS = 1000  # ignore differences below 10.00 in a 2-decima
 
 
 async def stock_valuation(s: AsyncSession, business_id: uuid.UUID, tolerance_pct: float) -> Check:
-    """Inventory account vs the Stock Agent's valuation (quantity x unit cost).
-
-    Goods delivered but not yet invoiced are not in the ledger yet, so they are taken out of the
-    comparison. A difference above `tolerance_pct` of the stock value fails.
-    """
+    """Inventory account vs the Stock Agent's valuation, minus goods delivered but not yet invoiced."""
     from app.models.books import JournalEntry, JournalLine
     from app.models.finance_master import Account
     from app.models.stock_ops import StockLevel

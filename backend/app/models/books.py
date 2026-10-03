@@ -47,7 +47,7 @@ class Extraction(TenantMixin, Base):
     __tablename__ = "extraction"
 
     document_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("document.id"), index=True)
-    attempt: Mapped[int] = mapped_column(Integer)  # 1 or 2
+    attempt: Mapped[int] = mapped_column(Integer)
     # {field: {value, raw_text, confidence, source}} plus lines
     fields: Mapped[dict[str, Any]] = mapped_column(JSON)
     document_confidence: Mapped[float] = mapped_column(Float)
@@ -61,7 +61,7 @@ class PayableInvoice(TenantMixin, Base):
 
     supplier_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("supplier.id"), nullable=True, index=True)
     invoice_number: Mapped[str] = mapped_column(String(60))
-    # Normalised number for the duplicate guard (supplier_id, normalised_number).
+    # for the duplicate guard
     normalised_number: Mapped[str] = mapped_column(String(60), index=True)
     invoice_date: Mapped[date] = mapped_column(Date)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -90,7 +90,7 @@ class ReceivableInvoice(TenantMixin, Base):
     customer_name: Mapped[str] = mapped_column(String(200))
     customer_contact: Mapped[str | None] = mapped_column(String(200), nullable=True)
     customer_telegram: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    # Unique per business; auto INV-### when not given.
+    # unique per business, defaults to INV-###
     number: Mapped[str] = mapped_column(String(40))
     invoice_date: Mapped[date] = mapped_column(Date)
     due_date: Mapped[date] = mapped_column(Date, index=True)
@@ -109,7 +109,7 @@ class ReceivableInvoice(TenantMixin, Base):
 
 
 class JournalEntry(TenantMixin, Base):
-    """Never edited in place: a reversal creates an opposite entry."""
+    """Never edited in place; reverse it with an opposite entry."""
 
     __tablename__ = "journal_entry"
 

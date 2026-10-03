@@ -47,7 +47,6 @@ function Confidence({ value }: { value: number | undefined }) {
   return <span className={`badge ${cls}`}>{pct}%</span>;
 }
 
-/** Original file next to what was read from it; every value shows its confidence and source. */
 export function DocumentDetail({ id }: { id: string }) {
   const { t, i18n } = useTranslation();
   const ar = i18n.language === "ar";
@@ -69,7 +68,7 @@ export function DocumentDetail({ id }: { id: string }) {
         {doc.mime === "application/pdf" ? (
           <iframe title={doc.name} src={doc.file_url} className="h-[480px] w-full rounded" />
         ) : (
-          // Fixed box like the PDF frame: the image scales inside it, so nothing below jumps when it loads.
+          // Fixed box, same as the PDF frame, so nothing jumps when the image loads.
           <img
             src={doc.file_url}
             alt={doc.name}

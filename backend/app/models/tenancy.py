@@ -21,15 +21,14 @@ class Business(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
     name: Mapped[str] = mapped_column(String(200))
-    # ISO 3166 code selecting a country profile (default Egypt). Values below are copied from it.
+    # picks the country profile the fields below are copied from
     country: Mapped[str] = mapped_column(String(2), default="EG")
-    # ISO 4217; changeable only while no financial record exists (there is no FX conversion).
+    # locked once money has been recorded, since there's no FX
     currency: Mapped[str] = mapped_column(String(3), default="EGP")
     vat_registered: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Stored and shown as a percentage: 14.00 = 14 %.
     vat_rate_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("14.00"))
     vat_period: Mapped[str] = mapped_column(Enum("monthly", "quarterly", native_enum=False), default="monthly")
-    # ISO weekday numbers, Mon=1 ... Sun=7. Egypt: Friday and Saturday.
+    # ISO weekdays, Mon=1
     weekend_days: Mapped[list[int]] = mapped_column(JSON, default=lambda: [5, 6])
     tax_id_pattern: Mapped[str] = mapped_column(String(100), default=r"^\d{9}$")
     default_date_format: Mapped[str] = mapped_column(String(3), default="DMY")
@@ -46,9 +45,8 @@ class User(TenantMixin, Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(Enum(*ROLES, native_enum=False))
     language: Mapped[str] = mapped_column(Enum("en", "ar", native_enum=False), default="en")
-    # One Telegram chat <-> one user.
     telegram_chat_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
-    # One-time code, expires 15 minutes after issue.
+    # one-time, expires after 15 min
     telegram_link_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     telegram_link_expires: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -58,20 +56,20 @@ SETTING_DEFAULTS: dict[str, Any] = {
     "price_change_pct": 15,
     "stock_variance_pct": 5,
     "approval_timeout_hours": 4,
-    # minor units of the business currency; filled from the country profile (EG: EGP 10,000.00)
+    # minor units; filled in from the country profile
     "journal_value_limit": 1_000_000,
     "stale_bank_days": 1,
     "dead_stock_days": 21,
     "po_auto_approve_limit": 0,  # 0 = off
     "reminder_auto_approve": "off",  # off | polite_only
     "manual_bookkeeping_hours_per_week": 6,
-    # Stock Agent: a product's 7-day forecast error above this switches it to the safer method.
+    # 7-day forecast error that switches a product to the safer method
     "forecast_mape_threshold": 0.35,
     "confidence_high": 0.90,
     "confidence_low": 0.60,
-    # Cash-Flow Agent: yesterday's projected vs actual closing balance beyond this % is investigated.
+    # % gap between projected and actual closing balance worth investigating
     "cash_variance_pct": 10,
-    # Harness: an agent whose daily share of failed actions exceeds this is degraded.
+    # daily failed-action share that marks an agent degraded
     "action_failure_threshold": 0.2,
 }
 
@@ -85,7 +83,7 @@ class Setting(TenantMixin, Base):
 
 
 class FileRef(TenantMixin, Base):
-    """An uploaded file stored on disk under FILES_DIR, named by its sha256."""
+    """An uploaded file under FILES_DIR, named by sha256."""
 
     __tablename__ = "file_ref"
 

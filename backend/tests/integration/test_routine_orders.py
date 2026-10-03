@@ -1,6 +1,4 @@
-"""Routine-order auto-approval offered to the owner, to keep the owner's effort down: after 5 orders to a
-supplier approved unchanged, the Stock Agent proposes a rule; once the owner approves it, orders within the
-limit go out without a question, larger ones still ask, and a declined offer is not repeated."""
+"""Routine-order auto-approval: offered after 5 unchanged approvals, capped, not re-offered if declined."""
 
 from __future__ import annotations
 
@@ -48,7 +46,7 @@ async def _owner(bid: uuid.UUID) -> _Owner:
 
 
 async def _send_milk(bid: uuid.UUID, qty: str) -> dict[str, Any]:
-    """Draft and send a milk order; returns the send_po run (interrupted when it waits for the owner)."""
+    """Returns the send_po run, interrupted if it waits for the owner."""
     async with read_session() as s:
         milk = (await s.execute(select(Item).where(Item.business_id == bid, Item.name_en == "Milk"))).scalar_one()
         price = (await s.execute(select(SupplierPrice).where(SupplierPrice.item_id == milk.id))).scalars().first()
@@ -89,10 +87,10 @@ async def test_five_unchanged_approvals_offer_auto_approval_which_then_applies(a
     r = await api.client.post(f"/api/v1/harness/rules/{offer.id}/approve")
     assert r.status_code == 200 and r.json()["status"] == "active"
     routine = await _send_milk(bid, "32")
-    assert routine["outcome"] == "completed" and not routine["interrupted"]  # no question for a routine order
+    assert routine["outcome"] == "completed" and not routine["interrupted"]
     async with read_session() as s:
         assert (await s.get(LearnedRule, offer.id)).times_applied == 1  # type: ignore[union-attr]
-    # The owner lowers the limit below this order's size: the same routine order now waits for approval.
+    # Drop the limit below this order and it waits for approval again.
     r = await api.client.patch(f"/api/v1/harness/rules/{offer.id}",
                                json={"trigger": {**offer.trigger, "auto_approve_up_to_minor": 100_00}})
     assert r.status_code == 200, r.text

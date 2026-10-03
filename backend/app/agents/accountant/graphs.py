@@ -1,8 +1,6 @@
 """Accountant Agent workflows as LangGraph graphs.
 
-document_graph: extract -> validate -> [re-extract once] -> ask the owner one question at a time
-(interrupt) -> validate again -> post_invoice through the harness. The invoice stays `held` until every
-issue is answered.
+document_graph: extract -> validate -> ask the owner, one question at a time -> post_invoice.
 """
 
 from __future__ import annotations
@@ -51,7 +49,7 @@ class DocState(TypedDict, total=False):
     outcome: str | None
     held_published: bool
     warnings: list[str]
-    # Per-line classification, keyed by line index; reused while the supplier and description are unchanged.
+    # by line index, reused while supplier and description don't change
     classified: dict[str, dict[str, Any]]
 
 
@@ -74,7 +72,6 @@ async def _doc(state: DocState) -> tuple[Document, Business]:
     return doc, b
 
 
-# ------------------------------------------------------------------ extract
 async def extract_node(state: DocState) -> dict[str, Any]:
     doc, business = await _doc(state)
     attempt = state.get("attempt", 1)
@@ -100,7 +97,6 @@ async def reextract_node(state: DocState) -> dict[str, Any]:
     return {"attempt": 2}
 
 
-# ------------------------------------------------------------------ validate
 def _issue(code: str, en: str, ar: str, options: list[dict[str, str]], **data: Any) -> dict[str, Any]:
     return {"code": code, "text_en": en, "text_ar": ar, "options": options, "data": data}
 
@@ -147,7 +143,7 @@ async def validate_node(state: DocState) -> dict[str, Any]:
     else:
         extraction.penalise(n, "supplier", 1.0)
 
-    # Arithmetic (re-read once before asking)
+    # Arithmetic, re-read once before asking
     if not ov.get("arithmetic_ok"):
         arith = checks.extraction_arithmetic(n, business.vat_rate_percent)
         found.append(arith)
@@ -193,7 +189,7 @@ async def validate_node(state: DocState) -> dict[str, Any]:
                                 action_taken=f"read the date as {corrected.isoformat()}")
             from app.harness.analysis import analyse_and_propose
 
-            await analyse_and_propose(inc_id)  # e.g. "Supplier X invoices use DD/MM format"
+            await analyse_and_propose(inc_id)
     elif not dcheck.passed:
         read_as = dcheck.details.get("read_as")
         opts = []
@@ -273,15 +269,13 @@ async def validate_node(state: DocState) -> dict[str, Any]:
             vat += int((Decimal(ln["line_total_minor"]) * rate / 100).to_integral_value())
         n.vat_minor, n.total_minor = vat, n.subtotal_minor + vat
 
-    # VAT number validity (warning; flagged before the VAT period closes)
-    # The number printed on the invoice is what the tax authority requires, not the one on file.
+    # VAT number, warning only. The tax authority cares about the printed one, not the one on file.
     vat_check = checks.supplier_vat_validity(n.vat_number, n.vat_minor, business.tax_id_pattern)
     found.append(vat_check)
     if not vat_check.passed:
         warnings.append(vat_check.reason_en)
 
-    # Classification of non-stock lines. Each line is classified (and flagged) once; re-validating after an
-    # owner answer reuses the result instead of asking the model again.
+    # Non-stock lines get classified once; re-validation reuses the result.
     sup_id = supplier.id if supplier else None
     overridden: dict[str, str] = ov.get("accounts") or {}
     classified: dict[str, dict[str, Any]] = dict(state.get("classified") or {})
@@ -358,7 +352,7 @@ async def _save(state: DocState, business: Business, n: extraction.Normalised, s
         inv.hold_reason = [i["code"] for i in issues] or None
         inv.match_result = {"checks": [{"name": c.name, "passed": c.passed} for c in found], "warnings": warnings}
         await s.flush()
-        # The checks belong to the latest reading; a re-validation (after an owner answer) replaces them.
+        # checks belong to the latest reading, a re-validation replaces them
         latest = (await s.execute(select(Extraction.id).where(Extraction.document_id == uuid.UUID(state["document_id"]))
                                   .order_by(Extraction.attempt.desc()).limit(1))).scalar_one_or_none()
         if latest is not None:
@@ -382,7 +376,6 @@ async def _save(state: DocState, business: Business, n: extraction.Normalised, s
             "warnings": warnings, "held_published": held_published}
 
 
-# ------------------------------------------------------------------ ask
 async def ask_node(state: DocState) -> dict[str, Any]:
     issue = state["issues"][0]
     asked = state.get("asked", 0)
@@ -452,8 +445,7 @@ async def ask_node(state: DocState) -> dict[str, Any]:
 
 
 async def _three_way_incident(state: DocState, data: dict[str, Any], decision: str | None) -> None:
-    """An invoice did not match its delivery: log it when held (decision None) and propose a rule; the
-    owner's decision later completes the same incident."""
+    """Log an invoice that didn't match its delivery. The owner's decision later completes the same incident."""
     from app.harness.analysis import analyse_and_propose
 
     bid = uuid.UUID(state["business_id"])
@@ -506,11 +498,10 @@ async def _close(state: DocState, outcome: str) -> None:
                 inv.status = "void"
 
 
-# ------------------------------------------------------------------ post
 async def post_node(state: DocState) -> dict[str, Any]:
     bid = uuid.UUID(state["business_id"])
     supplier_id, delivered = await _delivery_confirmed(state["invoice_id"])
-    # supplier_id and delivery_confirmed let learned rules such as "wait for delivery confirmation" apply.
+    # so rules like "wait for delivery confirmation" can apply
     out = await run_action("post_invoice", {"invoice_id": state["invoice_id"], "supplier_id": supplier_id,
                                             "delivery_confirmed": delivered,
                                             "dup_ok": bool((state.get("overrides") or {}).get("dup_ok"))}, bid)
@@ -563,7 +554,7 @@ async def process_document(business_id: uuid.UUID, document_id: uuid.UUID) -> di
             "outcome": v.get("outcome"), "issues": [i["code"] for i in v.get("issues") or []]}
 
 
-# ============================================================ reconciliation
+# Reconciliation
 class DayState(TypedDict, total=False):
     business_id: str
     date: str
@@ -638,7 +629,7 @@ def build_reconciliation() -> StateGraph[Any]:
     return g
 
 
-# ============================================================ trial balance
+# Trial balance
 async def tb_check(state: DayState) -> dict[str, Any]:
     bid = uuid.UUID(state["business_id"])
     async with read_session() as s:
@@ -659,7 +650,6 @@ async def tb_check(state: DayState) -> dict[str, Any]:
 
 
 async def ledger_bank_balances(business_id: uuid.UUID) -> dict[str, dict[str, int]]:
-    """Ledger vs bank-statement balance per bank account (FR: bank balance agreement)."""
     async with read_session() as s:
         accts = {a.code: a for a in (await s.execute(select(Account).where(Account.business_id == business_id))).scalars()}
         banks = list((await s.execute(select(BankAccount).where(BankAccount.business_id == business_id))).scalars())
@@ -684,7 +674,7 @@ async def ledger_bank_balances(business_id: uuid.UUID) -> dict[str, dict[str, in
 
 
 async def tb_valuation(state: DayState) -> dict[str, Any]:
-    """Stock valuation agreement: a mismatch is published so the Stock Agent opens a joint incident."""
+    """Stock valuation check. A mismatch is published so Stock opens a joint incident."""
     bid = uuid.UUID(state["business_id"])
     start = await books_start(bid)
     if start is None:

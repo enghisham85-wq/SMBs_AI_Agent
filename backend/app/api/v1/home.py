@@ -1,8 +1,4 @@
-"""Home: health strip, today's decisions and alerts by urgency.
-
-The strip's figures come from the same functions the Stock, Cash and Books views use, so Home
-never shows a number those views would contradict.
-"""
+"""Home screen. Figures come from the same code as the Stock, Cash and Books views so they always agree."""
 
 from __future__ import annotations
 
@@ -33,8 +29,7 @@ async def _pending(business_id: uuid.UUID) -> list[ApprovalRequest]:
 
 @router.get("/home")
 async def home(user: CurrentUser = RequireManager) -> Response:
-    # Independent reads, each in its own session (separate pooled connections; SQLite WAL lets
-    # readers run side by side), so they run concurrently.
+    # separate sessions, so WAL lets these run in parallel
     items, forecast, recon, review, pending = await asyncio.gather(
         stock.items_data(user.business_id, show_money=True), cash.forecast_data(user.business_id, "30d"),
         books.reconciliation_summary(user.business_id), books.review_queue_data(user.business_id),
@@ -54,7 +49,6 @@ async def home(user: CurrentUser = RequireManager) -> Response:
                    "review_count": review_count, "data_as_of": recon["data_as_of"]}
 
     mine = [r for r in pending if ROLE_RANK[user.role] >= ROLE_RANK.get(r.required_role, 1)]
-    # Most urgent first; among equals, the nearest deadline, then the newest.
     decisions = sorted((r for r in mine if r.kind != "alert"),
                        key=lambda r: (-r.urgency, r.deadline is None, r.deadline or r.created_at, -r.created_at.timestamp()))
     alerts = sorted((r for r in mine if r.kind == "alert"), key=lambda r: (-r.urgency, -r.created_at.timestamp()))

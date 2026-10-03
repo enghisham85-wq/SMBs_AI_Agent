@@ -76,7 +76,7 @@ async def test_a_call_past_its_deadline_counts_as_unavailable(monkeypatch: Any) 
                                                   offline=lambda: OwnerMessage(text_en="", text_ar=""))
 
 
-# ------------------------------------------------------------------ OpenAI-compatible gateway (e.g. CodeCraft)
+# OpenAI-compatible gateway
 class _FakeCompletions:
     def __init__(self, replies: list[str], finish_reason: str = "stop") -> None:
         self.replies, self.finish_reason = list(replies), finish_reason

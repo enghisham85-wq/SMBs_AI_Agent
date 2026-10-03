@@ -1,5 +1,3 @@
-"""Cash-Flow Agent actions run through harness_graph."""
-
 from __future__ import annotations
 
 import uuid
@@ -40,7 +38,6 @@ async def _business(bid: uuid.UUID) -> Business:
     return b
 
 
-# =========================================================================== paid check
 async def paid_status(s: AsyncSession, inv: ReceivableInvoice) -> dict[str, Any] | None:
     """Is the invoice paid? Checks the Accountant's records, then bank lines not yet reconciled."""
     owed = inv.total.amount_minor - inv.amount_paid_minor
@@ -80,7 +77,7 @@ async def inform_paid(business_id: uuid.UUID, inv: ReceivableInvoice, paid_on: d
         context={"receivable_invoice_id": str(inv.id), "reminder_id": str(reminder_id)})
 
 
-# =========================================================================== send_reminder
+# send_reminder
 async def _rem_plan(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     rem, inv = await _reminder(inputs["reminder_id"])
     return {"intent": f"send a level-{rem.level} payment reminder", "summary": f"{inv.customer_name} {inv.number}",
@@ -95,7 +92,7 @@ async def _rem_checks(ctx: ActionContext, inputs: dict[str, Any]) -> list[Check]
     async with read_session() as s:
         paid = await paid_status(s, inv)
     if paid is not None:
-        # Caught just before sending: logged as an incident so a rule can be learned about this customer.
+        # caught just before sending; log it so we can learn a rule about this customer
         return [Check("invoice_still_unpaid", False, {"invoice": inv.number, "customer": inv.customer_name, **paid},
                       cancel=True, incident=True,
                       reason_en=f"{inv.customer_name} already paid {inv.number}",
@@ -215,7 +212,7 @@ async def _rem_finalize(ctx: ActionContext, inputs: dict[str, Any], outcome: str
         await inform_paid(ctx.business_id, inv, paid["paid_on"], rid)
 
 
-# =========================================================================== publish_budget
+# publish_budget
 async def _budget_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     business = await _business(ctx.business_id)
     ws = date.fromisoformat(inputs["week_start"])
@@ -270,7 +267,7 @@ async def budget_remaining(business_id: uuid.UUID, d: date) -> int | None:
         return await budget_mod.remaining(s, business_id, d)
 
 
-# =========================================================================== save_forecast_run
+# save_forecast_run
 async def _save_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     business = await _business(ctx.business_id)
     cur = business.currency
@@ -319,7 +316,7 @@ async def _save_compensate(ctx: ActionContext, inputs: dict[str, Any], result: d
         await s.execute(delete(CashForecastRun).where(CashForecastRun.id == rid))
 
 
-# =========================================================================== save_obligation
+# save_obligation
 async def _ob_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     business = await _business(ctx.business_id)
     async with write_session() as s:
@@ -377,14 +374,14 @@ async def _ob_compensate(ctx: ActionContext, inputs: dict[str, Any], result: dic
         ob.next_due_date = date.fromisoformat(str(prev["next_due_date"]))
 
 
-# =========================================================================== save_shortfall_plan
+# save_shortfall_plan
 async def _plan_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     from app.models.cash import PlanAction, ShortfallPlan
 
     cur = (await _business(ctx.business_id)).currency
     sf = inputs["shortfall"]
     async with write_session() as s:
-        # Older plans stop being current; their accepted actions keep applying to forecasts.
+        # older plans stop being current, but their accepted actions still apply
         superseded = []
         for old in (await s.execute(select(ShortfallPlan).where(ShortfallPlan.business_id == ctx.business_id,
                                                                 ShortfallPlan.status.in_(("proposed", "presented"))))).scalars():

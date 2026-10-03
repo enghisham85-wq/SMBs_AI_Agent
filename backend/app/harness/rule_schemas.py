@@ -1,8 +1,4 @@
-"""Machine-checkable triggers for learned rules, one JSON schema per kind.
-
-A rule proposed by the model is only stored when its trigger validates, so every active rule can be
-applied by code rather than by re-reading its text.
-"""
+"""Machine-checkable triggers for learned rules, one JSON schema per kind."""
 
 from __future__ import annotations
 
@@ -11,7 +7,7 @@ from typing import Any
 
 OPS = ("lt", "le", "gt", "ge", "eq", "ne")
 
-# Precondition/check: compare one field of an action's inputs (dotted path) with a value.
+# precondition/check: compare one input field (dotted path) with a value
 _COMPARE = {
     "type": "object",
     "required": ["action_type", "field", "op", "value"],
@@ -39,8 +35,7 @@ SCHEMAS: dict[str, dict[str, Any]] = {
         "required": ["supplier_id", "account_code"],
         "properties": {"supplier_id": {"type": "string"}, "account_code": {"type": "string"}},
     },
-    # Either turn auto-approval off for an action type (require_approval), or let routine orders from one
-    # supplier up to a limit go ahead without asking (auto_approve_up_to_minor).
+    # require_approval, or auto-approve one supplier's routine orders up to a limit
     "policy": {
         "type": "object",
         "required": ["action_type"],
@@ -69,7 +64,6 @@ def _type_ok(value: Any, expected: str | list[str]) -> bool:
 
 
 def validate(kind: str, trigger: Any) -> None:
-    """Raise InvalidTriggerError unless `trigger` matches the schema for `kind`."""
     schema = SCHEMAS.get(kind)
     if schema is None:
         raise InvalidTriggerError(f"unknown rule kind {kind!r}")

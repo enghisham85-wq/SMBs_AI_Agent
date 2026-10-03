@@ -1,10 +1,4 @@
-"""Event contract: docs/events.md vs the code.
-
-- every event type in the contract has the same required payload fields in REQUIRED_FIELDS
-- a publish missing a field is refused; a delivered event carries the full envelope
-- every contracted event type is published somewhere in the application code
-- handlers run once per (event, consumer), even when an event is dispatched again
-"""
+"""Event contract: docs/events.md vs the code."""
 
 from __future__ import annotations
 
@@ -28,7 +22,7 @@ ENVELOPE = {"event_id", "type", "version", "business_id", "producer", "action_id
 
 
 def contract_rows() -> dict[str, set[str]]:
-    """{event type: required fields} parsed from the contract table (optional `x?` fields left out)."""
+    """{event type: required fields} from the contract table, minus optional `x?` ones."""
     out: dict[str, set[str]] = {}
     for line in CONTRACT.read_text(encoding="utf-8").splitlines():
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
@@ -89,7 +83,7 @@ async def test_missing_field_is_refused_and_envelope_is_complete(business: dict[
         assert env["version"] == 1 and env["business_id"] == str(bid)
         assert set(events.REQUIRED_FIELDS[env["type"]]) <= set(env["payload"])
         if "total" in env["payload"]:
-            assert env["payload"]["total"]["decimals"] == 2  # Money travels with its decimals
+            assert env["payload"]["total"]["decimals"] == 2
 
 
 async def test_redispatch_runs_each_handler_once(business: dict[str, Any]) -> None:
@@ -114,7 +108,7 @@ async def test_redispatch_runs_each_handler_once(business: dict[str, Any]) -> No
 
 
 async def test_real_handler_is_idempotent_on_redispatch(api: Any, business: dict[str, Any]) -> None:
-    """invoice.held lowers the supplier's reliability once, even if the event is delivered again."""
+    """invoice.held only lowers reliability once."""
     from app.models.master import Supplier
 
     bid = business["id"]

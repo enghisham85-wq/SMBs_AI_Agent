@@ -46,7 +46,6 @@ def _money(minor: int, cur: str) -> dict[str, Any]:
     return Money(minor, cur).to_json()
 
 
-# ------------------------------------------------------------------ documents
 @router.post("/documents", status_code=202)
 async def upload_document(file: UploadFile = File(...), user: CurrentUser = RequireManager) -> Response:
     try:
@@ -139,7 +138,6 @@ async def get_file(file_id: uuid.UUID, user: CurrentUser = RequireManager) -> Re
     return FileResponse(ref.path, media_type=ref.mime, filename=ref.original_name)
 
 
-# ------------------------------------------------------------------ review and reconciliation
 async def review_queue_data(business_id: uuid.UUID) -> dict[str, Any]:
     async with read_session() as s:
         qs = (await s.execute(select(ApprovalRequest).where(ApprovalRequest.business_id == business_id,
@@ -166,7 +164,7 @@ async def review_queue(user: CurrentUser = RequireManager) -> Response:
 
 async def _recon_counts(s: AsyncSession, business_id: uuid.UUID,
                         start: date | None) -> tuple[int, int, int, datetime | None]:
-    """(total, matched, open, newest import) over the bank lines since the books start, counted in SQL."""
+    """(total, matched, open, newest import) for bank lines since the books start."""
     q = select(func.count(), func.sum(case((BankTransaction.match_status.in_(MATCHED), 1), else_=0)),
                func.sum(case((BankTransaction.match_status.in_(OPEN), 1), else_=0)),
                func.max(BankTransaction.created_at)).where(BankTransaction.business_id == business_id)
@@ -181,7 +179,7 @@ def _pct(matched: int, total: int) -> float:
 
 
 async def reconciliation_summary(business_id: uuid.UUID) -> dict[str, Any]:
-    """The Reconciliation view's headline figures (for Home), without loading any bank line."""
+    """Headline reconciliation figures for Home."""
     start = await acc_graphs.books_start(business_id)
     async with read_session() as s:
         total, matched, open_, last_bank = await _recon_counts(s, business_id, start)
@@ -250,7 +248,6 @@ async def confirm_match(txn_id: uuid.UUID, body: MatchIn, user: CurrentUser = Re
     return J({"status": "matched", "source": source})
 
 
-# ------------------------------------------------------------------ reports
 @router.get("/reports/pnl")
 async def pnl(from_: date | None = Query(default=None, alias="from"), to: date | None = None,
               user: CurrentUser = RequireManager) -> Response:
@@ -266,8 +263,8 @@ async def pnl(from_: date | None = Query(default=None, alias="from"), to: date |
 async def vat_summary(period: str | None = None, user: CurrentUser = RequireManager) -> Response:
     """Input VAT, output VAT, net payable and the supporting invoices for a period.
 
-    `period` is `2026-10` (monthly) or `2026-Q4` (quarterly); default: the current period. The figures
-    are reviewed by the independent second check before `status` becomes `ready`.
+    `period` is `2026-10` or `2026-Q4` and defaults to the current one. `status` turns `ready` once
+    the second check has reviewed the figures.
     """
     from app.agents.accountant import vat
 
@@ -289,9 +286,8 @@ async def balance_sheet(as_of: date | None = None, user: CurrentUser = RequireMa
     return J(with_freshness(data, {"books": clock.today()}))
 
 
-# ------------------------------------------------------------------ customer invoices
 class RecLine(BaseModel):
-    # Decimals with bounds, never floats: money must be exact, and absurd values are a 422, not a crash.
+    # bounded Decimals so silly values get a 422 instead of a crash
     description: str = Field(default="", max_length=300)
     qty: Decimal = Field(gt=0, le=Decimal("1000000"), max_digits=12, decimal_places=3)
     unit_price: Decimal = Field(ge=0, le=Decimal("1000000000"), max_digits=15, decimal_places=3)
@@ -319,7 +315,7 @@ def _rec_out(r: ReceivableInvoice, today: date) -> dict[str, Any]:
 @router.post("/receivables", status_code=201)
 async def create_receivable(body: RecIn, user: CurrentUser = RequireManager) -> Response:
     b = await get_business(user.business_id)
-    try:  # validate first so the owner gets a precise error rather than a failed action
+    try:  # validate up front for a clearer error than a failed action
         async with read_session() as s:
             await receivables.build(s, b, body.model_dump(mode="json"))
     except receivables.ReceivableError as exc:
@@ -344,7 +340,7 @@ async def list_receivables(status: str | None = None, overdue: bool | None = Non
         q = select(ReceivableInvoice).where(ReceivableInvoice.business_id == user.business_id)
         if status:
             q = q.where(ReceivableInvoice.status == status)
-        if overdue:  # _rec_out's days_overdue > 0, filtered in SQL so a page holds only overdue invoices
+        if overdue:  # filter in SQL so pagination stays right
             q = q.where(ReceivableInvoice.status.in_(("open", "partially_paid")), ReceivableInvoice.due_date < today)
         rows = (await s.execute(q.order_by(ReceivableInvoice.due_date)
                                 .offset(offset).limit(limit))).scalars().all()

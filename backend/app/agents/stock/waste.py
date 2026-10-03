@@ -1,5 +1,3 @@
-"""Expiry risk and dead stock."""
-
 from __future__ import annotations
 
 import uuid

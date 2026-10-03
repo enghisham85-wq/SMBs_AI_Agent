@@ -1,10 +1,4 @@
-"""Simulated daily data feed for demo mode.
-
-For each business date the clock moves into, it generates that day's sales and bank activity from
-the same seasonal model used to create the 3-month history. The random seed is derived from
-business id + date, so the same date always produces the same data, and re-running a date is a
-no-op. Chaos scenarios change future days through FeedOverride rows.
-"""
+"""Simulated daily sales and bank feed for demo mode, deterministic per business and date."""
 
 from __future__ import annotations
 
@@ -36,10 +30,9 @@ PAYMENT_SPLIT = (("cash", Decimal("0.55")), ("card", Decimal("0.40")), ("transfe
 CARD_FEE_PERCENT = Decimal("2")
 CASH_FLOAT = Decimal("3000")
 
-# Extension points: agents add real payables / receivables payments to the simulated bank.
+# Agents plug real payables/receivables payments into the simulated bank here.
 BankSource = Callable[[AsyncSession, Business, date], Awaitable[list[dict[str, Any]]]]
 BANK_SOURCES: list[BankSource] = []
-# When a payables source is registered, the weekly consumption-based supplier payment stops.
 state: dict[str, bool] = {"payables_source": False}
 
 
@@ -60,11 +53,11 @@ def demand_factor(cal: Calendar, d: date, kind: str) -> float:
     if cal.is_weekend(d):
         f *= 1.30
     elif cal.is_weekend(d + timedelta(days=1)):
-        f *= 1.12  # the evening before the weekend is busy
+        f *= 1.12  # eve of the weekend
     if cal.is_holiday(d):
         f *= 1.25
     if cal.is_ramadan(d):
-        f *= 1.15 if kind == "drink" else 0.85  # busy after iftar for drinks, less food by day
+        f *= 1.15 if kind == "drink" else 0.85  # drinks after iftar, less food by day
     return f
 
 
@@ -116,12 +109,12 @@ def generate_sales(business: Business, products: list[Item], cfg: dict[str, Any]
 
 
 async def feed_sales(business_id: uuid.UUID, d: date, *, force: bool = False) -> int:
-    """Daily step `import_sales` (demo mode only): insert the day's generated sales once."""
+    """Daily `import_sales` step in demo mode."""
     if not (force or get_settings().DEMO_MODE):
         return 0
     async with write_session() as s:
         existing = (await s.execute(select(Sale.source).where(Sale.business_id == business_id, Sale.date == d))).scalars().all()
-        if existing:  # already fed, or real sales were uploaded/entered for this date
+        if existing:  # fed already, or real sales exist
             return 0
         business = await s.get(Business, business_id)
         assert business is not None
@@ -154,7 +147,7 @@ async def _sales_total(s: AsyncSession, business_id: uuid.UUID, d: date, method:
 
 
 async def _weekly_supplier_costs(s: AsyncSession, business: Business, d: date) -> dict[uuid.UUID, int]:
-    """Cost of ingredients consumed in the 7 days before d, grouped by supplier (history fallback)."""
+    """Last week's ingredient cost per supplier."""
     start = d - timedelta(days=7)
     sales = (await s.execute(select(Sale).where(Sale.business_id == business.id, Sale.date >= start, Sale.date < d))).scalars().all()
     sold: dict[str, Decimal] = defaultdict(Decimal)
@@ -194,9 +187,8 @@ async def generate_bank(s: AsyncSession, business: Business, d: date, overrides:
                      "import_batch_id": batch, "external_ref": f"{kind}:{d.isoformat()}:{len(txns)}",
                      "meta": {"feed": True, "kind": kind, **meta}})
 
-    # Cash sales go into the till the same day.
     add("cash", await _sales_total(s, business.id, d, "cash"), "Cash sales", "cash_sales")
-    # Card sales settle the next day, less the processing fee.
+    # cards settle next day, minus the fee
     prev = d - timedelta(days=1)
     card = await _sales_total(s, business.id, prev, "card")
     if card:
@@ -206,20 +198,19 @@ async def generate_bank(s: AsyncSession, business: Business, d: date, overrides:
     transfer = await _sales_total(s, business.id, prev, "transfer")
     if transfer:
         add("bank", transfer, f"Instapay transfers {prev.strftime('%d/%m')}", "transfer_sales", sales_date=prev.isoformat())
-    # Every third day the till is banked down to a float.
+    # bank the till down to a float every third day
     if d.toordinal() % 3 == 0:
         till = await _balance_before(s, accounts["cash"], d) + sum(t["amount"].amount_minor for t in txns if t["account_id"] == accounts["cash"].id)
         deposit = till - Money.from_decimal(CASH_FLOAT, cur).amount_minor
         if deposit > 0:
             add("cash", -deposit, "Cash deposit to bank", "cash_deposit_out")
             add("bank", deposit, "Cash deposit", "cash_deposit_in")
-    # Recurring obligations (rent, salaries, utilities, subscriptions).
     obligations = (await s.execute(select(Obligation).where(Obligation.business_id == business.id))).scalars().all()
     for ob in obligations:
         if _due_on(ob, d):
             add("bank", -ob.amount.amount_minor, f"{ob.type.title()} - {ob.description}", "obligation",
                 obligation_id=str(ob.id), obligation_type=ob.type)
-    # Supplier payments: from payables once the Accountant Agent provides them; else weekly by consumption.
+    # weekly estimate until the Accountant registers real payables
     if not state["payables_source"] and d.isoweekday() == 7:
         from app.models.master import Supplier
 
@@ -243,7 +234,7 @@ async def _balance_before(s: AsyncSession, account: BankAccount, d: date) -> int
                             .order_by(BankBalanceSnapshot.as_of.desc()).limit(1))).scalar_one_or_none()
     base = snap.balance.amount_minor if snap else 0
     since = snap.as_of.date() + timedelta(days=1) if snap else date.min
-    # Include any unsnapshotted transactions (e.g. a skipped feed day that was later uploaded).
+    # plus anything not snapshotted yet, e.g. a skipped day uploaded later
     rows = (await s.execute(select(BankTransaction).where(BankTransaction.account_id == account.id,
                                                           BankTransaction.date >= since,
                                                           BankTransaction.date < d))).scalars().all()
@@ -251,7 +242,7 @@ async def _balance_before(s: AsyncSession, account: BankAccount, d: date) -> int
 
 
 async def feed_bank(business_id: uuid.UUID, d: date, *, force: bool = False) -> int:
-    """Daily step `bank_import` (demo mode only): the day's bank lines and closing balances."""
+    """Daily `bank_import` step in demo mode."""
     if not (force or get_settings().DEMO_MODE):
         return 0
     async with write_session() as s:
@@ -259,7 +250,7 @@ async def feed_bank(business_id: uuid.UUID, d: date, *, force: bool = False) -> 
         assert business is not None
         overrides = await _override(s, business_id, d)
         if overrides.get("skip_bank"):
-            return 0  # the missing bank feed day (Chaos scenario 6)
+            return 0  # chaos: missing bank day
         done = (await s.execute(select(BankTransaction.id).where(BankTransaction.business_id == business_id,
                                                                   BankTransaction.import_batch_id == f"feed:{d.isoformat()}")
                                 .limit(1))).first()

@@ -1,10 +1,4 @@
-"""REST contract: schemathesis generates requests from /api/v1/openapi.json and sends them, as
-the seeded owner, to the real app (lifespan, migrations and the sample cafe). No request may produce a
-server error; that includes the freshness guard, which turns figures without data_as_of into a 500.
-
-Endpoints that move the clock, reset or re-seed the demo, inject Chaos faults or end the session are
-left out: they are slow or undo the setup, and each has its own tests.
-"""
+"""Schemathesis against the real app, logged in as the owner. No request may return a 500."""
 
 from __future__ import annotations
 
@@ -60,8 +54,7 @@ def _text(v: Any) -> str:
 
 
 def _multipart(parts: list[Any]) -> tuple[dict[str, str], list[tuple[str, Any]]]:
-    """Schemathesis lists form fields as file parts with no filename, and in negative mode may emit
-    parts no HTTP client can encode; send what a browser could: text fields and real file parts."""
+    """Re-encode schemathesis form parts the way a browser would (text fields, real files)."""
     data: dict[str, str] = {}
     files: list[tuple[str, Any]] = []
     for item in parts:

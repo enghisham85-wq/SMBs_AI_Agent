@@ -1,10 +1,4 @@
-"""Cash-Flow Agent workflows as LangGraph graphs. State-changing steps run through harness_graph.
-
-- cash_forecast_graph: freshness check -> project -> checks -> save -> weekly purchasing budget
-- shortfall_plan_graph: detect -> plan -> save -> publish shortfall.predicted -> ask the owner (interrupt) -> apply
-- balance_compare_graph: yesterday's projected closing balance vs the actual one
-- reminders_graph: schedule escalating reminders -> send the ones due (each through send_reminder)
-"""
+"""Cash-Flow Agent workflows as LangGraph graphs. State-changing steps run through harness_graph."""
 
 from __future__ import annotations
 
@@ -91,7 +85,7 @@ async def _resolve_open(bid: uuid.UUID, prefix: str, root_cause: str, action_tak
         await resolve_incident(inc.id, root_cause=root_cause, category="data_gap", action_taken=action_taken)
 
 
-# ============================================================= cash_forecast_graph
+# cash_forecast_graph
 async def cf_freshness(state: DayState) -> dict[str, Any]:
     bid, d = _ids(state)
     b = await _business(bid)
@@ -105,7 +99,7 @@ async def cf_freshness(state: DayState) -> dict[str, Any]:
     c = checks.bank_freshness(fresh)
     await _store_checks(bid, [c])
     if not c.passed:
-        # One incident per gap: a missed day stays in the check window for a week as later days arrive.
+        # one incident per gap, since a missed day stays in the check window for a week
         key = (f"bank_freshness:missing:{fresh.missing_dates[0].isoformat()}" if fresh.missing_dates else
                f"bank_freshness:{fresh.last_bank_date.isoformat() if fresh.last_bank_date else 'none'}")
         inc = await open_incident(business_id=bid, agent="cashflow", type="bank_freshness", detected_by="bank_freshness",
@@ -227,7 +221,7 @@ def build_cash_forecast() -> StateGraph[Any]:
     return g
 
 
-# ============================================================= shortfall_plan_graph
+# shortfall_plan_graph
 class PlanState(TypedDict, total=False):
     business_id: str
     date: str
@@ -284,12 +278,11 @@ async def sp_plan(state: PlanState) -> dict[str, Any]:
     assert sf is not None
     built = plan.build_plan(inp, base, sf)
     async with read_session() as s:
-        # The last plan the owner saw, whether still open, acted on or dismissed.
         current = (await s.execute(select(ShortfallPlan).where(ShortfallPlan.business_id == bid,
                                                                ShortfallPlan.status.in_(("presented", "accepted", "dismissed")))
                                    .order_by(ShortfallPlan.created_at.desc()).limit(1))).scalars().first()
-    # Ask again only about a different shortfall (its date moved by more than a few days: while cash stays
-    # below the buffer, each day's forecast says "first below tomorrow") or one that got materially worse.
+    # Re-ask only for a different or clearly worse shortfall. While cash stays low every day's forecast
+    # says "first below tomorrow", hence the few days of slack.
     present = (current is None or abs((sf.first_below - current.gap_date).days) > SAME_SHORTFALL_DAYS
                or sf.gap_minor > (1 + REASK_GAP_CHANGE) * max(1, current.gap_amount.amount_minor))
     actions = []
@@ -430,7 +423,7 @@ def build_shortfall_plan() -> StateGraph[Any]:
     return g
 
 
-# ============================================================= balance_compare_graph
+# balance_compare_graph
 async def bc_compare(state: DayState) -> dict[str, Any]:
     bid, d = _ids(state)
     b = await _business(bid)
@@ -478,7 +471,7 @@ def build_balance_compare() -> StateGraph[Any]:
     return g
 
 
-# ============================================================= reminders_graph
+# reminders_graph
 async def _promise(s: Any, inv_id: uuid.UUID, today: date, paid: bool) -> reminders.PromiseState | None:
     p = (await s.execute(select(PaymentPromise).where(PaymentPromise.receivable_invoice_id == inv_id)
                          .order_by(PaymentPromise.created_at.desc()).limit(1))).scalars().first()
@@ -501,8 +494,7 @@ async def rm_schedule(state: DayState) -> dict[str, Any]:
     async with write_session() as s:
         invs = (await s.execute(select(ReceivableInvoice).where(ReceivableInvoice.business_id == bid,
                                                                 ReceivableInvoice.status.in_(("open", "partially_paid"))))).scalars().all()
-        # One query each for every open invoice's reminders, latest promise and the customers' paid history,
-        # instead of three per invoice while holding the write lock.
+        # batch these instead of three queries per invoice under the write lock
         ids = [inv.id for inv in invs]
         by_inv: dict[uuid.UUID, list[PaymentReminder]] = defaultdict(list)
         latest: dict[uuid.UUID, PaymentPromise] = {}
@@ -546,7 +538,7 @@ async def rm_send(state: DayState) -> dict[str, Any]:
             ReceivableInvoice.id.in_([r.receivable_invoice_id for r in due])))).scalars()}
     results = []
     for rem in due:
-        # The customer is part of the inputs so learned rules about a customer can apply.
+        # customer goes in the inputs so learned rules about them apply
         out = await run_action("send_reminder", {"reminder_id": str(rem.id),
                                                  "customer": customers.get(rem.receivable_invoice_id)}, bid)
         results.append({"reminder_id": str(rem.id), "outcome": "awaiting_approval" if out["interrupted"] else out["outcome"]})
@@ -593,7 +585,7 @@ async def chase_now(bid: uuid.UUID, invoice_id: uuid.UUID, d: date) -> dict[str,
     return {"reminder_id": str(rid), "outcome": "awaiting_approval" if out["interrupted"] else out["outcome"]}
 
 
-# ============================================================= events
+# Events
 async def on_customer_payment(env: dict[str, Any]) -> None:
     """customer_payment.received: cancel reminders for a now-paid invoice and tell the owner."""
     bid = uuid.UUID(env["business_id"])
@@ -641,7 +633,7 @@ async def on_obligation_answer(req: dict[str, Any]) -> None:
                                                     "recurrence": "monthly", "is_confirmed": True}}, bid)
 
 
-# ============================================================= daily steps
+# Daily steps
 async def _run(graph: str, bid: uuid.UUID, d: date, extra: dict[str, Any] | None = None) -> Any:
     from app.graphs import runtime
 

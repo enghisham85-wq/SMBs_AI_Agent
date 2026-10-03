@@ -4,14 +4,8 @@ plan -> precheck -> [prepare_hold -> hold] -> classify_risk -> premortem_verify 
      -> approval_gate -> execute -> post_verify -> (finalize | rollback -> retry -> execute ... -> escalate)
      -> finalize
 
-Every node updates Action.stage and writes an audit entry. Irreversible/external actions pause at
-`approval_gate` (LangGraph interrupt) unless the ActionSpec's own auto_approve rule allows them.
-Reversible writes are undone by the ActionSpec's `compensate` step when read-back verification fails.
-
-LangGraph re-runs an interrupted node from the top when it resumes, so each owner question is built
-in a `prepare_*` node (wording, which may call the model, rule counters, stage and audit) and kept in
-`pending_ask`; the node that pauses only asks it. Route values keep naming the logical step ("hold",
-"approval_gate"); the path maps send them to the prepare node.
+LangGraph re-runs an interrupted node from the top on resume, so owner questions are built once in
+the prepare_* nodes and kept in `pending_ask`.
 """
 
 from __future__ import annotations
@@ -39,7 +33,7 @@ from app.models.harness import Action, CheckResult
 log = logging.getLogger(__name__)
 GRAPH = "harness"
 
-# Extension points for learned rules, calibration and incident analysis.
+# Hooks for learned rules, calibration and incident analysis
 PrecheckHook = Callable[[ActionSpec, ActionContext, dict[str, Any]], Awaitable[list[Check]]]
 StateHook = Callable[[ActionSpec, ActionState], Awaitable[None]]
 PRECHECK_HOOKS: list[PrecheckHook] = []
@@ -72,7 +66,7 @@ async def _stage(state: ActionState, stage: str, event: str, outputs: dict[str, 
         add_audit(s, event, business_id=uuid.UUID(state["business_id"]), agent=spec.agent,
                   action_id=uuid.UUID(state["action_id"]), inputs={"spec": spec.name, "attempt": state.get("attempt", 1)},
                   outputs=outputs or {}, verification_result=verification)
-    # Live pipeline view (Harness page): one message per stage.
+    # feeds the live Harness page
     broker.publish("harness", {"kind": "stage", "business_id": state["business_id"], "action_id": state["action_id"],
                                "agent": spec.agent, "type": spec.name, "stage": stage, "event": event,
                                "attempt": state.get("attempt", 1), "verification": verification})
@@ -91,7 +85,6 @@ def _ask_from_state(data: dict[str, Any]) -> OwnerAsk:
     return OwnerAsk(**data)
 
 
-# ---------------------------------------------------------------- nodes
 async def plan_node(state: ActionState) -> dict[str, Any]:
     spec = _spec(state)
     plan = await spec.plan(_ctx(state), state["inputs"]) if spec.plan else {"intent": spec.name}
@@ -137,7 +130,7 @@ async def precheck_node(state: ActionState) -> dict[str, Any]:
 
 
 async def _check_incident(state: ActionState, spec: ActionSpec, check: dict[str, Any], route: str) -> None:
-    """A precondition caught a fault: log it as an incident, then find the cause and propose a rule."""
+    """Log a fault caught by a precondition and propose a rule for it."""
     from app.harness.analysis import analyse_and_propose
 
     taken = {"finalize": "cancelled the action", "hold": "held the action and asked the owner"}.get(
@@ -147,7 +140,7 @@ async def _check_incident(state: ActionState, spec: ActionSpec, check: dict[str,
         summary=check["reason_en"] or check["name"], action_id=uuid.UUID(state["action_id"]), action_taken=taken,
         refs={**check["details"], "action_type": spec.name, "action_id": state["action_id"]},
         dedupe_key=f"{check['name']}:{state['action_id']}")
-    # A cancelled action is fully handled; a held one stays open until the owner answers.
+    # held actions stay open until the owner answers
     await analyse_and_propose(incident_id, resolve=route == "finalize")
 
 
@@ -185,7 +178,7 @@ async def hold_node(state: ActionState) -> dict[str, Any]:
     ctx = _ctx(state)
     failed = _failed_checks(state)
     pending = state.get("pending_ask")
-    # Nothing prepared: a thread checkpointed before prepare_hold existed is resuming here.
+    # old checkpoint from before prepare_hold existed
     ask = _ask_from_state(pending) if pending else await _hold_ask(state)
     reask = state.get("reask", 0)
     answer = await approvals.ask_owner(
@@ -217,11 +210,7 @@ async def hold_node(state: ActionState) -> dict[str, Any]:
 
 
 def _fresh_gate(route: str, reask: int) -> dict[str, Any]:
-    """Moving to an owner gate after an answer needs the next re-ask number.
-
-    The gate key includes it; asking again under the same key would find the request just answered
-    and pause with nothing for the owner to answer.
-    """
+    """Bump the re-ask number, which is part of the gate key, or the gate finds the old answer and stalls."""
     return {"reask": reask + 1} if route in ("approval_gate", "hold") else {}
 
 
@@ -251,7 +240,7 @@ async def premortem_verify_node(state: ActionState) -> dict[str, Any]:
 
 
 async def prepare_approval_node(state: ActionState) -> dict[str, Any]:
-    """Decide whether the owner must approve and, if so, word the request (once per request)."""
+    """Decide whether the owner must approve, and word the request if so."""
     spec = _spec(state)
     ctx = _ctx(state)
     from app.harness import rules
@@ -291,7 +280,7 @@ async def approval_gate_node(state: ActionState) -> dict[str, Any]:
     ctx = _ctx(state)
     pending = state.get("pending_ask")
     if not pending:
-        # A thread checkpointed before prepare_approval existed is resuming here: prepare inline, as before.
+        # old checkpoint from before prepare_approval existed
         prepared = await prepare_approval_node(state)
         if prepared.get("route") != "approval_gate":
             return prepared
@@ -421,7 +410,7 @@ def _route(state: ActionState) -> str:
 
 
 def _as_agent(fn: Callable[[ActionState], Awaitable[dict[str, Any]]]) -> Callable[[ActionState], Awaitable[dict[str, Any]]]:
-    """Run a node as the action's agent, so writes can be checked against table ownership."""
+    """Run the node as the action's agent so table ownership checks apply."""
     from app.core.ownership import acting_as
 
     async def node(state: ActionState) -> dict[str, Any]:
@@ -471,11 +460,7 @@ async def run_action(
     parent_action_id: uuid.UUID | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Create the Action record and run it through harness_graph.
-
-    Returns {"action_id", "outcome", "interrupted", "result"}; `interrupted` means it is waiting
-    for the owner (approval or hold question).
-    """
+    """Create the Action and run it through harness_graph. `interrupted` means it's waiting on the owner."""
     from app.graphs import runtime
 
     spec = get_spec(spec_name)

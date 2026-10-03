@@ -22,7 +22,7 @@ interface Country {
   currency: string;
 }
 
-// Settings shown as plain numbers; money limits are stored in minor units and edited in major units.
+// Money limits are stored in minor units but edited in major units.
 const NUMBER_KEYS = [
   "price_change_pct",
   "stock_variance_pct",

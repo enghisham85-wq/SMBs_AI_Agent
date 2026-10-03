@@ -53,9 +53,8 @@ class BankTransaction(TenantMixin, Base):
     matched_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
     matched_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     match_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
-    # auto | suggested_confirmed | manual (where each match came from)
+    # auto | suggested_confirmed | manual
     match_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
-    # Demo-feed metadata used by the generator (e.g. kind=card_settlement, customer ref).
     meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 

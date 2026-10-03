@@ -1,4 +1,4 @@
-// Seeds a fresh sample cafe into backend/var/e2e and starts the API (used by playwright.config.ts).
+// Seeds a fresh sample cafe into backend/var/e2e and starts the API.
 // Usage: node serve-backend.mjs <port> KEY=VALUE ...
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, rmSync } from "node:fs";

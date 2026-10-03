@@ -1,5 +1,3 @@
-"""Stock Agent self-checks."""
-
 from __future__ import annotations
 
 import statistics
@@ -68,8 +66,7 @@ def price_sanity(item: Item, new_price_minor: int, history: list[int], pct_limit
 
 async def duplicate_po(s: AsyncSession, business_id: uuid.UUID, supplier_id: uuid.UUID, item_ids: set[str],
                        exclude_po: uuid.UUID | None = None) -> Check:
-    # Orders already sent are counted as incoming stock by reorder planning, so only unsent open
-    # orders for the same items are duplicates.
+    # sent orders already count as incoming stock, so only unsent ones can be duplicates
     unsent = [st for st in OPEN_STATUSES if st not in ("sent", "partially_received")]
     q = select(PurchaseOrder).where(PurchaseOrder.business_id == business_id, PurchaseOrder.supplier_id == supplier_id,
                                     PurchaseOrder.status.in_(unsent))

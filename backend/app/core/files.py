@@ -18,7 +18,7 @@ from app.db.engine import read_session, write_session
 from app.models.tenancy import FileRef
 
 MAX_BYTES = 20 * 1024 * 1024
-# Room for the other form fields and multipart framing around a file of MAX_BYTES.
+# other form fields + multipart framing
 _FORM_OVERHEAD = 1024 * 1024
 _CHUNK = 1024 * 1024
 
@@ -30,7 +30,7 @@ class FileTooLargeError(AppError, ValueError):
 
 
 async def read_upload(file: UploadFile) -> bytes:
-    """The upload's bytes, refusing anything over MAX_BYTES without reading past the limit."""
+    """Read the upload, refusing anything over MAX_BYTES without reading past it."""
     if file.size is not None and file.size > MAX_BYTES:
         raise FileTooLargeError()
     buf = bytearray()
@@ -42,8 +42,7 @@ async def read_upload(file: UploadFile) -> bytes:
 
 
 class UploadLimit:
-    """ASGI middleware: refuses a multipart body whose Content-Length is already over the limit,
-    before Starlette spools it to disk. Bodies without a Content-Length are capped by read_upload."""
+    """Reject oversized uploads by Content-Length before Starlette spools them to disk."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app

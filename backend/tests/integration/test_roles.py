@@ -1,10 +1,4 @@
-"""Roles on every screen, chat action and approval.
-
-- staff record deliveries and waste, and never see money (403 on money endpoints, no money fields)
-- a manager approves purchase orders but cannot approve rules, change settings or manage users
-- a Telegram answer from a staff user is refused
-- every refusal is written to the audit log
-"""
+"""Role checks on screens, chat actions and approvals. Every refusal is audited."""
 
 from __future__ import annotations
 
@@ -61,7 +55,6 @@ async def _user(bid: uuid.UUID, role: str) -> User:
 
 
 async def _po_approval(bid: uuid.UUID) -> ApprovalRequest:
-    """A purchase order waiting for approval (drafted and sent through the harness)."""
     async with read_session() as s:
         milk = (await s.execute(select(Item).where(Item.business_id == bid, Item.name_en == "Milk"))).scalar_one()
         price = (await s.execute(select(SupplierPrice).where(SupplierPrice.item_id == milk.id))).scalars().first()

@@ -53,7 +53,7 @@ async def _receivable(bid: uuid.UUID, customer: str) -> ReceivableInvoice:
 
 
 async def _pay(bid: uuid.UUID, inv: ReceivableInvoice, reconcile: bool = True) -> None:
-    """The customer's transfer lands in the bank; with `reconcile` the Accountant matches it."""
+    """Customer pays into the bank; `reconcile` has the Accountant match it too."""
     async with write_session() as s:
         bank = (await s.execute(select(BankAccount).where(BankAccount.business_id == bid,
                                                           BankAccount.is_cash_on_hand.is_(False)))).scalar_one()
@@ -86,7 +86,6 @@ async def _status(rid: uuid.UUID) -> PaymentReminder:
     return r
 
 
-# ------------------------------------------------------------------ 30-day projection
 async def test_30_day_projection_with_lowest_point(api: Any, cafe: dict[str, Any]) -> None:
     bid = cafe["business_id"]
     run = await _forecast(bid)
@@ -115,7 +114,6 @@ async def test_30_day_projection_with_lowest_point(api: Any, cafe: dict[str, Any
     assert 13 <= len(weeks["weeks"]) <= 14
 
 
-# ------------------------------------------------------------------ shortfall plan
 async def test_shortfall_flagged_14_days_ahead_with_ranked_simulated_plan(api: Any, cafe: dict[str, Any]) -> None:
     bid = cafe["business_id"]
     run = await _forecast(bid)
@@ -126,7 +124,7 @@ async def test_shortfall_flagged_14_days_ahead_with_ranked_simulated_plan(api: A
         ev = (await s.execute(select(Event).where(Event.type == "shortfall.predicted"))).scalars().all()
         q = (await s.execute(select(ApprovalRequest).where(ApprovalRequest.business_id == bid, ApprovalRequest.agent == "cashflow",
                                                            ApprovalRequest.status == "pending"))).scalars().all()
-    # rent + salaries week: salaries on the 28th, rent on the 1st
+    # salaries on the 28th, rent on the 1st
     assert plan.gap_date >= date(2026, 10, 28)
     assert plan.days_to_act >= 14
     assert plan.gap_amount.amount_minor == 5_000_000 - run.lowest_balance.amount_minor > 0
@@ -146,7 +144,7 @@ async def test_shortfall_flagged_14_days_ahead_with_ranked_simulated_plan(api: A
     assert len(sim["simulated"]) == len(sim["base"]) == 30
     assert min(x["closing"]["amount_minor"] for x in sim["simulated"]) == acts[0].simulated_lowest_balance.amount_minor
 
-    # The owner picks the top action: it is accepted and later forecasts apply it.
+    # Owner takes the top action; later forecasts include it.
     from app.approvals import service as approvals
     from app.models.tenancy import User
 
@@ -190,7 +188,6 @@ async def test_no_recommendation_pays_beyond_terms(api: Any, cafe: dict[str, Any
         assert all(adj["move_to"] <= (today + timedelta(days=11)).isoformat() for adj in a.adjustments)
 
 
-# ------------------------------------------------------------------ payment reminders and their approval rule
 async def test_reminder_waits_for_approval_then_cancelled_when_paid(api: Any, cafe: dict[str, Any]) -> None:
     bid = cafe["business_id"]
     await cash_graphs.step_reminders(bid, clock.today())
@@ -249,7 +246,6 @@ async def test_reminder_auto_approve_rule(api: Any, cafe: dict[str, Any], mode: 
     assert out["outcome"] == "cancelled" and (await _status(rid)).status == "cancelled_paid"
 
 
-# ------------------------------------------------------------------ stale bank data
 async def test_stale_bank_data_marks_low_confidence_and_asks_for_statement(api: Any, cafe: dict[str, Any]) -> None:
     bid = cafe["business_id"]
     later = date(2026, 10, 7)  # Sun-Wed without bank data: 4 business days
@@ -263,7 +259,7 @@ async def test_stale_bank_data_marks_low_confidence_and_asks_for_statement(api: 
         alert = (await s.execute(select(ApprovalRequest).where(ApprovalRequest.kind == "alert",
                                                                ApprovalRequest.agent == "cashflow"))).scalars().all()
     assert inc.status in ("open", "investigating") and any("fresh statement" in a.text_en for a in alert)
-    # The owner uploads a statement for the missing days: the forecast is confident again.
+    # Upload the missing days and the forecast is confident again.
     csv = "date,description,amount,reference\n" + "".join(
         f"{(START + timedelta(days=i)).strftime('%d/%m/%Y')},Card settlement,1000.00,r{i}\n" for i in range(4))
     r = await api.client.post("/api/v1/bank/statements", files={"file": ("stmt.csv", csv.encode(), "text/csv")})
@@ -280,7 +276,6 @@ async def test_stale_bank_data_marks_low_confidence_and_asks_for_statement(api: 
     assert bad.status_code == 422 and bad.json()["error"]["code"] == "currency_mismatch"
 
 
-# ------------------------------------------------------------------ each payable counted once
 async def test_po_and_invoice_counted_once(api: Any, cafe: dict[str, Any]) -> None:
     bid = cafe["business_id"]
     today = clock.today()

@@ -13,7 +13,6 @@ export interface CalibrationData {
   history: { agent: string; metric: string; date: string; value: number; threshold: number; degraded: boolean }[];
 }
 
-// One series per agent; identity is carried by colour and dash pattern plus the legend.
 const SERIES: Record<string, { color: string; dash?: string }> = {
   stock: { color: "#0d9488" },
   cashflow: { color: "#334155", dash: "6 4" },
@@ -21,7 +20,6 @@ const SERIES: Record<string, { color: string; dash?: string }> = {
 };
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${Math.round(v * 100)}%`);
 
-/** Error rate over time per agent, and the current thresholds and auto-approve limits. */
 export function CalibrationChart({ data }: { data: CalibrationData }) {
   const { t, i18n } = useTranslation();
   const byDate = new Map<string, Record<string, number | string>>();

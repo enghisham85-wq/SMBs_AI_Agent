@@ -1,4 +1,4 @@
-"""Per-business settings (thresholds, limits, auto-approval rules). Read: manager; write: owner, audited."""
+"""Per-business settings. Managers can read, owners can write."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from app.models.tenancy import SETTING_DEFAULTS
 
 router = APIRouter(tags=["settings"])
 
-# key -> (min, max); percentages are 0-100, confidences 0-1, money in minor units, hours > 0.
+# percentages 0-100, confidences 0-1, money in minor units
 RANGES: dict[str, tuple[float, float]] = {
     "price_change_pct": (0, 100), "stock_variance_pct": (0, 100), "approval_timeout_hours": (0.1, 24 * 14),
     "journal_value_limit": (0, 10**15), "stale_bank_days": (0, 30), "dead_stock_days": (1, 365),
@@ -26,7 +26,6 @@ RANGES: dict[str, tuple[float, float]] = {
     "cash_variance_pct": (0, 100), "action_failure_threshold": (0, 1),
 }
 CHOICES: dict[str, tuple[str, ...]] = {"reminder_auto_approve": ("off", "polite_only")}
-# Internal keys that are not user settings.
 HIDDEN = {"demo_feed", "books_start_date"}
 
 

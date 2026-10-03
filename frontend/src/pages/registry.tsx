@@ -8,13 +8,11 @@ interface PageDef {
   key: string;
   min: Role;
   demoOnly?: boolean;
-  /** Loads the page's chunk; also used to warm it before navigation. */
   load: () => Promise<ComponentType>;
-  /** Prefetches the query the page shows first, alongside the chunk. */
   prefetch?: (qc: QueryClient) => Promise<void>;
 }
 
-/** Routes. Each page is its own chunk, so the charts library only loads with the pages that draw charts. */
+// One chunk per page, so the chart library only loads where it's used.
 const defs: PageDef[] = [
   {
     path: "/",
@@ -70,11 +68,10 @@ export const pages = defs.map((d) => ({
   Component: lazy(() => d.load().then((c) => ({ default: c }))),
 }));
 
-/** Warm a route before the user gets there: its chunk and its first query. */
 export function prefetchRoute(qc: QueryClient, path: string): void {
   const page = pages.find((p) => p.path === path);
   if (!page) return;
-  // A failed chunk load surfaces again, with the error boundary, when the route is actually opened.
+  // If this fails, the error boundary shows it when the route opens.
   page.load().catch(() => undefined);
   if (page.prefetch) void page.prefetch(qc);
 }

@@ -1,9 +1,4 @@
-"""Invoice extraction.
-
-`extract()` reads the original file with Claude (or the offline stand-in); `normalise()` turns the
-structured output into canonical values in integer minor units, compares printed vs canonical
-digits, checks bilingual agreement, and computes per-field and document confidence.
-"""
+"""Invoice extraction: read the file with the model, then normalise to minor units and score confidence."""
 
 from __future__ import annotations
 
@@ -44,7 +39,7 @@ def _empty() -> InvoiceExtraction:
 
 
 def offline_extraction(sha256: str) -> InvoiceExtraction:
-    """Offline stand-in: ground truth written by the sample-invoice generator, else an empty result."""
+    """Ground truth from the sample-invoice generator, else an empty result."""
     from app.seed.invoices.generate import lookup_truth
 
     t = lookup_truth(sample_dirs(), sha256)
@@ -56,7 +51,7 @@ def offline_extraction(sha256: str) -> InvoiceExtraction:
 async def extract(data: bytes, mime: str, sha256: str, hints: list[str], attempt: int) -> tuple[InvoiceExtraction, str]:
     """Returns (extraction, source) where source is llm | offline | refusal | unavailable."""
     hint_text = "\n".join(f"- {h}" for h in hints) or "- none"
-    # The breakpoint sits on the document, so a re-read (attempt 2) reuses it; the hints and attempt vary.
+    # cache on the document so a re-read can reuse it
     content = [document_block(data, mime, cache=True),
                text_block(f"Known suppliers and parsing hints:\n{hint_text}\n\nAttempt {attempt}. Extract the invoice.")]
     llm = get_llm()
@@ -79,7 +74,6 @@ def _dec(v: Any) -> Decimal | None:
 
 
 def _raw_matches(value: Any, raw: str | None) -> bool:
-    """Printed text (after digit normalisation) agrees with the canonical value."""
     if value is None or raw is None:
         return True
     a, b = _dec(value), _dec(normalize_digits(raw).replace("٬", ""))

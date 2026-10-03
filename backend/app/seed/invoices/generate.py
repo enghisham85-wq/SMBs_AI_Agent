@@ -1,10 +1,4 @@
-"""Sample supplier invoices with ground truth: English, bilingual and Arabic-only, plus faulty variants.
-
-English and bilingual invoices are PDFs (reportlab); Arabic-only receipts are photo-style JPEGs
-(Pillow, slightly rotated with noise). Arabic text is shaped with arabic-reshaper + python-bidi.
-Each file gets `<name>.truth.json`; `index.json` maps file sha256 -> truth file, which the offline
-extractor uses when no API key is configured.
-"""
+"""Sample supplier invoices plus ground-truth JSON for the offline extractor."""
 
 from __future__ import annotations
 
@@ -36,7 +30,7 @@ def font_path() -> Path:
 
 
 def shape(text: str) -> str:
-    """Shape and reorder Arabic for left-to-right renderers."""
+    """Reshape Arabic for LTR renderers."""
     import arabic_reshaper
     from bidi.algorithm import get_display
 
@@ -69,12 +63,12 @@ class InvoiceSpec:
     due_days: int
     lines: list[Line]
     fmt: str = "pdf"  # pdf | jpg
-    date_printed: str | None = None  # override the printed date text (ambiguous-date case)
+    date_printed: str | None = None
     date_format_observed: str = "DMY"
-    total_printed: Decimal | None = None  # wrong-total case
-    total_alt_printed: Decimal | None = None  # bilingual mismatch case
+    total_printed: Decimal | None = None
+    total_alt_printed: Decimal | None = None  # Arabic total, when it disagrees
     arabic_digits: bool = False
-    expected: list[str] = field(default_factory=list)  # checks the case is designed to trigger
+    expected: list[str] = field(default_factory=list)  # checks this sample should trip
 
     @property
     def subtotal(self) -> Decimal:
@@ -122,7 +116,7 @@ def sample_specs(base: date) -> list[InvoiceSpec]:
                      Line("Chocolate muffin", "مافن شوكولاتة", Decimal("20"), "piece", Decimal("28")),
                      Line("Bread roll", "خبز فينو", Decimal("40"), "piece", Decimal("8"))],
                     fmt="jpg", arabic_digits=True),
-        # ---- faulty variants
+        # faulty ones
         InvoiceSpec("ar_bakery_wrong_total", "ar", *bakery, "GB-3310", d - timedelta(days=1), 7,
                     [Line("Croissant", "كرواسون", Decimal("40"), "piece", Decimal("25"))],
                     fmt="jpg", arabic_digits=True, total_printed=Decimal("1150.00"), expected=["extraction_arithmetic"]),
@@ -186,7 +180,6 @@ def truth(spec: InvoiceSpec) -> dict[str, Any]:
 
 
 def _rows(spec: InvoiceSpec) -> list[tuple[str, str]]:
-    """(english text, arabic text) rows, top to bottom."""
     ar = spec.arabic_digits
     date_text = spec.date_printed or spec.invoice_date.strftime("%d/%m/%Y")
     total_ar = spec.total_alt_printed if spec.total_alt_printed is not None else spec.total
@@ -261,13 +254,13 @@ def render_jpg(spec: InvoiceSpec, path: Path) -> None:
 
 
 def generate(out_dir: Path, base: date) -> list[dict[str, Any]]:
-    """Render every sample invoice into out_dir (idempotent) and write index.json."""
+    """Render every sample invoice into out_dir and write index.json."""
     out_dir.mkdir(parents=True, exist_ok=True)
     index: dict[str, str] = {}
     files: list[dict[str, Any]] = []
     for spec in sample_specs(base):
         path = out_dir / f"{spec.name}.{spec.fmt}"
-        (render_pdf if spec.fmt == "pdf" else render_jpg)(spec, path)  # always re-render: dates follow `base`
+        (render_pdf if spec.fmt == "pdf" else render_jpg)(spec, path)  # dates depend on `base`
         t = truth(spec)
         (out_dir / f"{spec.name}.truth.json").write_text(json.dumps(t, ensure_ascii=False, indent=2), encoding="utf-8")
         sha = hashlib.sha256(path.read_bytes()).hexdigest()

@@ -23,5 +23,5 @@ def upgrade_head_sync() -> None:
 
 
 async def upgrade_head() -> None:
-    # Alembic's async env calls asyncio.run(), so run it in a worker thread.
+    # the async env.py calls asyncio.run()
     await asyncio.to_thread(upgrade_head_sync)

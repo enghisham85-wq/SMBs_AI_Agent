@@ -32,7 +32,7 @@ export function Harness() {
     queryFn: ({ signal }) => api.get<CalibrationData>("/harness/calibration", signal),
   });
 
-  // Live pipeline: each stage message updates the matching row; new actions refetch the list.
+  // Stage messages update rows in place; a new action refetches the list.
   const onEvent = useCallback(
     (event: string, data: any) => {
       if (event === "stage") {

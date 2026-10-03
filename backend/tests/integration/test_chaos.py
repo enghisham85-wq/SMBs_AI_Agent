@@ -1,6 +1,4 @@
-"""Chaos mode: each of the 8 scenarios is detected, explained, corrected and followed by a proposed
-rule, end to end in under 2 minutes so a presenter can show it live; an approved date-format rule
-is then applied without asking the owner."""
+"""Chaos scenarios: detected, explained, corrected and turned into a rule within 2 minutes."""
 
 from __future__ import annotations
 
@@ -74,7 +72,7 @@ async def test_approved_date_rule_is_applied_without_asking(api: Any, cafe: dict
 
     again = await _inject(api, "date_format")
     out = again["outcome"]
-    assert out["questions_asked"] == 0  # the supplier's format is known now: no question, no correction
+    assert out["questions_asked"] == 0  # format is known now, so no question
     assert out["evidence"]["outcome"] == "posted" and out["evidence"]["read_as"] == out["evidence"]["true_date"]
     assert again["detected"] is False and again["rule_id"] is None
 

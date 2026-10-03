@@ -16,19 +16,17 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     DATABASE_URL: str = "sqlite+aiosqlite:///./var/app.db"
-    # LangGraph checkpoints live in their own SQLite file so they never compete with business writes.
+    # separate file so checkpoints don't fight business writes for the lock
     CHECKPOINT_DB_PATH: str = "./var/checkpoints.db"
     SQLITE_BUSY_TIMEOUT_MS: int = 5000
 
-    # dev and test turn on extra response checks (every figure-bearing response carries data_as_of).
     APP_ENV: Literal["dev", "test", "prod"] = "dev"
     DEMO_MODE: bool = True
-    # offline = deterministic stand-ins, no API calls (default until an API key and fixtures exist)
+    # offline: deterministic stand-ins, no API calls
     LLM_MODE: Literal["live", "record", "replay", "offline"] = "offline"
     LLM_FIXTURES_DIR: str = "./tests/fixtures/llm"
     ANTHROPIC_API_KEY: str | None = None
-    # Who serves the model in live/record mode: Anthropic directly, or an OpenAI-compatible gateway
-    # (LLM_BASE_URL + LLM_API_KEY, e.g. CodeCraft). LLM_MODEL overrides the model id; gateways name it their own way.
+    # openai_compatible uses LLM_BASE_URL + LLM_API_KEY. Gateways name models their own way, hence LLM_MODEL.
     LLM_PROVIDER: Literal["anthropic", "openai_compatible"] = "anthropic"
     LLM_BASE_URL: str | None = None
     LLM_API_KEY: str | None = None
@@ -36,12 +34,11 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str | None = None
 
     FILES_DIR: str = "./var/files"
-    # Sample invoices written by the generator (the offline extractor reads their ground truth).
     SAMPLE_INVOICES_DIR: str = "./var/sample_invoices"
     SESSION_SECRET: str = DEFAULT_SESSION_SECRET
 
     DEFAULT_COUNTRY: str = "EG"
-    # When set, overrides the chosen country profile's VAT rate for newly created businesses.
+    # overrides the country profile's VAT for new businesses
     DEFAULT_VAT_RATE_PERCENT: Decimal | None = Field(default=None, ge=0, le=100)
 
 
@@ -52,8 +49,8 @@ class InsecureSettingsError(RuntimeError):
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
-    # Session cookies are signed with this secret; with the public default anyone could forge one.
-    # (Checked here, not in a pydantic validator, so the error never echoes the other settings.)
+    # Anyone could forge cookies with the default secret. Checked here, not in a validator,
+    # so the error doesn't echo the other settings.
     if settings.APP_ENV == "prod" and settings.SESSION_SECRET == DEFAULT_SESSION_SECRET:
         raise InsecureSettingsError("SESSION_SECRET must be set to a private random value when APP_ENV=prod")
     return settings

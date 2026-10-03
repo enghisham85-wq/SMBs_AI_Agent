@@ -1,5 +1,3 @@
-"""Accountant Agent actions run through harness_graph."""
-
 from __future__ import annotations
 
 import uuid
@@ -48,7 +46,7 @@ async def _reverse(entry_id: str | None, action_id: uuid.UUID) -> None:
             await posting.reverse(s, entry, action_id=action_id)
 
 
-# =========================================================================== post_invoice
+# post_invoice
 async def _inv(invoice_id: str) -> PayableInvoice:
     async with read_session() as s:
         inv = await s.get(PayableInvoice, uuid.UUID(invoice_id))
@@ -128,7 +126,7 @@ async def _post_invoice_compensate(ctx: ActionContext, inputs: dict[str, Any], r
             inv.journal_entry_id = None
 
 
-# =========================================================================== post_sales_summary
+# post_sales_summary
 async def _existing_summary(bid: uuid.UUID, day: str) -> JournalEntry | None:
     async with read_session() as s:
         return (await s.execute(select(JournalEntry).where(JournalEntry.business_id == bid,
@@ -173,7 +171,7 @@ async def _entry_compensate(ctx: ActionContext, inputs: dict[str, Any], result: 
         await _reverse(result.get("entry_id"), ctx.action_id)
 
 
-# =========================================================================== apply_bank_match
+# apply_bank_match
 async def _match_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     c = inputs["candidate"]
     today = clock.today()
@@ -272,7 +270,7 @@ async def _match_compensate(ctx: ActionContext, inputs: dict[str, Any], result: 
                 other.match_status, other.matched_type, other.matched_id = "unmatched", None, None
 
 
-# =========================================================================== quarantine_entry
+# quarantine_entry
 async def _quarantine_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     async with write_session() as s:
         e = await s.get(JournalEntry, uuid.UUID(inputs["entry_id"]))
@@ -296,7 +294,7 @@ async def _quarantine_compensate(ctx: ActionContext, inputs: dict[str, Any], res
             e.status = result.get("prev_status", "posted")
 
 
-# =========================================================================== receivables
+# receivables
 async def _create_receivable_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     b = await _business(ctx.business_id)
     async with write_session() as s:

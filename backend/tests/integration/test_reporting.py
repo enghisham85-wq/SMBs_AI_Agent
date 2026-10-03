@@ -1,5 +1,4 @@
-"""Reporting: VAT summary with its independent check and period reminder, 13-week scenarios,
-supplier scorecard, and the language stored on the user."""
+"""Reporting: VAT summary, 13-week scenarios, supplier scorecard, user language."""
 
 from __future__ import annotations
 
@@ -54,12 +53,11 @@ async def _invoice(invoice_id: str) -> PayableInvoice:
     return inv
 
 
-# ------------------------------------------------------------------ VAT summary
 async def test_vat_summary_totals_match_posted_invoices_and_flag_missing_vat_number(api: Any, cafe: dict[str, Any]) -> None:
     ok = await _submit(api, cafe, "en_coffee")
     bad = await _submit(api, cafe, "en_produce_missing_vat_number")
     assert ok["outcome"] == "posted"
-    if bad["issues"]:  # e.g. which account the lemons go to: answer it like the owner would
+    if bad["issues"]:  # e.g. which account lemons go to; answer like the owner would
         async with read_session() as s:
             q = (await s.execute(select(ApprovalRequest).where(ApprovalRequest.status == "pending",
                                                                ApprovalRequest.graph_thread_id == f"document:{bad['document_id']}"))).scalar_one()
@@ -125,7 +123,6 @@ async def test_reminder_before_the_vat_period_closes(api: Any, cafe: dict[str, A
     assert await vat.step_period_reminder(bid, date(2026, 10, 5)) is None  # too early in the period
 
 
-# ------------------------------------------------------------------ 13-week forecast
 async def test_13_week_forecast_has_three_scenarios(api: Any, cafe: dict[str, Any]) -> None:
     body = (await api.client.get("/api/v1/cash/forecast?horizon=13w")).json()
     assert set(body["scenarios"]) == {"expected", "pessimistic", "optimistic"}
@@ -138,7 +135,6 @@ async def test_13_week_forecast_has_three_scenarios(api: Any, cafe: dict[str, An
     assert body["weeks"] == body["scenarios"]["expected"] and body["data_as_of"]
 
 
-# ------------------------------------------------------------------ supplier scorecard
 async def test_supplier_scorecard(api: Any, cafe: dict[str, Any]) -> None:
     from app.agents.stock.graphs import record_delivery
 
@@ -173,7 +169,6 @@ async def test_supplier_scorecard(api: Any, cafe: dict[str, Any]) -> None:
     assert (await api.client.get(f"/api/v1/suppliers/{uuid.uuid4()}/scorecard")).status_code == 404
 
 
-# ------------------------------------------------------------------ language on the user
 async def test_language_is_stored_on_the_user(api: Any, cafe: dict[str, Any]) -> None:
     assert (await api.client.patch("/api/v1/me", json={"language": "ar"})).status_code == 200
     assert (await api.client.get("/api/v1/me")).json()["user"]["language"] == "ar"

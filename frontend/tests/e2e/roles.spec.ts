@@ -1,7 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Each role sees only its pages, and forbidden actions are refused by the API as well
-// (hiding a link is not the protection). Runs against the sample cafe from serve-backend.mjs.
+// Hiding a link isn't protection, so these also check the API refuses.
 const USERS = {
   owner: "owner-demo-2026",
   manager: "manager-demo-2026",
@@ -15,7 +14,7 @@ async function login(page: Page, role: Role) {
   await page.getByLabel(/password/i).fill(USERS[role]);
   await page.getByRole("button", { name: /sign in/i }).click();
   await expect(page.getByTestId("clock-control")).toBeVisible();
-  // Some seeded users prefer Arabic; read the labels in English (the choice is saved on the user).
+  // Some seeded users prefer Arabic. Force English for the labels.
   const r = await page.request.patch("/api/v1/me", {
     data: { language: "en" },
     headers: { "X-CSRF-Token": await csrf(page) },
@@ -44,7 +43,7 @@ test("staff see only Stock, cannot open money pages and are refused by the API",
     await page.goto(path);
     await expect(page).toHaveURL(/\/stock$/);
   }
-  // Stock items without costs; the orders and suppliers tabs are not offered.
+  // no costs, no suppliers tab
   await expect(page.getByRole("tab", { name: /suppliers/i })).toHaveCount(0);
   const items = await (await page.request.get("/api/v1/stock/items")).json();
   expect(JSON.stringify(items)).not.toContain("unit_cost");

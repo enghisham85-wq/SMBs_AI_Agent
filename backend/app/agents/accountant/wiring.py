@@ -1,5 +1,3 @@
-"""Registers the Accountant Agent: action specs, graphs, daily steps, seed data, demo bank source, Telegram."""
-
 from __future__ import annotations
 
 import asyncio
@@ -69,8 +67,7 @@ async def seed_books(business_id: uuid.UUID, start: date, ids: dict[str, Any]) -
     try:
         from app.seed.invoices.generate import generate
 
-        # Dated up to the current business day. Rendering every PDF/JPG (reportlab, Pillow) takes seconds,
-        # so it runs off the event loop.
+        # rendering takes a few seconds, keep it off the loop
         await asyncio.to_thread(generate, Path(get_settings().SAMPLE_INVOICES_DIR), opening_day)
     except FileNotFoundError:
         pass  # no Arabic-capable font on this machine; sample invoices are optional

@@ -1,12 +1,4 @@
-"""Learned rules: proposed from incidents, approved/edited/rejected/deactivated by the owner,
-and applied by code as checks on later actions.
-
-Kinds and how they apply:
-- precondition / check: compare a field of an action's inputs; a failure holds the action and asks the owner
-- parsing_hint: extraction hints; a supplier date format also sets Supplier.date_format_hint (date_sanity)
-- classification: expense account for a supplier (Accountant classification)
-- policy: `require_approval` turns off auto-approval for an action type
-"""
+"""Learned rules: proposed from incidents, reviewed by the owner, then applied by code to later actions."""
 
 from __future__ import annotations
 
@@ -28,7 +20,7 @@ from app.models.harness import LearnedRule
 
 APPLIED_KINDS = ("precondition", "check")
 
-# business_id -> active rules (detached snapshots); refreshed on rule.activated / rule.deactivated.
+# business_id -> active rules, refreshed on rule.activated / rule.deactivated
 _cache: dict[uuid.UUID, list[LearnedRule]] = {}
 
 
@@ -49,10 +41,9 @@ async def _on_rule_event(env: dict[str, Any]) -> None:
     invalidate(uuid.UUID(env["business_id"]))
 
 
-# ------------------------------------------------------------------ lifecycle
 async def propose(*, business_id: uuid.UUID, agent: str, kind: str, rule_text_en: str, rule_text_ar: str,
                   trigger: dict[str, Any], source_incident_id: uuid.UUID | None) -> uuid.UUID:
-    """Create a `proposed` rule. The same kind + trigger already proposed or active is not proposed again."""
+    """Create a `proposed` rule, unless the same kind + trigger is already proposed or active."""
     rule_schemas.validate(kind, trigger)
     async with write_session() as s:
         same = (await s.execute(select(LearnedRule).where(LearnedRule.business_id == business_id, LearnedRule.kind == kind,
@@ -81,7 +72,7 @@ async def _get(s: Any, rule_id: uuid.UUID, business_id: uuid.UUID) -> LearnedRul
 
 
 async def _side_effects(s: Any, rule: LearnedRule, active: bool) -> None:
-    """Rules that live as data elsewhere: a supplier's date format feeds date_sanity."""
+    """Some rules also live as data elsewhere, e.g. a supplier's date format."""
     if rule.kind == "parsing_hint" and rule.trigger.get("date_format"):
         from app.models.master import Supplier
 
@@ -167,7 +158,6 @@ async def edit(rule_id: uuid.UUID, business_id: uuid.UUID, user_id: uuid.UUID, *
     return new
 
 
-# ------------------------------------------------------------------ lookup
 async def active_rules(business_id: uuid.UUID, agent: str | None = None, kind: str | None = None) -> list[LearnedRule]:
     if business_id not in _cache:
         async with read_session() as s:
@@ -201,7 +191,6 @@ async def mark_overridden(rule_id: uuid.UUID) -> None:
             r.times_overridden += 1
 
 
-# ------------------------------------------------------------------ application
 def _lookup(inputs: dict[str, Any], path: str) -> Any:
     cur: Any = inputs
     for part in path.split("."):
@@ -232,7 +221,7 @@ def compare(actual: Any, op: str, expected: Any) -> bool:
 
 
 async def apply_preconditions(spec: ActionSpec, ctx: ActionContext, inputs: dict[str, Any]) -> list[Check]:
-    """PRECHECK hook: evaluate the active precondition/check rules for this action type."""
+    """PRECHECK hook for the active precondition/check rules."""
     out: list[Check] = []
     for rule in await active_rules(ctx.business_id):
         if rule.kind not in APPLIED_KINDS or rule.trigger.get("action_type") != spec.name:
@@ -253,7 +242,7 @@ async def apply_preconditions(spec: ActionSpec, ctx: ActionContext, inputs: dict
 
 
 async def requires_approval(business_id: uuid.UUID, action_type: str) -> uuid.UUID | None:
-    """A policy rule that turns off auto-approval for this action type (its id), else None."""
+    """Id of a policy rule that turns off auto-approval for this action type, if any."""
     for rule in await active_rules(business_id, kind="policy"):
         if rule.trigger.get("action_type") == action_type and rule.trigger.get("require_approval"):
             return rule.id

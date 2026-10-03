@@ -664,8 +664,8 @@ export interface paths {
          * Vat Summary
          * @description Input VAT, output VAT, net payable and the supporting invoices for a period.
          *
-         *     `period` is `2026-10` (monthly) or `2026-Q4` (quarterly); default: the current period. The figures
-         *     are reviewed by the independent second check before `status` becomes `ready`.
+         *     `period` is `2026-10` or `2026-Q4` and defaults to the current one. `status` turns `ready` once
+         *     the second check has reviewed the figures.
          */
         get: operations["vat_summary_api_v1_vat_summary_get"];
         put?: never;

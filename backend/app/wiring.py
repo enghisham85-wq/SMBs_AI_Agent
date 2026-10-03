@@ -1,10 +1,10 @@
-"""Registers every graph, action spec, daily step and event handler. Called at startup and in tests."""
+"""Registers every graph, action spec, daily step and event handler."""
 
 from __future__ import annotations
 
 import importlib
 
-# Each module exposes `register()`. Order matters only for readability.
+# each module exposes register(); order doesn't matter
 MODULES: list[str] = [
     "app.harness.graph",
     "app.harness.rules",

@@ -1,8 +1,4 @@
-"""Sample cafe seed: an Egyptian cafe by default, any country profile via --country.
-
-3 months of sales and bank history are produced by the same generator as the daily demo feed,
-so history and future days follow the same patterns.
-"""
+"""Seeds a sample cafe (Egyptian by default) with 3 months of history from the demo feed generator."""
 
 from __future__ import annotations
 
@@ -36,7 +32,7 @@ SEED_DIR = Path(__file__).resolve().parent
 HISTORY_DAYS = 90
 PASSWORDS = {"owner": "owner-demo-2026", "manager": "manager-demo-2026", "staff": "staff-demo-2026"}
 
-# Agents extend the seed (opening stock, sample invoices, receivables ...): fn(business_id, start_date, catalog_ids)
+# agents add their own seed data (opening stock, invoices...) through these
 SeedExtension = Callable[[uuid.UUID, date, dict[str, Any]], Awaitable[None]]
 SEED_EXTENSIONS: list[SeedExtension] = []
 
@@ -76,11 +72,11 @@ async def seed(country: str | None = None, start_date: date | None = None, histo
 
     bid = uuid.uuid4()
     ids: dict[str, Any] = {"suppliers": {}, "items": {}, "bank_accounts": {}, "users": {}}
-    # argon2 is slow on purpose: hash in worker threads, before the write lock is taken.
+    # argon2 is slow; hash in threads before taking the write lock
     hashes = dict(zip(PASSWORDS, await asyncio.gather(*(asyncio.to_thread(hash_password, pw)
                                                        for pw in PASSWORDS.values())), strict=True))
-    # Ids are assigned up front, so instead of a flush per row to learn its id there is one flush per
-    # layer of foreign keys (the unit of work does not order inserts by FK without relationships).
+    # Ids are set up front, so we flush once per FK layer instead of once per row.
+    # Without relationships the unit of work won't order inserts by FK for us.
     referencing_parents: list[Any] = []  # rows pointing at suppliers or bank accounts
     referencing_items: list[Any] = []
     async with write_session() as s:
@@ -177,7 +173,6 @@ async def seed(country: str | None = None, start_date: date | None = None, histo
         s.add(BusinessClock(business_id=bid, mode="simulated" if settings.DEMO_MODE else "real",
                             current_date=start - timedelta(days=1), last_run_date=start - timedelta(days=1)))
 
-    # History: the same generator the daily feed uses.
     clock.set_state("simulated", history_start)
     d = history_start
     while d < start:

@@ -28,9 +28,8 @@ def _bid(env: dict[str, Any]) -> uuid.UUID:
     return uuid.UUID(env["business_id"])
 
 
-# ------------------------------------------------------------------ budget.check_result
 async def on_budget_check_result(env: dict[str, Any]) -> None:
-    """Proceed, or hand the disagreement to conflict_graph (the owner sees both positions)."""
+    """Proceed, or hand the disagreement to conflict_graph."""
     bid = _bid(env)
     p = env["payload"]
     po_id = uuid.UUID(p["po_id"])
@@ -49,7 +48,6 @@ async def on_budget_check_result(env: dict[str, Any]) -> None:
         await start_conflict(bid, po_id, p)
 
 
-# ------------------------------------------------------------------ budget.updated / shortfall.predicted
 async def can_wait(po: PurchaseOrder, d: date, days: int = DEFER_DAYS) -> bool:
     """A non-critical order can wait if its items will not run out before the deferral ends plus delivery."""
     if po.is_critical_order:
@@ -106,7 +104,6 @@ async def on_shortfall_predicted(env: dict[str, Any]) -> None:
                   inputs={"plan_id": p.get("plan_id"), "gap_date": p["gap_date"]}, outputs={"deferred": deferred})
 
 
-# ------------------------------------------------------------------ invoice.posted / invoice.held
 async def on_invoice_posted(env: dict[str, Any]) -> None:
     """Update item cost from the invoice; a change above the threshold publishes price.changed."""
     bid = _bid(env)
@@ -154,7 +151,6 @@ async def on_invoice_held(env: dict[str, Any]) -> None:
                   inputs={"supplier_id": sup.id, "invoice_id": p["invoice_id"], "reasons": reasons})
 
 
-# ------------------------------------------------------------------ stock_valuation.mismatch
 async def on_stock_valuation_mismatch(env: dict[str, Any]) -> None:
     bid = _bid(env)
     p = env["payload"]

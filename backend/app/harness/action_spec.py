@@ -18,10 +18,8 @@ class ActionContext:
 
 @dataclass
 class Check:
-    """Outcome of one precondition. `ask=True` holds the action and asks the owner instead of failing;
-    `cancel=True` means the action is no longer needed (e.g. the invoice was paid) and ends it quietly.
-    `incident=True` records a failure as an incident (with root cause and a proposed rule): a fault the
-    agent caught, not just a routine question."""
+    """One precondition result. `ask` holds and asks the owner, `cancel` ends the action quietly,
+    `incident` logs it as a real fault rather than a routine question."""
 
     name: str
     passed: bool

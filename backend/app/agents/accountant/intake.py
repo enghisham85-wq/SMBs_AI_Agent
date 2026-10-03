@@ -22,10 +22,7 @@ class UnsupportedFileError(ValueError):
 
 async def submit(business_id: uuid.UUID, data: bytes, mime: str, name: str, channel: str,
                  user_id: uuid.UUID | None) -> dict[str, Any]:
-    """Store the original file, create a Document and run document_graph.
-
-    An identical file (same sha256) short-circuits to the existing document instead of being read again.
-    """
+    """Store the file, create a Document and run document_graph. A repeat upload returns the existing one."""
     if mime not in ALLOWED:
         raise UnsupportedFileError(f"unsupported file type {mime}")
     digest = hashlib.sha256(data).hexdigest()

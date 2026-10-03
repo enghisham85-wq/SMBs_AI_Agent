@@ -9,9 +9,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: Number(process.env.VITE_PORT ?? 5173),
-    // Fail instead of drifting to another port: the e2e suite and the proxy expect this exact one.
+    // e2e and the proxy rely on this exact port.
     strictPort: true,
-    // The e2e suite points the proxy at its own seeded backend (playwright.config.ts).
     proxy: { "/api": { target: process.env.API_TARGET ?? "http://localhost:8000", changeOrigin: true } },
   },
   test: {

@@ -1,13 +1,4 @@
-"""Daily cash projection.
-
-opening + inflows - outflows, one day at a time, from the day after the last bank data:
-- inflows: forecast sales x payment-method settlement lag; receivables by due date x on-time probability
-- outflows: payables per the recommended schedule; open POs not yet invoiced (each payable counted
-  once); recurring obligations; the usual weekly supplier spending not covered by known orders
-Scenarios use the P10/P50/P90 sales forecast and pessimistic/expected receivable delays.
-
-`build_flows` and `simulate` are pure; `load_inputs` reads the database.
-"""
+"""Daily cash projection from the day after the last bank data. Only `load_inputs` touches the DB."""
 
 from __future__ import annotations
 
@@ -32,7 +23,6 @@ PATTERN_WEEKS = 4
 LATE_DELAY_DAYS = 21
 
 
-# ------------------------------------------------------------------ inputs
 @dataclass(frozen=True)
 class Receivable:
     id: str
@@ -147,7 +137,6 @@ class Projection:
         return [{"date": d.date.isoformat(), "closing_minor": d.closing} for d in self.days]
 
 
-# ------------------------------------------------------------------ recurrence
 def occurrences(ob: ObligationIn, start: date, end: date) -> list[date]:
     """Due dates of an obligation in [start, end]. Monthly dates clamp to the month's last day."""
     if ob.recurrence == "once":
@@ -167,7 +156,6 @@ def occurrences(ob: ObligationIn, start: date, end: date) -> list[date]:
     return out
 
 
-# ------------------------------------------------------------------ flows
 def _receivable_flows(r: Receivable, scenario: str, start: date) -> list[Flow]:
     p_on_time = max(0.05, min(1.0, 1 - r.late_score))
     overdue = r.due_date < start
@@ -369,7 +357,7 @@ class Week:
 
 
 def weekly(p: Projection, weeks: int = 13) -> list[Week]:
-    """The 13-week view (horizon="13w"): daily projection summed into 7-day buckets from its first day."""
+    """13-week view: the daily projection summed into 7-day buckets."""
     out: list[Week] = []
     for d in p.days:
         if not out or (d.date - out[-1].week_start).days >= 7:
@@ -384,7 +372,6 @@ def weekly(p: Projection, weeks: int = 13) -> list[Week]:
     return out
 
 
-# ------------------------------------------------------------------ loading
 async def _sales_inputs(s: AsyncSession, business_id: uuid.UUID, start: date, end: date,
                         today: date) -> tuple[dict[date, tuple[int, int, int]], dict[date, dict[str, int]],
                                               dict[str, Decimal], list[int], str]:
@@ -406,7 +393,7 @@ async def _sales_inputs(s: AsyncSession, business_id: uuid.UUID, start: date, en
     total = sum(share_tot.values())
     method_share = ({m: Decimal(v) / Decimal(total) for m, v in share_tot.items()} if total else {"cash": Decimal(1)})
     history = [sum(daily[d].values()) for d in sorted(daily) if d < start]
-    # Days after the last bank data whose sales are already recorded (their money is still to land).
+    # sales already recorded but not yet in the bank
     actual = {d: dict(daily[d]) for d in daily if start - timedelta(days=1) <= d <= today}
     # Card and transfer sales of the last bank day settle on the first projected day.
     prices = {i.id: i.sale_price.amount_minor for i in (await s.execute(select(Item).where(
@@ -506,7 +493,7 @@ async def load_inputs(s: AsyncSession, business_id: uuid.UUID, today: date, hori
         ReceivableInvoice.business_id == business_id,
         ReceivableInvoice.status.in_(("open", "partially_paid"))))).scalars()
         if r.total.amount_minor - r.amount_paid_minor > 0]
-    # Every owing customer's paid history in one query, not one per open invoice.
+    # all owing customers' history in one query
     paid_by_customer: dict[str, list[Any]] = {}
     customers = {r.customer_name for r in open_invoices}
     if customers:

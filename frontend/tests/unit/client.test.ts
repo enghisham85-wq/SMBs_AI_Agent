@@ -10,7 +10,7 @@ import {
 } from "../../src/api/client";
 import { errorText } from "../../src/api/errorText";
 
-// A fetch that never answers on its own: it settles only when its signal aborts, like a hung server.
+// Hangs until its signal aborts.
 function hangingFetch() {
   return vi.fn(
     (_url: string, init: RequestInit) =>

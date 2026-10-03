@@ -1,10 +1,4 @@
-"""Daily digest and the end-of-day harness steps.
-
-- `approval_timeouts` step: overdue requests get their safe default and are re-asked with raised urgency.
-- `digest` step: close the day's self-calibration, then send the owner one message listing what was
-  acted on with middle-band confidence (act_flag), new incidents, rules waiting for approval and
-  requests still open.
-"""
+"""End-of-day harness steps: approval timeouts and the owner's daily digest."""
 
 from __future__ import annotations
 

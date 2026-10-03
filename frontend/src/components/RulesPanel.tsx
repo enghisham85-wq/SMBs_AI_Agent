@@ -18,7 +18,6 @@ export interface RuleRow {
   times_overridden: number;
 }
 
-/** Pending and active learned rules. Only the owner can approve, edit, reject or turn a rule off. */
 export function RulesPanel({ rules }: { rules: RuleRow[] }) {
   const { t, i18n } = useTranslation();
   const { can } = useAuth();

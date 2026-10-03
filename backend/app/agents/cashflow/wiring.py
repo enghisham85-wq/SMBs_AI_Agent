@@ -1,5 +1,3 @@
-"""Registers the Cash-Flow Agent: action specs, graphs, daily steps, events, budget provider and sample data."""
-
 from __future__ import annotations
 
 import uuid
@@ -14,16 +12,12 @@ from app.db.types import Money
 from app.models.finance_master import BankAccount, BankBalanceSnapshot
 from app.models.tenancy import Business
 
-# The sample cafe is slowly losing cash: this month's rent + salaries week is set to dip this far below the buffer.
+# how far below the buffer the sample cafe's rent + salaries week dips
 SAMPLE_GAP_SHARE_OF_BUFFER = 0.3
 
 
 async def seed_cash_story(business_id: uuid.UUID, start: date, ids: dict[str, Any]) -> None:
-    """Set the sample cafe's bank balance so the coming rent + salaries week falls below the minimum buffer.
-
-    Every historic bank snapshot moves by the same amount (as if the cafe had opened with a different
-    balance), and the books' opening entry gets the matching owner's-equity adjustment.
-    """
+    """Shift the sample cafe's balances so the coming rent + salaries week dips below the buffer."""
     from app.agents.accountant import posting
 
     today = start - timedelta(days=1)

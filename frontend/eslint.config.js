@@ -15,7 +15,7 @@ export default tseslint.config(
     },
   },
   {
-    // Node-side test tooling (the e2e backend launcher).
+    // e2e backend launcher runs in Node
     files: ["tests/e2e/**/*.mjs"],
     languageOptions: { globals: { process: "readonly" } },
   },

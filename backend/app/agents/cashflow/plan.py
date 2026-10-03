@@ -1,8 +1,4 @@
-"""Shortfall detection and the ranked action plan.
-
-Every candidate action is re-simulated on the projection; ranking is gap closed / risk, and
-short-term financing is always last.
-"""
+"""Shortfall detection and the ranked action plan. Financing always comes last."""
 
 from __future__ import annotations
 
@@ -70,7 +66,7 @@ def _money(minor: int, cur: str, lang: str = "en") -> str:
 def candidates(inp: Inputs, base: Projection, sf: Shortfall) -> list[Candidate]:
     cur = inp.currency
     out: list[Candidate] = []
-    # Chase receivables whose money is expected after the cash dips below the buffer.
+    # chase receivables expected after the dip
     for r in inp.receivables:
         flows = [f for f in base.flows if f.kind == "receivable" and f.ref == r.id]
         late = sum(f.amount_minor for f in flows if f.date >= sf.first_below)
@@ -86,7 +82,7 @@ def candidates(inp: Inputs, base: Projection, sf: Shortfall) -> list[Candidate]:
             f"طالب {r.customer} بالفاتورة {r.number} ({_money(r.outstanding_minor, cur, 'ar')}، {when_ar})",
             "medium" if r.late_score >= 0.3 else "low",
             [{"prefix": f"receivable:{r.id}", "move_to": chase_on.isoformat()}]))
-    # Pay suppliers on the last day of their terms (never later).
+    # pay suppliers at the end of terms, never later
     for p in inp.payables:
         rec = pay.recommend(p.terms, p.outstanding_minor, inp.today, tight=inp.tight)
         if rec.pay_on >= p.terms.due_date or rec.pay_on > sf.lowest_date:
@@ -99,7 +95,7 @@ def candidates(inp: Inputs, base: Projection, sf: Shortfall) -> list[Candidate]:
             f"ادفع {p.label} في {p.terms.due_date.strftime('%d/%m')}، آخر يوم في المهلة{lose_ar}",
             "medium" if rec.discount_minor else "low",
             [{"key": f"payable:{p.id}", "move_to": p.terms.due_date.isoformat()}]))
-    # Defer purchase orders that are not critical and not yet sent.
+    # defer unsent, non-critical POs
     for po in inp.pos:
         if po.is_critical or po.status not in ("draft", "pending_approval", "approved"):
             continue
@@ -117,7 +113,7 @@ def candidates(inp: Inputs, base: Projection, sf: Shortfall) -> list[Candidate]:
             f"Cut non-critical purchasing by 15% until {sf.lowest_date.strftime('%d %b')}",
             f"خفّض المشتريات غير الضرورية 15% حتى {sf.lowest_date.strftime('%d/%m')}",
             "medium", [{"prefix": "planned:", "scale": PURCHASING_CUT, "until": sf.lowest_date.isoformat()}]))
-    # Move flexible expenses to a week after the cash is back above the buffer.
+    # flexible expenses move to a week after recovery
     move_to = sf.last_below + timedelta(days=MOVE_AFTER_DAYS)
     for ob in inp.obligations:
         risk = MOVABLE_OBLIGATIONS.get(ob.type)

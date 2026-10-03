@@ -1,9 +1,4 @@
-"""Incident analysis -> root cause and a proposed learned rule.
-
-Uses Claude (IncidentAnalysis, RuleProposal) with deterministic templates offline. Per-type templates
-live in TEMPLATES; every escalated action (`<action>.escalated`) has a generic one. A proposed
-trigger must validate against its kind's schema (rule_schemas), else the template's is used.
-"""
+"""Incident analysis -> root cause and a proposed rule. TEMPLATES cover offline mode and invalid triggers."""
 
 from __future__ import annotations
 
@@ -206,10 +201,7 @@ def _prompt(name: str) -> str:
 
 
 async def analyse_and_propose(incident_id: uuid.UUID, *, resolve: bool = True) -> uuid.UUID | None:
-    """Fill in the root cause and propose a rule. Returns the proposed rule id, if any.
-
-    `resolve=False` (escalations, still with the owner) keeps the incident open as `investigating`.
-    """
+    """Fill in the root cause and propose a rule; returns the rule id. resolve=False keeps it open."""
     async with read_session() as s:
         inc = await s.get(Incident, incident_id)
     if inc is None:
@@ -218,7 +210,7 @@ async def analyse_and_propose(incident_id: uuid.UUID, *, resolve: bool = True) -
     facts = json.dumps({"type": inc.type, "summary": inc.summary, "detected_by": inc.detected_by, "refs": inc.refs,
                         "action_taken": inc.action_taken}, ensure_ascii=False, default=str)
     llm = get_llm()
-    # Both calls only read `facts`, so they run side by side; any expected failure falls back for both.
+    # both only read facts, so run them together
     got = await asyncio.gather(
         llm.parse("incident", _prompt("incident_analysis.md"), [text_block(facts)], IncidentAnalysis,
                   offline=lambda: fallback[0] if fallback else IncidentAnalysis(root_cause=inc.summary, category="other")),
@@ -245,7 +237,7 @@ async def analyse_and_propose(incident_id: uuid.UUID, *, resolve: bool = True) -
     if proposal is None:
         await _record_cause(inc, analysis, resolve)
         return None
-    # A template's trigger is authoritative for known incident types (keeps triggers machine-checkable).
+    # known incident types: the template's trigger wins
     trigger: dict[str, Any] = fallback[1].trigger if fallback and fallback[1].kind == proposal.kind else proposal.trigger
     rid = await rules.propose(business_id=inc.business_id, agent=inc.agent, kind=proposal.kind,
                               rule_text_en=proposal.rule_text_en, rule_text_ar=proposal.rule_text_ar, trigger=trigger,
@@ -279,7 +271,7 @@ async def _record_cause(inc: Incident, analysis: IncidentAnalysis, resolve: bool
 
 
 async def on_escalation(spec: Any, state: Any, incident_id: uuid.UUID) -> None:
-    """ESCALATION hook: every escalated action gets a root cause and, where possible, a proposed rule."""
+    """ESCALATION hook."""
     await analyse_and_propose(incident_id, resolve=False)
 
 

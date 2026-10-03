@@ -1,19 +1,4 @@
-"""Sample metrics: replay 3 months of the sample cafe with the simulated clock and compare the
-assistants with a "no assistant" baseline on the same demand, opening stock and lead times.
-
-People are simulated the simple way: staff record each delivery on its expected day (as ordered), and
-the owner answers every open request once a day, following the assistants' advice (approve orders and
-reminders, take the recommended option, act on the top plan step, accept offers to stop asking about routine
-orders; otherwise the safe default). Each answer is one tap; reading an alert counts only towards time.
-
-Writes backend/var/reports/sample_metrics.json and asserts:
-- stockout warnings at least 3 days ahead in at least 90% of cases
-- fewer stockout days and less waste than the baseline
-- cash shortfalls flagged at least 14 days ahead in at least 90% of cases
-- owner effort of at most 15 minutes and at most 25 answers per simulated week
-- at least 85% of bank lines matched automatically, and none matched wrongly
-Run it explicitly: `uv run pytest -m slow tests/integration/test_sample_metrics.py` (about 10 minutes).
-"""
+"""3-month replay of the sample cafe vs. the no-assistant baseline. Slow, run with -m slow (~10 min)."""
 
 from __future__ import annotations
 
@@ -58,7 +43,7 @@ DAYS = int(os.environ.get("SAMPLE_METRICS_DAYS", "91"))  # shorter only for a qu
 SECONDS_PER_ANSWER = 30  # read the request and tap
 SECONDS_PER_ALERT = 10  # read a notice
 REPORT = Path(__file__).resolve().parents[2] / "var" / "reports" / "sample_metrics.json"
-# What each demo-feed bank line should be matched to (the feed knows the truth).
+# Ground truth for bank matching, straight from the demo feed.
 EXPECTED_MATCH = {"cash_sales": "sales_cash", "card_settlement": "settlement", "transfer_sales": "settlement",
                   "card_fee": "card_fee", "cash_deposit_out": "transfer", "cash_deposit_in": "transfer",
                   "obligation": "obligation", "supplier_payment": "supplier_invoice", "customer_payment": "customer_payment"}
@@ -78,7 +63,7 @@ class Owner:
 
 
 def _choice(req: ApprovalRequest) -> str:
-    """The owner follows the assistants' advice: approve, take the recommended option, act on the top plan step."""
+    """The simulated owner always takes the advice."""
     keys = [o["key"] for o in req.options]
     recommended = (req.context or {}).get("recommendation")
     if recommended in keys:
@@ -96,13 +81,13 @@ def _choice(req: ApprovalRequest) -> str:
 
 
 async def _owner_round(bid: uuid.UUID, owner: Owner, seen_alerts: set[uuid.UUID]) -> tuple[int, int]:
-    """Answer every open request once (new ones created by an answer wait for tomorrow). -> (answers, alerts read)"""
+    """One pass over open requests; new ones wait till tomorrow. Returns (answers, alerts read)."""
     async with read_session() as s:
         pending = (await s.execute(select(ApprovalRequest).where(ApprovalRequest.business_id == bid,
                                                                  ApprovalRequest.status == "pending")
                                    .order_by(ApprovalRequest.created_at))).scalars().all()
     answers = alerts = 0
-    # The Stock Agent's offers to stop asking about routine orders: the owner accepts (one tap each).
+    # Accept every routine-order offer.
     async with read_session() as s:
         offers = [r for r in (await s.execute(select(LearnedRule).where(
             LearnedRule.business_id == bid, LearnedRule.kind == "policy", LearnedRule.status == "proposed"))).scalars()
@@ -147,7 +132,7 @@ def _names(counts: dict[uuid.UUID, int], items: dict[uuid.UUID, Item]) -> dict[s
 
 async def _staff_spoilage(bid: uuid.UUID, d: date, shelf: Shelf, items: dict[uuid.UUID, Item],
                           recipes: list[RecipeLine]) -> None:
-    """Staff throw out what went off this morning (recorded as spoilage) and count sold-out items as zero."""
+    """Record this morning's spoilage and count sold-out items as zero."""
     async with read_session() as s:
         sales = list((await s.execute(select(Sale).where(Sale.business_id == bid, Sale.date == d))).scalars())
         arrived = list((await s.execute(select(StockMovement).where(
@@ -160,7 +145,7 @@ async def _staff_spoilage(bid: uuid.UUID, d: date, shelf: Shelf, items: dict[uui
         if on_hand > 0:
             await run_action("adjust_stock", {"item_id": str(iid), "qty_delta": str(-min(qty, on_hand)), "type": "spoilage",
                                               "reason": "past its shelf life, thrown away", "source": "user:staff"}, bid)
-    # Sold out: the shelf is empty, not in debt. Staff count it as zero (the lost sales are not owed).
+    # Sold out is zero, never negative.
     for iid, on_hand in levels.items():
         if on_hand < 0:
             await run_action("adjust_stock", {"item_id": str(iid), "qty_delta": str(-on_hand), "type": "count_correction",
@@ -216,19 +201,16 @@ async def test_three_month_replay_meets_the_success_criteria(cafe: dict[str, Any
             ReceivableInvoice.business_id == bid))).scalars()}
         suppliers = {sp.id: sp for sp in (await s.execute(select(Supplier).where(Supplier.business_id == bid))).scalars()}
 
-    # ---------------------------------------------------------------- stock: assistants vs baseline
+    # Stock: assistants vs baseline
     usage = usage_by_day(sales, items, recipes)
     ingredients = [i for i in items.values() if i.is_ingredient]
-    assistant = shelf.result  # scored day by day during the replay, by the same rules as the baseline
+    assistant = shelf.result  # scored live during the replay, same rules as the baseline
     lead = {sid: sp.stated_lead_time_days for sid, sp in suppliers.items()}
     base_events = baseline_orders(usage, ingredients, lead, first, DAYS)
     baseline = simulate_stock(opening, usage, base_events, items, first, DAYS)
 
-    # Stockout warnings, at least 3 days ahead in at least 90% of cases. Each warning is an order line that
-    # says when that item runs out ("Milk runs out on ..."); it counts when it came at least 3 days before.
-    # A stockout nobody warned about is a miss. Products that keep for 3 days or less (the bakery's daily
-    # bread and pastries) cannot be stocked 3 days ahead: they are re-ordered daily, so their lines are
-    # reported but not scored.
+    # Warnings must come 3+ days ahead in 90% of cases; an unwarned stockout is a miss.
+    # Items that keep 3 days or less are re-ordered daily, so they're reported but not scored.
     def keeps(iid: uuid.UUID) -> bool:
         life = items[iid].shelf_life_days if iid in items else None
         return life is None or life > 3
@@ -255,10 +237,8 @@ async def test_three_month_replay_meets_the_success_criteria(cafe: dict[str, Any
     warning_cases = len(scored) + len(unwarned)
     warned_3_days_ahead = sum(1 for w in scored if w["lead_days"] >= 3)
 
-    # Cash shortfalls, each flagged at least 14 days ahead in at least 90% of cases; a real dip below the
-    # buffer nobody flagged is a miss.
-    # While cash stays below the buffer, each day's forecast says "first below tomorrow": those plans belong to
-    # the shortfall already flagged, so plans whose gap dates run on within 3 days form one episode.
+    # Shortfalls flagged 14+ days ahead in 90% of cases. While cash sits below the buffer every
+    # forecast flags it again, so plans within 3 days of each other are one episode.
     first_flag: dict[date, date] = {}
     for p in plans:
         flagged_on = p.created_at.date()
@@ -281,13 +261,12 @@ async def test_three_month_replay_meets_the_success_criteria(cafe: dict[str, Any
     shortfall_cases = len(flagged) + len(missed_dips)
     flagged_14_days_ahead = sum(1 for f in flagged if f["lead_days"] >= 14)
 
-    # Owner effort per simulated week: at most 15 minutes and at most 25 answers.
+    # Owner effort
     weeks = [{"week": w + 1, "answers": weekly_answers[w], "alerts": weekly_alerts[w],
               "minutes": round((weekly_answers[w] * SECONDS_PER_ANSWER + weekly_alerts[w] * SECONDS_PER_ALERT) / 60, 1)}
              for w in sorted(weekly_answers)]
 
-    # Bank matching: at least 85% of bank lines matched automatically, and none matched wrongly (the feed
-    # records what each line is).
+    # Bank matching
     fed = [t for t in txns if (t.meta or {}).get("feed")]
     auto = [t for t in fed if t.match_status == "auto_matched"]
     wrong = []

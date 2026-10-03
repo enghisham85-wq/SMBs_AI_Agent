@@ -1,12 +1,4 @@
-"""VAT summary per period and the reminder before a VAT period closes.
-
-Input and output VAT come from the ledger (VAT input / VAT output accounts), so they match the books
-exactly. The supporting list shows the period's supplier invoices and customer invoices; each supplier
-invoice is flagged when VAT is charged without a valid tax registration number, or when its VAT
-breakdown is missing or does not add up. Tax figures are high-impact: the summary is prepared
-by the reversible `prepare_vat_summary` action, whose proposal the independent second check reviews
-before the summary is marked ready; a disagreement escalates to the owner.
-"""
+"""VAT summary per period, and the reminder before a period closes. Figures come from the ledger."""
 
 from __future__ import annotations
 
@@ -39,7 +31,6 @@ class PeriodError(ValueError):
     pass
 
 
-# ------------------------------------------------------------------ periods
 def period_for(d: date, kind: str) -> str:
     return f"{d.year}-Q{(d.month - 1) // 3 + 1}" if kind == "quarterly" else f"{d.year}-{d.month:02d}"
 
@@ -58,7 +49,6 @@ def bounds(period: str) -> tuple[date, date]:
     return date(year, first_month, 1), date(year, last_month, monthrange(year, last_month)[1])
 
 
-# ------------------------------------------------------------------ summary
 async def compute(business_id: uuid.UUID, period: str) -> dict[str, Any]:
     start, end = bounds(period)
     async with read_session() as s:
@@ -104,7 +94,7 @@ async def compute(business_id: uuid.UUID, period: str) -> dict[str, Any]:
         "input_vat": Money(input_minor, cur), "output_vat": Money(output_minor, cur),
         "net_payable": Money(output_minor - input_minor, cur),
         "purchases": purchases, "sales": sales,
-        # Input VAT on the period's supplier invoices vs the ledger (they differ only if something is off).
+        # should equal the ledger unless something is off
         "invoice_input_vat": Money(invoiced_input, cur),
         "flag_counts": {f: sum(1 for p in purchases if f in p["flags"]) for f in ("missing_vat_number", "missing_breakdown")},
     }
@@ -115,7 +105,6 @@ def totals(summary: dict[str, Any]) -> dict[str, int]:
             for k in ("input_vat", "output_vat", "net_payable", "invoice_input_vat")}
 
 
-# ------------------------------------------------------------------ prepare_vat_summary
 async def _execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     return {"period": inputs["period"], "totals": totals(await compute(ctx.business_id, inputs["period"]))}
 
@@ -152,7 +141,7 @@ async def _plan(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _nothing_to_undo(ctx: ActionContext, inputs: dict[str, Any], result: dict[str, Any]) -> None:
-    """The summary writes no records (its figures live on the action), so a rollback has nothing to undo."""
+    """The summary writes no records, so there's nothing to roll back."""
 
 
 def register_spec() -> None:
@@ -172,13 +161,13 @@ async def prepared(business_id: uuid.UUID, period: str, current: dict[str, int])
 
 
 async def summary_with_status(business_id: uuid.UUID, period: str) -> dict[str, Any]:
-    """Compute the summary; run prepare_vat_summary when the figures are new, and report its status."""
+    """Compute the summary, re-running prepare_vat_summary when the figures changed."""
     from app.harness.graph import run_action
 
     summary = await compute(business_id, period)
     current = totals(summary)
     action = await prepared(business_id, period, current)
-    if action is None:  # new or changed figures: prepare and review them again
+    if action is None:
         out = await run_action(SPEC, {"period": period, "totals": current}, business_id)
         async with read_session() as s:
             action = await s.get(Action, out["action_id"])
@@ -189,7 +178,6 @@ async def summary_with_status(business_id: uuid.UUID, period: str) -> dict[str, 
     return summary
 
 
-# ------------------------------------------------------------------ reminder before the period closes
 async def step_period_reminder(business_id: uuid.UUID, d: date) -> dict[str, Any] | None:
     """'VAT period ends in 9 days. 4 bank payments have no invoice.' (once per period and count)."""
     from app.approvals import service as approvals

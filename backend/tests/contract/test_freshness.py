@@ -1,8 +1,4 @@
-"""Freshness contract: every manager-level GET endpoint that returns figures states their freshness.
-
-Walks the app's routes (from its OpenAPI document), so a new endpoint is covered without editing this test. Endpoints with path
-parameters get an id taken from the matching list endpoint.
-"""
+"""Every manager-level GET that returns figures has to say how fresh they are."""
 
 from __future__ import annotations
 
@@ -36,7 +32,7 @@ async def cafe(api: Any, tmp_path: Path, monkeypatch: Any) -> dict[str, Any]:
     monkeypatch.setattr(get_settings(), "FILES_DIR", str(tmp_path / "files"))
     wiring.register_all()
     info = await seed(start_date=START, history_days=42)
-    # A budget conflict: its question carries both positions with amounts, as in a running business.
+    # Add a budget conflict so there's a question with amounts in it.
     from tests.integration.test_agent_coordination import _budget, _order
 
     await _budget(info["business_id"], "100")
@@ -97,7 +93,7 @@ async def test_home_health_strip_decisions_and_alerts(api: Any, cafe: dict[str, 
     urg = [d["urgency"] for d in body["decisions"]]
     assert urg == sorted(urg, reverse=True) and all(d["kind"] != "alert" for d in body["decisions"])
     assert [a["urgency"] for a in body["alerts"]] == sorted((a["urgency"] for a in body["alerts"]), reverse=True)
-    assert all(d["required_role"] != "owner" for d in body["decisions"])  # the caller is a manager
+    assert all(d["required_role"] != "owner" for d in body["decisions"])
     await api.login("staff", PASSWORDS["staff"])
     assert (await api.client.get("/api/v1/home")).status_code == 403
 

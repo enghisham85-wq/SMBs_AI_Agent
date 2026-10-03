@@ -7,15 +7,14 @@ import { FreshnessLabel } from "../components/FreshnessLabel";
 import { HealthStrip } from "../components/HealthStrip";
 import { QueryError } from "../components/QueryError";
 
-/** Home: health strip, today's decisions (one tap each) and alerts by urgency.
- * The chat panel (docked on desktop, a drawer on mobile) and the owner's clock control come from Layout. */
+/** Chat panel and clock control live in Layout, not here. */
 export function Home() {
   const { t } = useTranslation();
-  // Same definition main.tsx prefetches on landing, so this picks up that in-flight request.
+  // Same query main.tsx prefetches, so this reuses that request.
   const home = useQuery({ ...homeQuery, refetchInterval: 60_000 });
   const d = home.data;
   if (home.isLoading) return <p className="text-ink-500">{t("app.loading")}</p>;
-  // A 401 also sends the user to sign in (the query cache re-checks /me); this covers the moment until then.
+  // On a 401 the cache re-checks /me and redirects. This covers the gap.
   if (!d) return <QueryError error={home.error} onRetry={() => void home.refetch()} />;
   const decisions = d.decisions ?? [];
   return (

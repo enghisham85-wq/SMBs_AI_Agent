@@ -82,7 +82,7 @@ class ApprovalRequest(TenantMixin, Base):
     options: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     required_role: Mapped[str] = mapped_column(String(10), default="manager")
     deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    # Option key applied on timeout; never an irreversible effect.
+    # applied on timeout, so never irreversible
     safe_default: Mapped[str | None] = mapped_column(String(40), nullable=True)
     urgency: Mapped[int] = mapped_column(Integer, default=1)
     status: Mapped[str] = mapped_column(
@@ -101,7 +101,7 @@ class ApprovalRequest(TenantMixin, Base):
     graph_thread_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     gate_key: Mapped[str] = mapped_column(String(80), default="gate")
     interrupt_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    # Opaque token used in Telegram callbacks instead of the id.
+    # used in Telegram callbacks instead of the id
     request_token: Mapped[str] = mapped_column(String(32), unique=True)
     context: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     agent: Mapped[str] = mapped_column(String(20), default="harness")
@@ -182,7 +182,7 @@ class AgentCalibrationHistory(TenantMixin, Base):
 
 
 class AuditLogEntry(Base):
-    """Append-only. Not a TenantMixin so timestamps are explicit (business clock + wall clock)."""
+    """Append-only. Not a TenantMixin, because it keeps both business and wall-clock time."""
 
     __tablename__ = "audit_log"
 

@@ -1,10 +1,4 @@
-"""Bank reconciliation.
-
-Each bank line is scored against possible counterparts from amount, date proximity and name
-similarity. Matches at or above the high threshold are applied automatically; between the
-thresholds they are suggested for the owner; below they stay unmatched. Every match records its
-source (auto, suggested_confirmed, manual) and confidence.
-"""
+"""Bank reconciliation. High-scoring matches apply automatically, middling ones go to the owner."""
 
 from __future__ import annotations
 

@@ -1515,7 +1515,7 @@
           "books"
         ],
         "summary": "Vat Summary",
-        "description": "Input VAT, output VAT, net payable and the supporting invoices for a period.\n\n`period` is `2026-10` (monthly) or `2026-Q4` (quarterly); default: the current period. The figures\nare reviewed by the independent second check before `status` becomes `ready`.",
+        "description": "Input VAT, output VAT, net payable and the supporting invoices for a period.\n\n`period` is `2026-10` or `2026-Q4` and defaults to the current one. `status` turns `ready` once\nthe second check has reviewed the figures.",
         "operationId": "vat_summary_api_v1_vat_summary_get",
         "parameters": [
           {

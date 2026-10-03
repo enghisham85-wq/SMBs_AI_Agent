@@ -1,9 +1,4 @@
-"""Chaos mode service: inject a scenario, then report what the agents did.
-
-Only available in demo mode. While a scenario runs, incidents it causes are linked to the injection
-(app.chaos.context), and the live harness stream is watched to time each stage: injection ->
-detection -> explanation -> correction -> proposed rule.
-"""
+"""Inject a chaos scenario (demo mode only) and time how the agents respond."""
 
 from __future__ import annotations
 
@@ -36,7 +31,7 @@ from app.models.harness import ApprovalRequest, LearnedRule
 from app.models.tenancy import Business
 
 log = logging.getLogger(__name__)
-_lock = asyncio.Lock()  # one scenario at a time: they share the business clock
+_lock = asyncio.Lock()  # scenarios share the business clock
 
 
 class ChaosDisabledError(Exception):
@@ -54,13 +49,12 @@ def scenarios() -> list[dict[str, Any]]:
 
 
 class _Recorder:
-    """Stamps harness and chat stream messages with seconds since the injection started."""
+    """Records harness and chat stream messages with their offset from the start."""
 
     def __init__(self) -> None:
         self.start = time.monotonic()
         self.seen: list[tuple[float, str, dict[str, Any]]] = []
         self._queues = {ch: broker.subscribe(ch) for ch in ("harness", "chat")}
-        # One waiter per channel: each sleeps on its queue until a message arrives (no polling).
         self._tasks = [asyncio.create_task(self._drain(ch, q)) for ch, q in self._queues.items()]
 
     async def _drain(self, ch: str, q: asyncio.Queue[dict[str, Any]]) -> None:
@@ -119,7 +113,7 @@ async def inject(business_id: uuid.UUID, scenario: str, params: dict[str, Any] |
             await sc.inject(ctx)
         except ChaosError as exc:
             error = str(exc)
-        except Exception as exc:  # a failed injection is reported, never left "running"
+        except Exception as exc:  # never leave it "running"
             log.exception("chaos scenario %s failed", scenario)
             error = f"{type(exc).__name__}: {exc}"
         finally:
@@ -144,10 +138,10 @@ async def inject(business_id: uuid.UUID, scenario: str, params: dict[str, Any] |
 
 
 async def _outcome(inj_id: uuid.UUID, rec: _Recorder, ctx: Ctx, sc: Scenario) -> dict[str, Any]:
-    # Only the incidents this fault should cause count; a clock advance can surface unrelated ones.
+    # a clock advance can surface unrelated incidents, so filter by type
     incidents = await linked_incidents(inj_id, sc.incident_types)
     inc_ids = {str(i.id) for i in incidents}
-    # Rules proposed from these incidents, or an existing rule for the same cause the analysis pointed to.
+    # include existing rules the analysis pointed at, not just new proposals
     linked = [uuid.UUID(i.refs["rule_id"]) for i in incidents if i.refs.get("rule_id")]
     async with read_session() as s:
         rules = list((await s.execute(select(LearnedRule).where(
@@ -155,13 +149,13 @@ async def _outcome(inj_id: uuid.UUID, rec: _Recorder, ctx: Ctx, sc: Scenario) ->
             .order_by(LearnedRule.created_at))).scalars()) if incidents else []
     t_detect = rec.first(lambda ch, m: ch == "harness" and m.get("kind") == "incident.opened" and str(m.get("incident_id")) in inc_ids)
     if t_detect is None and incidents:
-        t_detect = 0.0  # re-triggered an incident that was already open
+        t_detect = 0.0  # incident was already open
     sent = [(t, str(msg["request"]["id"])) for t, ch, msg in rec.seen
             if ch == "chat" and isinstance(msg.get("request"), dict) and msg["request"].get("id")]
     async with read_session() as s:
         requests = list((await s.execute(select(ApprovalRequest).where(
             ApprovalRequest.id.in_([uuid.UUID(r) for _, r in sent])))).scalars()) if sent else []
-    # Owner messages about this fault: they point at the incident, its action or a record the injector touched.
+    # ids that tie an owner message to this fault
     known = set(inc_ids) | {str(i.action_id) for i in incidents if i.action_id}
     known |= {str(v) for i in incidents for v in i.refs.values() if isinstance(v, str | int) and v}
     known |= {str(v) for v in ctx.affected.values() if isinstance(v, str) and v}
@@ -174,8 +168,7 @@ async def _outcome(inj_id: uuid.UUID, rec: _Recorder, ctx: Ctx, sc: Scenario) ->
     for t, r in sent:
         first_sent.setdefault(r, t)
     about = [(t, by_id[r]) for r, t in first_sent.items() if r in by_id and related(by_id[r])]
-    # The explanation is a message sent once the fault was detected (earlier ones, e.g. about the
-    # original invoice, explain nothing).
+    # messages sent before detection don't explain anything
     after = [(t, m) for t, m in about if t_detect is not None and t >= t_detect]
     messages = [m for _, m in after]
     primary = incidents[0] if incidents else None
@@ -212,7 +205,6 @@ async def _outcome(inj_id: uuid.UUID, rec: _Recorder, ctx: Ctx, sc: Scenario) ->
         "rule_text_ar": rule.rule_text_ar if rule else None,
         "rule_status": rule.status if rule else None,
         "owner_messages": [{"id": str(m.id), "kind": m.kind, "text_en": m.text_en, "text_ar": m.text_ar} for m in messages],
-        # Every question to the owner about the affected records, detected or not (an applied rule asks none).
         "questions_asked": sum(1 for _, m in about if m.kind in ("question", "approval")),
         "elapsed_seconds": elapsed,
         "within_two_minutes": elapsed < 120,

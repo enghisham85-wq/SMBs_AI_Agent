@@ -1,14 +1,8 @@
-"""The "no assistant" baseline for the sample metrics and the stock accounting both runs share.
+"""The "no assistant" baseline for the sample metrics.
 
-Baseline policy: every Sunday, order each purchased item's average weekly consumption over the previous
-4 weeks from its preferred supplier; it arrives after the supplier's stated lead time. No forecast, no
-safety stock, no expiry handling, no budget.
-
-Both runs are scored by `simulate_stock` on the same demand (the day's sales turned into ingredient
-use by the recipes), the same opening stock, and the same rules: each day the day's use comes out
-after that morning's deliveries; use the shelf cannot cover is a lost sale and makes it a stockout day for
-that item (there is no backlog: a café cannot sell yesterday's missing croissant tomorrow), and stock older
-than its shelf life expires first-in-first-out as waste at unit cost.
+Every Sunday it orders each item's average weekly use over the last 4 weeks from the preferred
+supplier. No forecast, no safety stock, no expiry handling, no budget. Both runs go through
+`simulate_stock` with the same demand and opening stock.
 """
 
 from __future__ import annotations
@@ -41,7 +35,7 @@ class StockResult:
 
 
 def usage_by_day(sales: list[Any], items: dict[uuid.UUID, Item], recipes: list[RecipeLine]) -> dict[date, dict[uuid.UUID, Decimal]]:
-    """Ingredient use per day from sale lines, the same way the Stock Agent deducts sales."""
+    """Same deduction the Stock Agent does for sales."""
     by_sold: dict[uuid.UUID, list[RecipeLine]] = defaultdict(list)
     for r in recipes:
         by_sold[r.sold_item_id].append(r)
@@ -68,7 +62,6 @@ def usage_by_day(sales: list[Any], items: dict[uuid.UUID, Item], recipes: list[R
 
 def baseline_orders(usage: dict[date, dict[uuid.UUID, Decimal]], items: list[Item], lead_days: dict[uuid.UUID, int],
                     start: date, days: int) -> list[Event]:
-    """Sunday orders of the average weekly use over the previous 4 weeks, delivered after the stated lead time."""
     events: list[Event] = []
     for i in range(days):
         d = start + timedelta(days=i)
@@ -85,10 +78,9 @@ def baseline_orders(usage: dict[date, dict[uuid.UUID, Decimal]], items: list[Ite
 
 
 class Shelf:
-    """Stock by delivery date (first in, first out), stepped one day at a time.
+    """FIFO stock by delivery date, one day at a time.
 
-    Each day: stock older than its shelf life expires (waste), that morning's deliveries arrive, then the
-    day's use comes out; use that stock cannot cover is lost (a stockout day), not carried forward.
+    Expiry first, then deliveries, then use. Use the shelf can't cover is lost, there's no backlog.
     """
 
     def __init__(self, opening: dict[uuid.UUID, Decimal], items: dict[uuid.UUID, Item], start: date) -> None:
@@ -98,7 +90,7 @@ class Shelf:
         self.result = StockResult()
 
     def step(self, d: date, deliveries: list[Event], usage: dict[uuid.UUID, Decimal]) -> dict[uuid.UUID, Decimal]:
-        """Run day `d`; returns what expired that morning (per item)."""
+        """Returns what expired that morning, per item."""
         res, expired = self.result, {}
         for iid, item_lots in self.lots.items():
             life = self.items[iid].shelf_life_days if iid in self.items else None
@@ -130,13 +122,12 @@ class Shelf:
                     res.stockout_episodes.append((iid, d))
                     self.short.add(iid)
             elif iid in self.short:
-                self.short.discard(iid)  # a full day's use was met: the episode is over
+                self.short.discard(iid)  # full day's use met, episode over
         return expired
 
 
 def simulate_stock(opening: dict[uuid.UUID, Decimal], usage: dict[date, dict[uuid.UUID, Decimal]], deliveries: list[Event],
                    items: dict[uuid.UUID, Item], start: date, days: int) -> StockResult:
-    """Score a whole run the same way for both runs: stockout days, stockout episodes and expired stock."""
     shelf = Shelf(opening, items, start)
     arriving: dict[date, list[Event]] = defaultdict(list)
     for e in deliveries:

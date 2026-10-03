@@ -107,7 +107,7 @@ describe("useEventStream", () => {
 
     live()[0].fail(FakeEventSource.CLOSED);
     vi.advanceTimersByTime(1_250);
-    expect(live()).toHaveLength(0); // second attempt waits about 2 s
+    expect(live()).toHaveLength(0); // backoff is ~2 s now
     vi.advanceTimersByTime(1_500);
     expect(live()).toHaveLength(1);
     expect(invalidate).toHaveBeenCalledTimes(1);

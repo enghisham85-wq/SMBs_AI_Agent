@@ -1,7 +1,4 @@
-"""Supplier payment timing: early for a discount, on time, or end of terms when cash is tight.
-
-Never later than the due date: paying beyond terms needs an explicit owner instruction.
-"""
+"""Supplier payment timing: early for a discount, on time, or end of terms when cash is tight."""
 
 from __future__ import annotations
 

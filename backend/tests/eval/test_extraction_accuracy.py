@@ -1,10 +1,4 @@
-"""Live extraction accuracy. Calls Claude and spends API credit.
-
-Run explicitly:  LLM_MODE=live ANTHROPIC_API_KEY=... uv run pytest tests/eval -m llm_live
-Scores field accuracy against the generator's ground truth, separately for English, bilingual and
-Arabic-only invoices; each group must reach 90 %. Only clean invoices are scored (faulty variants
-are designed to disagree with themselves).
-"""
+"""Live extraction accuracy, spends API credit. Run with LLM_MODE=live and -m llm_live."""
 
 from __future__ import annotations
 

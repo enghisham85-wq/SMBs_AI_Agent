@@ -1,5 +1,3 @@
-"""Stock Agent actions run through harness_graph."""
-
 from __future__ import annotations
 
 import math
@@ -45,7 +43,7 @@ def _weekday(d: date, lang: str) -> str:
     return d.strftime("%A") if lang == "en" else AR_DAYS[d.weekday()]
 
 
-# =========================================================================== draft_po
+# draft_po
 async def _draft_plan(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     return {"intent": "draft a purchase order", "reason": inputs.get("reason", ""),
             "data_refs": {"forecast_generated_on": inputs.get("forecast_generated_on"),
@@ -71,7 +69,7 @@ async def _draft_checks(ctx: ActionContext, inputs: dict[str, Any]) -> list[Chec
                                                                  SupplierPrice.valid_from <= today)
                                      .order_by(SupplierPrice.valid_from.desc()).limit(1))).scalar_one_or_none()
             history = await checks.price_history(s, supplier_id, item.id, today)
-            # The current list price is part of the history; compare the proposed price against earlier ones.
+            # the current list price is in the history too, so compare against the earlier ones
             prior = history[1:] if history and price is not None and history[0] == int(ln["unit_price_minor"]) else history
             price_check = checks.price_sanity(item, int(ln["unit_price_minor"]), prior, pct)
             if not price_check.passed:  # a supplier price jump is a fault to learn from, not only a question
@@ -238,7 +236,7 @@ async def _draft_on_finalize(ctx: ActionContext, inputs: dict[str, Any], outcome
                 po.status = "cancelled"
 
 
-# =========================================================================== send_po
+# send_po
 async def po_details(po_id: uuid.UUID) -> dict[str, Any]:
     async with read_session() as s:
         po = await s.get(PurchaseOrder, po_id)
@@ -404,7 +402,7 @@ async def _send_on_finalize(ctx: ActionContext, inputs: dict[str, Any], outcome:
                 po.status = "rejected"
 
 
-# =========================================================================== record_delivery
+# record_delivery
 async def _delivery_checks(ctx: ActionContext, inputs: dict[str, Any]) -> list[Check]:
     async with read_session() as s:
         po = await s.get(PurchaseOrder, uuid.UUID(inputs["po_id"]))
@@ -483,7 +481,7 @@ async def _delivery_compensate(ctx: ActionContext, inputs: dict[str, Any], resul
             po.status = result["prev_status"]
 
 
-# =========================================================================== adjust_stock
+# adjust_stock
 async def _adjust_checks(ctx: ActionContext, inputs: dict[str, Any]) -> list[Check]:
     from app.models.stock_ops import REASON_REQUIRED
 
@@ -514,7 +512,7 @@ async def _undo_moves(ctx: ActionContext, inputs: dict[str, Any], result: dict[s
         await tracking.undo_action_movements(s, ctx.action_id)
 
 
-# =========================================================================== apply_sales
+# apply_sales
 async def _apply_sales_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     d = date.fromisoformat(inputs["date"])
     async with write_session() as s:
@@ -542,7 +540,7 @@ async def _apply_sales_compensate(ctx: ActionContext, inputs: dict[str, Any], re
                 sale.stock_applied = False
 
 
-# =========================================================================== generate_forecasts
+# generate_forecasts
 async def _forecast_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     d = date.fromisoformat(inputs["date"])
     methods = await demand.generate(ctx.business_id, d)
@@ -564,7 +562,7 @@ async def _forecast_compensate(ctx: ActionContext, inputs: dict[str, Any], resul
                                                      DemandForecast.generated_on == date.fromisoformat(inputs["date"])))
 
 
-# =========================================================================== defer / resume / resize (budget)
+# defer / resume / resize for the budget
 async def _open_requests_for(po_id: str) -> list[str]:
     from app.models.harness import ApprovalRequest
 
@@ -585,7 +583,7 @@ async def _defer_checks(ctx: ActionContext, inputs: dict[str, Any]) -> list[Chec
 async def _defer_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     from app.approvals import service as approvals
 
-    for rid in await _open_requests_for(inputs["po_id"]):  # take back the waiting approval
+    for rid in await _open_requests_for(inputs["po_id"]):
         await approvals.withdraw(rid, "order deferred to stay within the purchasing budget")
     until = clock.today() + timedelta(days=int(inputs.get("days", 5)))
     async with write_session() as s:
@@ -620,8 +618,7 @@ async def _resume_execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[st
         prev = po.status
         if po.status == "on_hold":
             po.status = "draft"
-        # A deferred order goes out now: it can arrive no sooner than the supplier's lead time from today,
-        # otherwise it would count as late the moment it is sent.
+        # can't arrive sooner than the lead time from today, or it'd be late the moment it's sent
         sup = await s.get(Supplier, po.supplier_id)
         earliest = clock.today() + timedelta(days=math.ceil(supplier_perf.lead_time(sup)) if sup else 1)
         prev_expected = po.expected_date

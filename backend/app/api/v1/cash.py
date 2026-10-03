@@ -1,4 +1,4 @@
-"""Cash endpoints: position, forecast, shortfall plan, receivables/payables, bank statements, obligations."""
+"""Cash position, forecast, shortfall plan, bank statements and obligations."""
 
 from __future__ import annotations
 
@@ -48,7 +48,6 @@ async def _latest_run(bid: uuid.UUID) -> CashForecastRun | None:
     return await cash_graphs.latest_run(bid, clock.today())
 
 
-# ------------------------------------------------------------------ position
 @router.get("/cash/position")
 async def cash_position(user: CurrentUser = RequireManager) -> Response:
     b = await get_business(user.business_id)
@@ -76,7 +75,6 @@ async def cash_position(user: CurrentUser = RequireManager) -> Response:
     }, {"bank": as_of}))
 
 
-# ------------------------------------------------------------------ forecast
 def _series_rows(rows: list[CashForecast]) -> list[dict[str, Any]]:
     return [{"date": r.date, "opening": r.opening, "inflows": r.inflows, "outflows": r.outflows, "closing": r.closing,
              "below_buffer": r.below_buffer, "confidence": r.confidence} for r in sorted(rows, key=lambda x: x.date)]
@@ -88,23 +86,21 @@ def _proj_rows(p: projection.Projection, cur: str) -> list[dict[str, Any]]:
 
 
 Projections = tuple[projection.Inputs, position.Freshness, dict[str, projection.Projection]]
-# Live projections (no saved run yet, the 13-week view, payables) keyed by (business, date, horizon).
-# An entry is only reused while no write has committed since it was computed, and for at most a
-# minute (the inputs are all database rows read for `today`).
+# Short-lived cache of live projections, dropped as soon as any write commits.
 _PROJECTION_TTL_S = 60.0
 _projection_cache: dict[tuple[uuid.UUID, date, int], tuple[int, float, Projections]] = {}
 
 
 async def _projections(bid: uuid.UUID, today: date, horizon_days: int = 30) -> Projections:
-    """load_inputs + project_all, shared by repeated reads. Callers must not mutate the result."""
+    """Cached load_inputs + project_all. Don't mutate the result."""
     key = (bid, today, horizon_days)
-    gen = write_generation()  # taken before reading: a write landing meanwhile invalidates the entry
+    gen = write_generation()  # read first so a concurrent write invalidates us
     hit = _projection_cache.get(key)
     if hit is not None and hit[0] == gen and time.monotonic() - hit[1] < _PROJECTION_TTL_S:
         return hit[2]
     async with read_session() as s:
         inp, fresh = await projection.load_inputs(s, bid, today, horizon=horizon_days)
-    value = (inp, fresh, projection.project_all(inp))  # project_all also settles inp.tight
+    value = (inp, fresh, projection.project_all(inp))  # also sets inp.tight
     if len(_projection_cache) > 16:
         _projection_cache.clear()
     _projection_cache[key] = (gen, time.monotonic(), value)
@@ -136,7 +132,7 @@ async def forecast_data(bid: uuid.UUID, horizon: str = "30d", scenario: str | No
                                  "confidence": {"low": fresh.low_confidence, "reason": fresh.reason_en()}},
                                 {"bank": fresh.bank_data_as_of})
     run = await _latest_run(bid)
-    if run is None:  # nothing saved yet: compute without saving
+    if run is None:
         inp, fresh, projs = await _projections(bid, today)
         sc = scenario or "expected"
         p = projs[sc]
@@ -164,7 +160,6 @@ async def forecast_data(bid: uuid.UUID, horizon: str = "30d", scenario: str | No
         "checks": run.checks, "flows": run.flows}, {"bank": run.bank_data_as_of, "forecast": run.created_at})
 
 
-# ------------------------------------------------------------------ shortfall plan
 async def _current_plan(bid: uuid.UUID) -> ShortfallPlan | None:
     async with read_session() as s:
         return (await s.execute(select(ShortfallPlan).where(
@@ -212,7 +207,6 @@ async def simulate_action(action_id: uuid.UUID, user: CurrentUser = RequireManag
               "simulated": [{"date": x["date"], "closing": _m(x["closing_minor"], cur)} for x in a.simulated_series]})
 
 
-# ------------------------------------------------------------------ receivables and payables
 @router.get("/cash/receivables")
 async def cash_receivables(user: CurrentUser = RequireManager) -> Response:
     today = clock.today()
@@ -244,7 +238,7 @@ async def cash_receivables(user: CurrentUser = RequireManager) -> Response:
 @router.get("/cash/payables")
 async def cash_payables(user: CurrentUser = RequireManager) -> Response:
     today = clock.today()
-    inp, fresh, _ = await _projections(user.business_id, today)  # project_all decides whether cash is tight
+    inp, fresh, _ = await _projections(user.business_id, today)  # need inp.tight
     cur = inp.currency
     items = []
     for p in inp.payables:
@@ -262,7 +256,6 @@ async def cash_payables(user: CurrentUser = RequireManager) -> Response:
                             {"books": clock.clock_now(), "bank": fresh.bank_data_as_of}))
 
 
-# ------------------------------------------------------------------ bank statements
 @router.post("/bank/statements")
 async def upload_statement(file: UploadFile = File(...), account_id: uuid.UUID | None = Form(None),
                            mapping: str | None = Form(None), user: CurrentUser = RequireManager) -> Response:
@@ -285,7 +278,6 @@ async def upload_statement(file: UploadFile = File(...), account_id: uuid.UUID |
               "skipped_duplicates": res.get("skipped_duplicates", 0), "errors": parsed.errors, "dates": res.get("dates", [])})
 
 
-# ------------------------------------------------------------------ obligations
 OB_TYPES = Literal["rent", "salary", "loan", "tax", "utility", "subscription", "other"]
 RECURRENCES = Literal["monthly", "quarterly", "annual", "once"]
 

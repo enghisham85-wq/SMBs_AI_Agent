@@ -1,5 +1,4 @@
-"""Performance targets: one simulated day of jobs < 10 s excluding LLM
-calls (tests run the LLM offline), and the dashboard's main views respond in < 2 s on the sample cafe."""
+"""Perf targets: a simulated day under 10 s (LLM offline), main views under 2 s."""
 
 from __future__ import annotations
 
@@ -27,7 +26,7 @@ async def cafe(api: Any, tmp_path: Path, monkeypatch: Any) -> dict[str, Any]:
     monkeypatch.setattr(get_settings(), "SAMPLE_INVOICES_DIR", str(tmp_path / "samples"))
     monkeypatch.setattr(get_settings(), "FILES_DIR", str(tmp_path / "files"))
     wiring.register_all()
-    return await seed(start_date=START, history_days=90)  # the full 3-month sample
+    return await seed(start_date=START, history_days=90)
 
 
 async def test_one_day_advance_under_10_seconds(cafe: dict[str, Any]) -> None:

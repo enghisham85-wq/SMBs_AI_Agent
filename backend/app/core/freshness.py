@@ -1,9 +1,4 @@
-"""Dev/test freshness guard: a JSON response that carries money figures must also say how fresh they are.
-
-A figure is any Money object in the body ({"amount_minor", "currency", ...}). Such a response without
-a top-level `data_as_of` is replaced by a 500 error so a missing freshness label fails tests and shows
-up at once in development; production (`APP_ENV=prod`) skips the check.
-"""
+"""Dev/test guard that turns any JSON response with Money but no `data_as_of` into a 500."""
 
 from __future__ import annotations
 
@@ -31,7 +26,7 @@ def missing_freshness(body: Any) -> bool:
 
 
 class FreshnessCheck:
-    """ASGI middleware: buffers successful JSON GET responses and checks them."""
+    """Buffers successful JSON GET responses and checks them."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app

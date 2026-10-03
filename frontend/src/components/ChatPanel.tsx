@@ -6,7 +6,6 @@ import type { ApprovalRequest } from "../api/types";
 import { useEventStream } from "../hooks/useEventStream";
 import { ApprovalCard } from "./ApprovalCard";
 
-/** The in-dashboard chat: pending requests plus a live feed of what the assistants did. */
 export function ChatPanel() {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();

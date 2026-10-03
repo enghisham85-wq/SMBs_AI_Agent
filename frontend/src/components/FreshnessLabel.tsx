@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { DataAsOf } from "../api/types";
 
-/** States how fresh every figure is, e.g. "Bank data as of 3 Oct, 23:59". */
+/** e.g. "Bank data as of 3 Oct, 23:59" */
 export function FreshnessLabel({ asOf }: { asOf: DataAsOf | undefined }) {
   const { t, i18n } = useTranslation();
   if (!asOf) return null;

@@ -1,4 +1,4 @@
-"""Harness endpoints: live actions and stream, incidents, learned rules, calibration, audit log."""
+"""Harness endpoints: actions, live stream, incidents, rules, calibration and the audit log."""
 
 from __future__ import annotations
 
@@ -44,7 +44,6 @@ def _action_out(a: Action) -> dict[str, Any]:
             "parent_action_id": a.parent_action_id, "dry_run": a.dry_run}
 
 
-# ------------------------------------------------------------------ actions
 @router.get("/harness/actions")
 async def list_actions(live: bool = False, agent: str | None = None, limit: int = 100,
                        user: CurrentUser = RequireManager) -> Response:
@@ -100,7 +99,7 @@ async def harness_stream(request: Request, user: CurrentUser = RequireManager) -
                 if msg.get("business_id") not in (None, bid):
                     continue
                 if "business_id" not in msg and "kind" not in msg:
-                    continue  # raw graph updates carry no business id; the stage messages do
+                    continue  # raw graph updates have no business id
                 yield {"event": str(msg.get("kind", "message")), "data": json.dumps(msg, ensure_ascii=False, default=str)}
         finally:
             broker.unsubscribe("harness", queue)
@@ -108,7 +107,6 @@ async def harness_stream(request: Request, user: CurrentUser = RequireManager) -
     return EventSourceResponse(gen())
 
 
-# ------------------------------------------------------------------ incidents
 @router.get("/harness/incidents")
 async def list_incidents(status: str | None = None, agent: str | None = None, limit: int = 200,
                          user: CurrentUser = RequireManager) -> Response:
@@ -132,7 +130,6 @@ async def list_incidents(status: str | None = None, agent: str | None = None, li
         "rules": [{"id": r.id, "status": r.status, "text_en": r.rule_text_en} for r in by_inc.get(i.id, [])]} for i in rows]}, {"incidents": max((i.updated_at for i in rows), default=None)}))
 
 
-# ------------------------------------------------------------------ learned rules
 def _rule_out(r: LearnedRule) -> dict[str, Any]:
     return {"id": r.id, "agent": r.agent, "kind": r.kind, "rule_text_en": r.rule_text_en, "rule_text_ar": r.rule_text_ar,
             "trigger": r.trigger, "status": r.status, "version": r.version, "previous_version_id": r.previous_version_id,
@@ -200,7 +197,6 @@ async def edit_rule(rule_id: uuid.UUID, body: RuleEdit, user: CurrentUser = Requ
     return J(_rule_out(rule))
 
 
-# ------------------------------------------------------------------ calibration
 @router.get("/harness/calibration")
 async def calibration_view(days: int = 30, user: CurrentUser = RequireManager) -> Response:
     since = clock.today() - timedelta(days=max(1, min(days, 365)))
@@ -226,7 +222,6 @@ async def calibration_view(days: int = 30, user: CurrentUser = RequireManager) -
               "data_as_of": {"clock": clock.clock_now().isoformat()}}, {"calibration": max((r.updated_at for r in rows), default=None)}))
 
 
-# ------------------------------------------------------------------ audit log and digest
 @router.get("/audit-log")
 async def audit_log(event: str | None = None, action_id: uuid.UUID | None = None, agent: str | None = None,
                     limit: int = 200, offset: int = 0, user: CurrentUser = RequireOwner) -> Response:

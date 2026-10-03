@@ -1,10 +1,4 @@
-"""Telegram bot: a second front end to ApprovalService.
-
-Long polling (no public webhook needed). Holds no business state: every answer goes through
-ApprovalService's first-answer-wins claim, so role checks and first-answer-wins are identical to the dashboard.
-Handlers answer at once and leave slow work (the resumed graph, reading an upload) to background tasks,
-so one tap never holds up another user.
-"""
+"""Telegram front end for approvals, using long polling."""
 
 from __future__ import annotations
 
@@ -28,32 +22,32 @@ from app.models.tenancy import User
 
 log = logging.getLogger(__name__)
 
-# Upload handlers registered by the agents: key -> (min_role, fn(user, file_bytes, mime, name, caption) -> reply)
+# key -> (min_role, handler)
 UploadFn = Callable[[User, bytes, str, str, str], Awaitable[str]]
 UPLOAD_HANDLERS: dict[str, tuple[str, UploadFn]] = {}
 STATUS_PROVIDERS: list[Callable[[uuid.UUID, str], Awaitable[str]]] = []
 
 CONCURRENT_UPDATES = 8
-DOWNLOAD_READ_TIMEOUT_S = 120.0  # uploads go up to 20 MB; the library's 5 s default is too short
+DOWNLOAD_READ_TIMEOUT_S = 120.0  # library default of 5s is too short for 20 MB uploads
 RETRY_TICK_S = 15.0
-RETRY_BASE_S = 60.0  # doubles per failed attempt, up to RETRY_CAP_S
+RETRY_BASE_S = 60.0  # doubles each attempt
 RETRY_CAP_S = 3600.0
 MAX_SEND_ATTEMPTS = 6
 SEEN_CALLBACKS_MAX = 1000
 
 _bot: Any = None
-_seen_callbacks: dict[str, None] = {}  # insertion-ordered set of recent callback ids (Telegram may retry)
+_seen_callbacks: dict[str, None] = {}  # used as an ordered set
 _tasks: set[asyncio.Task[Any]] = set()
 
 
 @dataclass
 class _Retry:
-    chats: set[str]  # chats whose send failed with a transient error
-    attempt: int  # sends tried so far
-    due: float  # event-loop time
+    chats: set[str]
+    attempt: int
+    due: float  # loop.time()
 
 
-_retries: dict[str, _Retry] = {}  # request id -> next resend; the request stays answerable in the dashboard
+_retries: dict[str, _Retry] = {}  # by request id
 
 
 def register_upload(key: str, min_role: str, fn: UploadFn) -> None:
@@ -73,13 +67,13 @@ def _log_failure(task: asyncio.Task[Any], what: str) -> None:
 
 
 async def drain() -> None:
-    """Wait for the background work started by taps and uploads (tests)."""
+    """Test helper: wait for background work from taps and uploads."""
     while _tasks:
         await asyncio.gather(*list(_tasks), return_exceptions=True)
 
 
 def _is_permanent(exc: BaseException) -> bool:
-    """A bad chat id or a user who blocked the bot will fail the same way on every retry."""
+    """Bad chat id or blocked bot; retrying won't help."""
     from telegram.error import BadRequest, Forbidden
 
     return isinstance(exc, Forbidden | BadRequest)
@@ -89,7 +83,7 @@ def _keyboard(req: dict[str, Any], lang: str) -> Any:
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
     label = "label_ar" if lang == "ar" else "label_en"
-    # "Edit" needs quantities, which a button cannot carry; it is done in the dashboard.
+    # editing quantities only works in the dashboard
     buttons = [[InlineKeyboardButton(o[label], callback_data=f"ar:{req['request_token']}:{o['key']}")]
                for o in req["options"] if o.get("effect") != "edit"]
     return InlineKeyboardMarkup(buttons)
@@ -135,7 +129,7 @@ async def _send_request(req: dict[str, Any], only_chats: set[str] | None = None,
     if not (refs or failed):
         return
     bid = uuid.UUID(req["business_id"])
-    # One transaction for the refs and every audit row: the write lock is shared by the whole app.
+    # one transaction, since the write lock is app-wide
     async with write_session() as s:
         if refs:
             row = await s.get(ApprovalRequest, uuid.UUID(req["id"]))
@@ -187,7 +181,7 @@ async def _retry_loop() -> None:
         await asyncio.sleep(RETRY_TICK_S)
         try:
             await _retry_due()
-        except Exception:  # a database hiccup must not end retries for good
+        except Exception:  # keep the loop alive
             log.exception("telegram retry pass failed")
 
 
@@ -205,7 +199,7 @@ async def _retry_due() -> None:
             log.exception("telegram resend of request %s failed", rid)
 
 
-# --------------------------------------------------------------------- handlers
+# Handlers
 async def _user_for_chat(chat_id: int) -> User | None:
     async with read_session() as s:
         return (await s.execute(select(User).where(User.telegram_chat_id == str(chat_id),
@@ -222,7 +216,7 @@ async def cmd_start(update: Any, context: Any) -> None:
     async with write_session() as s:
         user = (await s.execute(select(User).where(User.telegram_link_code == code.strip().upper()))).scalar_one_or_none()
         if user is not None and not (user.telegram_link_expires and user.telegram_link_expires < datetime.now()):
-            # One chat <-> one user: unlink any other user bound to this chat first.
+            # a chat links to one user only
             others = (await s.execute(select(User).where(User.telegram_chat_id == str(chat_id),
                                                          User.id != user.id))).scalars()
             for o in others:
@@ -231,7 +225,7 @@ async def cmd_start(update: Any, context: Any) -> None:
             user.telegram_link_code = None
             add_audit(s, "telegram_linked", business_id=user.business_id, user_id=user.id)
             linked = (user.language, user.username)
-    # Replies go out after the transaction: the write lock is shared by the whole app.
+    # reply outside the transaction so we don't hold the write lock
     if linked is None:
         await update.message.reply_text(t("link_prompt", "en"))
         return
@@ -283,7 +277,7 @@ async def cmd_lang(update: Any, context: Any) -> None:
 
 async def on_callback(update: Any, context: Any) -> None:
     query = update.callback_query
-    if query.id in _seen_callbacks:  # Telegram may retry callbacks
+    if query.id in _seen_callbacks:  # Telegram retries callbacks
         await query.answer()
         return
     _seen_callbacks[query.id] = None
@@ -298,8 +292,7 @@ async def on_callback(update: Any, context: Any) -> None:
     except ValueError:
         await query.answer()
         return
-    # Only the claim runs before answering: Telegram wants the answer within seconds, and the resumed
-    # graph (execute, verify, model calls) can take much longer.
+    # Telegram wants an answer within seconds; the resumed graph can take far longer.
     claim = await approvals.claim(token, option_key, user, "telegram")
     if claim.resume is not None:
         _spawn(claim.resume(), "approval continuation")
@@ -352,11 +345,9 @@ async def _read_upload(msg: Any, user: User, fn: UploadFn, caption: str) -> None
 
 
 async def run_polling(token: str) -> None:
-    """Start the bot with long polling until cancelled."""
     global _bot
     from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
-    # Handlers keep no shared state beyond the database, and answering is first-answer-wins there.
     application = Application.builder().token(token).concurrent_updates(CONCURRENT_UPDATES).build()
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("pending", cmd_pending))

@@ -20,7 +20,6 @@ const STATUS_STYLE: Record<string, string> = {
   resolved: "bg-good-50 text-good-700",
 };
 
-/** Every detected fault: how it was caught, what was done, the root cause and any proposed rule. */
 export function IncidentLog({ incidents, onOpenAction }: { incidents: IncidentRow[]; onOpenAction: (id: string) => void }) {
   const { t, i18n } = useTranslation();
   const when = (iso: string) =>

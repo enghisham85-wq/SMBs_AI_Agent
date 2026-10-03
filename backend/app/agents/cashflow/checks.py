@@ -103,10 +103,7 @@ def _norm_desc(text: str) -> str:
 
 def missing_recurring_obligation(obligations: list[ObligationIn], txns: list[dict[str, Any]], today: date,
                                  currency: str) -> list[Check]:
-    """Obligations due but not seen in the bank, and monthly bank payments that are not in the obligations.
-
-    `txns`: recent bank lines [{date, amount_minor, description, kind, obligation_id?}].
-    """
+    """Obligations due but not seen in the bank, and monthly bank payments missing from the obligations."""
     out: list[Check] = []
     outflows = [t for t in txns if t["amount_minor"] < 0]
     last_bank = max((t["date"] for t in txns), default=None)

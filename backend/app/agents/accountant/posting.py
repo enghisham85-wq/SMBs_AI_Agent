@@ -1,5 +1,4 @@
-"""Double-entry journal builders. Every entry balances before it is saved; entries are
-never edited — a reversal posts the opposite entry."""
+"""Double-entry journal builders. Entries always balance and are never edited; reversals post the opposite."""
 
 from __future__ import annotations
 
@@ -89,7 +88,6 @@ async def reverse(s: AsyncSession, entry: JournalEntry, *, action_id: uuid.UUID 
     return rev
 
 
-# ------------------------------------------------------------------ builders
 def payable_invoice(inv_date: date, ref: str, supplier: str, lines: list[dict], vat_minor: int, total_minor: int) -> Draft:
     """Stock lines -> Inventory; other lines -> their classified expense account; VAT input; AP."""
     d = Draft(inv_date, "payable_invoice", ref, f"Supplier invoice {supplier}")
@@ -99,7 +97,7 @@ def payable_invoice(inv_date: date, ref: str, supplier: str, lines: list[dict], 
         d.dr(code, ln["line_total_minor"], ln.get("description", ""))
         net_total += ln["line_total_minor"]
     d.dr(VAT_IN, vat_minor, "VAT input")
-    # Any rounding difference between printed total and lines + VAT goes to VAT input (<= 1 minor per line).
+    # rounding difference vs the printed total goes to VAT input
     diff = total_minor - net_total - vat_minor
     if diff:
         d.dr(VAT_IN, diff, "rounding")
@@ -114,8 +112,7 @@ def vat_split(gross_minor: int, rate_percent: Decimal) -> tuple[int, int]:
 
 
 def sales_summary(day: date, by_method: dict[str, int], vat_rate: Decimal, cogs_minor: int) -> Draft:
-    """VAT-inclusive till sales. Cash -> Cash on hand; card and transfer -> settlements in transit;
-    credit -> receivables. Net to Sales, VAT to VAT output, plus cost of goods sold from stock used."""
+    """Till sales (VAT-inclusive) by payment method, plus cost of goods sold."""
     d = Draft(day, "sales_summary", day.isoformat(), f"Sales {day.isoformat()}")
     gross = sum(by_method.values())
     for method, minor in sorted(by_method.items()):

@@ -1,9 +1,6 @@
-"""conflict_graph: Stock wants to order, Cash-Flow says the budget does not cover it.
+"""conflict_graph: Stock wants to order but Cash-Flow says the budget doesn't cover it.
 
-gather both positions with figures -> recommend -> ask the owner (interrupt) -> apply -> publish.
-
-A critical item's stockout outranks the budget: its order goes ahead and the owner is told, and the
-question becomes whether to delay other, non-critical orders that can wait instead.
+Critical items still get ordered; the owner is asked about delaying other orders instead.
 """
 
 from __future__ import annotations
@@ -81,8 +78,7 @@ async def gather(state: ConflictState) -> dict[str, Any]:
 
 
 async def recommend(state: ConflictState) -> dict[str, Any]:
-    """A critical item outranks the budget; so does an item that would run out before a deferred order could
-    arrive (deferring it only guarantees the stockout). Otherwise the Cash-Flow recommendation stands."""
+    """Critical items, and ones that would run out before a deferred order lands, beat the budget."""
     from datetime import timedelta
 
     st = state["positions"]["stock"]

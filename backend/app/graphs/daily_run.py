@@ -1,8 +1,4 @@
-"""daily_run_graph: the fixed, ordered work for one business date.
-
-Agents register callables into named steps; empty steps are no-ops. The clock runs this graph
-once per date, in date order, so jumping ahead never skips a day's checks.
-"""
+"""daily_run_graph: the fixed work for one business date. Runs once per date, in order, so no day gets skipped."""
 
 from __future__ import annotations
 
@@ -36,8 +32,7 @@ STEPS: tuple[str, ...] = (
 )
 
 StepFn = Callable[[uuid.UUID, date], Awaitable[Any]]
-# Wall-clock budget for each registered step function. A step stuck on the network (a model call, a
-# channel) is cancelled and recorded as a failure, so the rest of the day still runs.
+# per step; a stuck one is cancelled and recorded as failed
 STEP_BUDGET_S = 300.0
 _steps: dict[str, list[tuple[str, StepFn]]] = {s: [] for s in STEPS}
 

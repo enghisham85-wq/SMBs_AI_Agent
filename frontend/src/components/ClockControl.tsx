@@ -6,7 +6,6 @@ import { errorText } from "../api/errorText";
 import type { ClockState } from "../api/types";
 import { useAuth } from "../hooks/useAuth";
 
-/** Business date and, for the owner in demo mode, controls to move it forward. */
 export function ClockControl() {
   const { t, i18n } = useTranslation();
   const { can } = useAuth();
@@ -41,8 +40,7 @@ export function ClockControl() {
       })
     : "…";
 
-  // Reserve the row the owner's buttons will need, and room for the date, so the sticky header does not
-  // grow and push the page down when /clock answers.
+  // Reserve the space up front so the sticky header doesn't grow when /clock answers.
   return (
     <div
       className={`flex flex-wrap items-center gap-2 text-sm ${can("owner") ? "min-h-[40px]" : ""}`}

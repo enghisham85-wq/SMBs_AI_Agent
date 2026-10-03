@@ -3,11 +3,8 @@
     cd backend
     LLM_MODE=record ANTHROPIC_API_KEY=... uv run python -m scripts.record_llm_fixtures
 
-Runs against a throwaway database in var/record/: seeds the sample cafe, then drives the demo paths
-(stock orders, every sample invoice, the cash forecast, pending approvals, every Chaos scenario and
-the VAT summary) so every Claude call they make is saved to tests/fixtures/llm/ (one JSON file per
-request hash). Replay (LLM_MODE=replay) then serves those answers without the API. `--mode offline`
-runs the same script with the deterministic stand-ins, to check the script itself without credit.
+Uses a throwaway database in var/record/ and writes fixtures to tests/fixtures/llm/.
+`--mode offline` dry-runs the script without spending credit.
 """
 
 from __future__ import annotations
@@ -66,19 +63,19 @@ async def _record(mode: str) -> dict[str, Any]:
         owner = (await ss.execute(select(User).where(User.business_id == bid, User.role == "owner"))).scalar_one()
     steps: dict[str, Any] = {}
 
-    # Stock: advance to the next Tuesday; purchase orders go through the independent check.
+    # Stock: advance to the next Tuesday
     await scheduler.advance(bid, days=2)
     steps["stock_days"] = clock.today().isoformat()
-    # Books: every sample invoice (English, bilingual, Arabic-only and the faulty variants).
+    # Books
     files = json.loads((work / "samples" / "files.json").read_text(encoding="utf-8"))
     outcomes = {}
     for f in files:
         res = await submit(bid, (work / "samples" / f["file"]).read_bytes(), f["mime"], f["file"], "dashboard", None)
         outcomes[f["name"]] = res.get("outcome") or res.get("issues")
     steps["invoices"] = outcomes
-    # Cash: advance through the week before rent and salaries (forecast, shortfall plan).
+    # Cash: run up to rent and salaries
     await scheduler.advance(bid, days=5)
-    # Harness: answer what is waiting, so escalations and incident analysis run.
+    # Harness: answer pending requests so escalations run
     async with read_session() as ss:
         pending = (await ss.execute(select(ApprovalRequest).where(ApprovalRequest.business_id == bid,
                                                                   ApprovalRequest.status == "pending",
@@ -87,14 +84,14 @@ async def _record(mode: str) -> dict[str, Any]:
         keys = [o["key"] for o in req.options]
         await approvals.resolve(str(req.id), "approve" if "approve" in keys else (req.safe_default or keys[0]),
                                 owner, "dashboard")  # type: ignore[arg-type]
-    # Chaos: every scenario (incident analysis and rule proposals).
+    # Chaos
     steps["chaos"] = {}
     for sc in chaos.scenarios():
         row = await chaos.inject(bid, sc["key"], None, owner.id)
         steps["chaos"][sc["key"]] = {"status": row.status, "detected": row.detected, "rule": bool(row.rule_id)}
-    # VAT summary (tax figures go through the independent check).
+    # VAT
     steps["vat"] = (await vat.summary_with_status(bid, vat.period_for(clock.today(), "monthly")))["status"]
-    # Roles and timeouts make no model calls of their own; one more day runs the timeouts.
+    # one more day so the timeouts fire
     await scheduler.advance(bid, days=1)
     await runtime.close()
     after = set(fixtures.glob("*.json")) if fixtures.exists() else set()

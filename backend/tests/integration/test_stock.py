@@ -1,5 +1,4 @@
-"""Stock assistant: stockout warning >= 3 days ahead with a one-tap PO, recipe deduction,
-price-spike hold, duplicate-PO merge, delivery discrepancy, forecast-error fallback, late delivery."""
+"""Stock assistant: early warnings, recipes, price spikes, PO merge, discrepancies, late delivery."""
 
 from __future__ import annotations
 
@@ -157,7 +156,7 @@ async def test_duplicate_open_po_is_blocked_with_merge_offered(cafe: dict[str, A
     async with read_session() as s:
         pos = (await s.execute(select(PurchaseOrder).where(PurchaseOrder.business_id == bid,
                                                            PurchaseOrder.status.in_(("draft", "pending_approval"))))).scalars().all()
-    assert len(pos) == 1  # merged into the first order, no duplicate left
+    assert len(pos) == 1
 
 
 async def test_short_delivery_is_flagged_and_supplier_score_drops(cafe: dict[str, Any]) -> None:
@@ -189,7 +188,7 @@ async def test_short_delivery_is_flagged_and_supplier_score_drops(cafe: dict[str
 async def test_forecast_error_switches_to_same_weekday_average(cafe: dict[str, Any]) -> None:
     bid = cafe["business_id"]
     latte = await _item(bid, "Latte")
-    await scheduler.advance(bid, days=1)  # produces a forecast for the next days
+    await scheduler.advance(bid, days=1)
     spike_day = clock.today() + timedelta(days=1)
     async with write_session() as s:
         s.add(FeedOverride(business_id=bid, date=spike_day, overrides={"sales_multiplier": {str(latte.id): 3}}))
@@ -226,7 +225,7 @@ async def test_late_po_flagged_once_with_one_reliability_drop(cafe: dict[str, An
 
 
 async def test_no_expiry_warnings_before_the_first_forecast(cafe: dict[str, Any]) -> None:
-    """A freshly seeded business has no forecast yet: expected use is unknown, not zero."""
+    """No forecast yet means unknown use, not zero."""
     import json as _json
 
     from app.api.v1.stock import list_items

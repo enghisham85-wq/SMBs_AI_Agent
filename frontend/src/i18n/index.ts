@@ -5,13 +5,12 @@ import en from "./en.json";
 
 const STORAGE_KEY = "lang";
 
-// The last language used in this browser, so the first paint already has the right text and direction
-// instead of flipping to right-to-left once /me answers.
+// Remembered locally so the first paint doesn't flip to RTL once /me answers.
 function storedLanguage(): "en" | "ar" {
   try {
     return localStorage.getItem(STORAGE_KEY) === "ar" ? "ar" : "en";
   } catch {
-    return "en"; // storage blocked (privacy mode, sandboxed frame)
+    return "en"; // storage blocked
   }
 }
 
@@ -30,14 +29,13 @@ void i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
 });
 
-/** Switch language and page direction (Arabic is right-to-left). */
 export function applyLanguage(lang: "en" | "ar"): void {
   void i18n.changeLanguage(lang);
   applyDirection(lang);
   try {
     localStorage.setItem(STORAGE_KEY, lang);
   } catch {
-    /* not remembered; the server-side preference still applies after /me */
+    /* fine, /me brings back the saved preference */
   }
 }
 

@@ -8,32 +8,32 @@ from typing import Any
 
 _DIGITS = str.maketrans(
     {
-        **{chr(0x0660 + i): str(i) for i in range(10)},  # Arabic-Indic ٠-٩
-        **{chr(0x06F0 + i): str(i) for i in range(10)},  # Eastern Arabic-Indic ۰-۹
-        "٫": ".",  # Arabic decimal separator ٫
-        "٬": "",  # Arabic thousands separator ٬
-        "،": ",",  # Arabic comma ،
+        **{chr(0x0660 + i): str(i) for i in range(10)},  # Arabic-Indic
+        **{chr(0x06F0 + i): str(i) for i in range(10)},  # Eastern Arabic-Indic
+        "٫": ".",  # decimal separator
+        "٬": "",  # thousands separator
+        "،": ",",
     }
 )
 
 _TASHKEEL = re.compile("[ؐ-ًؚ-ٰٟۖ-ۭ]")
-_ALEF = re.compile("[آأإٱ]")  # آ أ إ ٱ -> ا
+_ALEF = re.compile("[آأإٱ]")
 
 
 def normalize_digits(text: str) -> str:
-    """Convert Arabic-Indic digits and separators to Western digits: '٣٦٫٥٠٠' -> '36.500'."""
+    """'٣٦٫٥٠٠' -> '36.500'"""
     return text.translate(_DIGITS)
 
 
 def normalize_arabic_name(text: str) -> str:
-    """Normalise a supplier or item name for matching across spelling variants."""
+    """Normalise a name so common spelling variants match."""
     t = unicodedata.normalize("NFKC", text or "")
     t = normalize_digits(t)
     t = _TASHKEEL.sub("", t)
     t = t.replace("ـ", "")  # tatweel
     t = _ALEF.sub("ا", t)
-    t = t.replace("ى", "ي")  # ى -> ي
-    t = t.replace("ة", "ه")  # ة -> ه
+    t = t.replace("ى", "ي")
+    t = t.replace("ة", "ه")
     t = t.casefold()
     t = re.sub(r"[^\w\s]", " ", t)
     return re.sub(r"\s+", " ", t).strip()

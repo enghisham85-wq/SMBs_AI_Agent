@@ -1,15 +1,4 @@
-"""ApprovalService: owner approvals, questions and alerts for both channels.
-
-- `ask_owner()` is called from inside any graph node. It creates the request idempotently
-  (keyed by thread + gate, because LangGraph re-runs the node on resume) and pauses the graph
-  with `interrupt()`.
-- `resolve()` is called by the dashboard and the Telegram bot. An atomic
-  `UPDATE ... WHERE status='pending'` makes the first answer win; only the winner resumes the graph.
-  `claim()` is that first step on its own, for callers (Telegram) that resume the graph later.
-- Channel notifiers (Telegram) run on one background worker, so creating or answering a request
-  never waits on the network.
-- `expire_due()` applies the safe default to overdue requests (never irreversible).
-"""
+"""Owner approvals, questions and alerts, shared by the dashboard and Telegram."""
 
 from __future__ import annotations
 
@@ -41,7 +30,7 @@ Notifier = Callable[[str, dict[str, Any]], Awaitable[None]]
 _notifiers: list[Notifier] = []
 _queue: asyncio.Queue[tuple[str, dict[str, Any]]] | None = None
 _worker: asyncio.Task[None] | None = None
-# Standalone questions (post_question key "<kind>:<ref>") act on their answer through these handlers.
+# keyed by the "<kind>" part of a post_question key
 QuestionHandler = Callable[[dict[str, Any]], Awaitable[None]]
 QUESTION_HANDLERS: dict[str, QuestionHandler] = {}
 
@@ -69,7 +58,7 @@ class ResolveResult:
 
 @dataclass
 class Claim:
-    """The outcome of the atomic first-answer-wins step. `resume` is set only for the winner."""
+    """Result of the first-answer-wins update; only the winner gets `resume`."""
 
     result: ResolveResult
     resume: Callable[[], Coroutine[Any, Any, dict[str, Any] | None]] | None = None
@@ -85,11 +74,7 @@ def clear_notifiers() -> None:
 
 
 def _notify(kind: str, req: dict[str, Any]) -> None:
-    """Publish to the dashboard now and queue the channel notifiers; never waits on the network.
-
-    Callers are graph nodes and resolve paths, and a slow or down channel (e.g. Telegram) must not
-    hold them up or block the other channel.
-    """
+    """Publish to the dashboard now; channel notifiers are queued so a slow Telegram can't block anyone."""
     global _queue, _worker
     broker.publish("chat", {"kind": kind, "request": req})
     if not _notifiers:
@@ -103,7 +88,7 @@ def _notify(kind: str, req: dict[str, Any]) -> None:
 
 
 async def _drain_forever(queue: asyncio.Queue[tuple[str, dict[str, Any]]]) -> None:
-    # One worker keeps a request's events in order: "resolved" edits the messages "created" sent.
+    # single worker so "resolved" never overtakes the "created" message it edits
     while True:
         kind, req = await queue.get()
         try:
@@ -121,7 +106,7 @@ def _worker_stopped(task: asyncio.Task[None]) -> None:
 
 
 async def drain_notifications() -> None:
-    """Wait until every queued channel notification has been handled (tests)."""
+    """Test helper: wait for queued channel notifications."""
     if _queue is not None and _worker is not None and not _worker.done():
         await _queue.join()
 
@@ -156,7 +141,7 @@ REASK_EFFECTS = ("reask",)
 
 
 def validate_ask(ask: OwnerAsk) -> None:
-    """Every request is answerable in one tap (2-4 options) or one short reply."""
+    """Requests must be answerable with one tap (2-4 options) or one short reply."""
     if ask.kind == "alert":
         if not 1 <= len(ask.options) <= 4:
             raise InvalidRequestError("alerts need 1-4 options")
@@ -243,11 +228,7 @@ def ask_owner(
     action_id: uuid.UUID | None = None,
     agent: str = "harness",
 ) -> Any:
-    """Return an awaitable that creates the request (idempotently) and pauses the graph.
-
-    Must be awaited inside a LangGraph node. The resume value is the owner's answer:
-    {option_key, effect, edits, text, user_id, via, timed_out}.
-    """
+    """Create the request and pause the graph. Safe to re-run, which LangGraph does on resume."""
 
     async def _run() -> Any:
         req_id, _ = await _create(
@@ -268,7 +249,7 @@ async def post_alert(
     *, business_id: uuid.UUID, agent: str, text_en: str, text_ar: str, context: dict[str, Any] | None = None,
     action_id: uuid.UUID | None = None, urgency: int = 1, dedupe_key: str | None = None,
 ) -> uuid.UUID:
-    """A non-blocking message to the owner with a single OK button."""
+    """Non-blocking message with a single OK button."""
     from app.core.i18n import option
 
     ask = OwnerAsk(
@@ -286,7 +267,7 @@ async def post_alert(
 async def post_question(
     *, business_id: uuid.UUID, agent: str, ask: OwnerAsk, key: str, action_id: uuid.UUID | None = None,
 ) -> uuid.UUID:
-    """A request not tied to a paused graph; the answer is read later with `answer_for()`."""
+    """Ask without pausing a graph; read the answer later with `answer_for()`."""
     req_id, _ = await _create(
         business_id=business_id, ask=ask, graph_name=None, thread_id=f"q:{key}", gate_key="question",
         action_id=action_id, agent=agent,
@@ -314,7 +295,7 @@ async def resolve(
     edits: dict[str, Any] | None = None,
     text: str | None = None,
 ) -> ResolveResult:
-    """Answer a request; the winner's continuation (question handler, paused graph) runs inline."""
+    """Answer a request and, if we won, resume whatever was waiting on it."""
     c = await claim(ref, option_key, actor, via, edits, text)
     if c.resume is not None:
         c.result.graph_result = await c.resume()
@@ -329,11 +310,7 @@ async def claim(
     edits: dict[str, Any] | None = None,
     text: str | None = None,
 ) -> Claim:
-    """The first step of `resolve()`: the checks and the atomic first-answer-wins update.
-
-    The winner gets `resume`, which notifies the channels and continues the paused graph; a caller
-    that must answer quickly (a Telegram tap) can run it in the background.
-    """
+    """`resolve()` without the resume, for callers like Telegram that resume in the background."""
     req = await get(ref)
     if req is None:
         return Claim(ResolveResult("not_found"))
@@ -418,7 +395,7 @@ class _System:
 
 
 async def withdraw(ref: str, reason: str) -> bool:
-    """Take back a pending request that is no longer needed; its paused graph resumes with effect `cancel`."""
+    """Cancel a pending request that's no longer needed."""
     req = await get(ref)
     if req is None:
         return False
@@ -446,12 +423,7 @@ async def withdraw(ref: str, reason: str) -> bool:
 
 
 async def expire_due(business_id: uuid.UUID) -> int:
-    """Apply the safe default to overdue requests. Returns how many expired.
-
-    The request is marked `timed_out` and its graph resumes with the safe default, which is never
-    irreversible. When that default is "ask again" the question is re-sent with urgency + 1 and
-    reask_count + 1: a paused action's own graph re-asks at its gate; a standalone question is copied here.
-    """
+    """Apply the safe default to overdue requests and return how many expired."""
     now = clock_now()
     async with read_session() as s:
         due = (
@@ -502,7 +474,6 @@ async def expire_due(business_id: uuid.UUID) -> int:
 
 
 async def _reask_standalone(req: ApprovalRequest) -> None:
-    """Re-send a question that is not tied to a paused graph, one level more urgent."""
     ask = OwnerAsk(kind=req.kind, text_en=req.text_en, text_ar=req.text_ar, options=req.options,
                    required_role=req.required_role, safe_default=req.safe_default, urgency=min(3, req.urgency + 1),
                    context={k: v for k, v in (req.context or {}).items() if k != "allow_text"},

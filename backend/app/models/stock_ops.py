@@ -38,7 +38,7 @@ class StockMovement(TenantMixin, Base):
     quantity: Mapped[Decimal] = mapped_column(QTY)  # signed
     date: Mapped[date] = mapped_column(Date, index=True)
     source: Mapped[str] = mapped_column(String(20), default="agent")
-    # Required for waste, spoilage, adjustment and count_correction.
+    # required for waste, spoilage, adjustment and count_correction
     reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
     reference_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     reference_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)

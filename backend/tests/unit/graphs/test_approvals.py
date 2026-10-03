@@ -91,13 +91,11 @@ async def test_timeout_applies_safe_default_and_reasks_with_higher_urgency(busin
 
 async def test_concurrent_writers_on_file_sqlite_never_lock(tmp_path: Path, business: dict[str, Any],
                                                              actor: Any) -> None:
-    """20 parallel writers (resolves, audits, event-like inserts) on a real SQLite file."""
     import app.models as models
     from app.harness.audit import add_audit
     from app.models.clock import BusinessClock
     from app.models.tenancy import Business, User
 
-    # Move the whole test onto a file database.
     old = get_engine()
     init_engine(f"sqlite+aiosqlite:///{(tmp_path / 'app.db').as_posix()}")
     async with get_engine().begin() as conn:

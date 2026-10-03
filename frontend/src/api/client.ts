@@ -1,4 +1,3 @@
-// Thin client over the REST API. Sends the session cookie and the CSRF header on writes.
 import createClient from "openapi-fetch";
 import type { paths } from "./schema";
 
@@ -23,8 +22,7 @@ export class ApiError extends Error {
   }
 }
 
-// Typed client generated from the backend OpenAPI document (npm run gen:api). The backend returns
-// JSON built by its own serializer, so most calls go through `request()` below.
+// Generated with `npm run gen:api`. Most calls still go through request() below.
 export const typed = createClient<paths>({ baseUrl: "" });
 typed.use({
   onRequest({ request }) {
@@ -50,11 +48,11 @@ async function parseError(res: Response): Promise<ApiError> {
   );
 }
 
-/** Deadline for ordinary calls; a hung request becomes a retryable error instead of an endless spinner. */
+/** A hung request should become a retryable error, not an endless spinner. */
 export const DEFAULT_TIMEOUT_MS = 15_000;
-/** Calls that run LLM work before answering (document reading, chaos runs, graph resumes, day runs). */
+/** For calls that do LLM work before they answer. */
 export const LONG_TIMEOUT_MS = 150_000;
-/** Advancing the demo clock runs every agent's whole day (many LLM calls per day) before answering. */
+/** Advancing the clock runs a full agent day per step. */
 export const DAY_RUN_TIMEOUT_MS = 15 * 60_000;
 
 export interface RequestOptions {
@@ -62,7 +60,7 @@ export interface RequestOptions {
   timeoutMs?: number;
 }
 
-/** A request that got no usable HTTP answer: it timed out, the network failed, or the body was not JSON. */
+/** Timed out, network down, or a body that wasn't JSON. */
 export class RequestError extends Error {
   constructor(public kind: "timeout" | "network" | "bad_response") {
     super(`request failed: ${kind}`);
@@ -82,7 +80,7 @@ export function errorKind(e: unknown): ErrorKind {
   return "other";
 }
 
-/** Only transient failures are worth retrying; 4xx answers will not change on a second try. */
+/** 4xx won't change on a second try. */
 export function isTransient(e: unknown): boolean {
   const kind = errorKind(e);
   return kind === "server" || kind === "network";
@@ -99,7 +97,7 @@ export async function request<T>(
   if (body !== undefined && !isForm) headers["Content-Type"] = "application/json";
   if (method !== "GET" && csrfToken) headers["X-CSRF-Token"] = csrfToken;
 
-  // One controller fed by both the deadline and the caller (React Query cancels on unmount/refetch).
+  // Aborted by our deadline or by the caller (React Query cancels on unmount).
   const ctrl = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -111,7 +109,7 @@ export async function request<T>(
   else signal?.addEventListener("abort", forward, { once: true });
   const failure = (e: unknown, kind: "network" | "bad_response") => {
     if (timedOut) return new RequestError("timeout");
-    if (signal?.aborted) return e; // a cancellation, not a failure: React Query expects the abort error
+    if (signal?.aborted) return e; // cancelled; React Query wants the original abort error
     return new RequestError(kind);
   };
 
@@ -146,7 +144,7 @@ export const api = {
   post: <T>(path: string, body?: unknown, opts?: RequestOptions) =>
     request<T>("POST", path, body ?? {}, opts),
   patch: <T>(path: string, body: unknown, opts?: RequestOptions) => request<T>("PATCH", path, body, opts),
-  // Uploads are read (OCR/LLM) or imported before the response, so they get the long deadline by default.
+  // Uploads get OCR'd or imported before the response comes back.
   upload: <T>(path: string, form: FormData, opts?: RequestOptions) =>
     request<T>("POST", path, form, { timeoutMs: LONG_TIMEOUT_MS, ...opts }),
 };

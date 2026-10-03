@@ -93,7 +93,7 @@ async def test_read_only_completes_without_interrupt(business: dict[str, Any]) -
 
 async def test_reversible_retry_with_corrected_input_succeeds(business: dict[str, Any]) -> None:
     calls.clear()
-    # value=2 fails read-back; the verify step suggests the correction value=1 -> retry succeeds.
+    # value=2 fails read-back, verifier suggests value=1, retry passes.
     out = await run_action("t_rev", {"tag": "a", "value": 2}, business["id"])
     assert out["outcome"] == "completed"
     assert calls["execute:a"] == 2
@@ -174,7 +174,7 @@ async def _events(action_id: uuid.UUID) -> list[str]:
 
 
 async def test_owner_questions_are_prepared_once_across_pause_and_resume(business: dict[str, Any], actor: Any) -> None:
-    """Resuming re-runs the paused node, so the wording (a model call) and the stage audit live before it."""
+    """Resume re-runs the paused node, so the model call and audit have to happen before it."""
     calls.clear()
     out = await run_action("t_send", {"tag": "once"}, business["id"])
     await approvals.resolve(str((await _pending(out["action_id"])).id), "approve", actor("manager"), "dashboard")

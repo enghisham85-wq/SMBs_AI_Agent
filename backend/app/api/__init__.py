@@ -1,4 +1,3 @@
-"""All /api/v1 routers."""
 
 from fastapi import APIRouter
 

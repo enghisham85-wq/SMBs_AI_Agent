@@ -1,8 +1,4 @@
-"""Which agent is acting right now (each agent writes only its own records).
-
-Harness nodes run as their action's agent; an event handler runs as its consuming agent. The
-ownership guard test listens to database flushes and checks every write against this.
-"""
+"""Tracks which agent is acting, so tests can check each agent only writes its own records."""
 
 from __future__ import annotations
 

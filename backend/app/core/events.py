@@ -1,14 +1,4 @@
-"""Transactional outbox and in-process dispatch.
-
-`publish()` writes an Event row in the caller's transaction. After the transaction commits,
-`write_session()` calls `dispatch_if_pending()`, which delivers each event once per subscribed
-consumer and records an EventDelivery. Handlers are idempotent on (event, consumer).
-
-Dispatch stays inline (the caller waits for the handlers): the daily run and the API rely on a
-handler's effects being visible once the publishing write returns. The deliveries of one event and
-its `dispatched` flag are written in a single commit after all its consumers ran, so a crash in
-between re-runs that event's handlers on the next dispatch.
-"""
+"""Transactional outbox with inline, in-process dispatch after commit."""
 
 from __future__ import annotations
 
@@ -24,7 +14,6 @@ from app.harness.audit import jsonable
 
 log = logging.getLogger(__name__)
 
-# Required payload fields per event type.
 REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "po.drafted": ("po_id", "supplier_id", "total", "expected_date", "is_critical"),
     "budget.check_result": ("po_id", "within_budget", "remaining_budget", "recommendation"),
@@ -49,8 +38,7 @@ REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
 Handler = Callable[[dict[str, Any]], Awaitable[None]]
 _subscribers: dict[str, list[tuple[str, Handler]]] = {}
 _dispatching = False
-# Set when a committed transaction published an event (and at startup, for leftovers), so the
-# post-commit hook can skip the outbox query after the many writes that publish nothing.
+# Lets the post-commit hook skip the outbox query when nothing was published. Starts True for leftovers.
 _maybe_pending = True
 _PUBLISHED = "events_published"
 _BATCH = 500
@@ -103,25 +91,20 @@ def _mark_pending(session: AsyncSession) -> None:
 
 
 def committed(session: AsyncSession) -> None:
-    """Called by write_session after a commit: events this session published are now visible."""
+    """Called by write_session after each commit."""
     global _maybe_pending
     if session.info.get(_PUBLISHED):
         _maybe_pending = True
 
 
 async def dispatch_if_pending() -> int:
-    """write_session's post-commit hook: skips the outbox query when nothing new can be waiting."""
     if not _maybe_pending:
         return 0
     return await dispatch_pending()
 
 
 async def dispatch_pending() -> int:
-    """Deliver undispatched events to their consumers. Returns the number of deliveries made.
-
-    Re-entrant calls (a handler's own write_session) return immediately; the outer loop picks up
-    any events those handlers publish.
-    """
+    """Deliver pending events inline, so handler effects are visible when the caller's write returns."""
     global _dispatching, _maybe_pending
     if _dispatching or not _subscribers:
         return 0
@@ -132,7 +115,7 @@ async def dispatch_pending() -> int:
     delivered = 0
     try:
         while True:
-            # Cleared before the query: a commit that lands while it runs sets the flag again.
+            # clear before querying so a commit during the query sets it again
             _maybe_pending = False
             async with read_session() as s:
                 events = list(
@@ -174,19 +157,19 @@ async def dispatch_pending() -> int:
                     try:
                         from app.core.ownership import acting_as
 
-                        with acting_as(consumer.split(":", 1)[0]):  # a handler acts as its consuming agent
+                        with acting_as(consumer.split(":", 1)[0]):
                             await handler(dict(envelope))
-                    except Exception as exc:  # a failing consumer must not block the others
+                    except Exception as exc:  # don't let one consumer block the rest
                         log.exception("event handler %s failed for %s", consumer, ev.type)
                         status, error = "failed", repr(exc)
                     results.append(EventDelivery(business_id=ev.business_id, event_id=ev.id, consumer=consumer,
                                                  status=status, error=error))
                     delivered += 1
-                # One commit per event records every consumer's delivery and the dispatched flag.
+                # Deliveries and the flag commit together, so a crash re-runs the whole event.
                 async with write_session() as s:
                     s.add_all(results)
                     await s.execute(update(Event).where(Event.id == ev.id).values(dispatched=True))
-            if idle:  # no consumer left to run: flag the lot in one statement
+            if idle:
                 async with write_session() as s:
                     await s.execute(update(Event).where(Event.id.in_(idle)).values(dispatched=True))
     finally:

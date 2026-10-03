@@ -1,7 +1,4 @@
-"""Stock tracking: sales deduct ingredients via recipes, deliveries add stock,
-waste/spoilage/adjustments are recorded with reasons. Every change is a StockMovement and the
-StockLevel is kept equal to the running sum.
-"""
+"""Stock tracking. Every change is a StockMovement, and StockLevel stays equal to their running sum."""
 
 from __future__ import annotations
 
@@ -20,7 +17,6 @@ from app.models.finance_master import Sale
 from app.models.master import Item, RecipeLine
 from app.models.stock_ops import REASON_REQUIRED, StockLevel, StockMovement
 
-# Recipe unit -> stock unit conversion factors.
 UNIT_FACTORS: dict[tuple[str, str], Decimal] = {
     ("g", "kg"): Decimal("0.001"),
     ("kg", "g"): Decimal("1000"),

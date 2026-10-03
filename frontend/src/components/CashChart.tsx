@@ -28,12 +28,10 @@ export interface WeekPoint {
   below_buffer: boolean;
 }
 
-// Projected balance (solid teal), the owner's minimum buffer (dashed red) and, when simulating an
-// action, the balance after it (dashed dark ink). Line style differs, and a legend is always shown.
+// Lines differ by dash as well as colour, and the legend is always on.
 const BALANCE = "#0d9488";
 const AFTER = "#334155";
 const BUFFER = "#dc2626";
-// 13 weeks: one line per scenario, told apart by dash pattern as well as colour.
 const SCENARIO_STYLE: Record<string, { color: string; dash?: string }> = {
   expected: { color: BALANCE },
   pessimistic: { color: "#b45309", dash: "6 3" },
@@ -202,7 +200,6 @@ export function CashChart({
   );
 }
 
-/** 13-week view: expected, pessimistic and optimistic week-end balances against the buffer. */
 function WeeklyChart({
   weekly,
   buffer,

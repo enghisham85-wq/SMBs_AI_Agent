@@ -19,7 +19,6 @@ PO_STATUSES = (
 )
 OPEN_STATUSES = ("draft", "pending_approval", "approved", "sent", "partially_received", "on_hold")
 
-# Allowed purchase order status transitions
 TRANSITIONS: dict[str, set[str]] = {
     "draft": {"pending_approval", "approved", "on_hold", "cancelled", "rejected"},
     "on_hold": {"draft", "cancelled"},
@@ -53,7 +52,7 @@ class PurchaseOrder(TenantMixin, Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     merged_into_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     late_flagged: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Why it was drafted: projected stockout, forecast used, hold reasons ...
+    # why it was drafted: stockout, forecast used, hold reasons
     notes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
@@ -91,7 +90,7 @@ class DeliveryLine(TenantMixin, Base):
 
 
 def transition(po: PurchaseOrder, to: str) -> None:
-    """Move a PO to a new status, refusing moves the data model does not allow."""
+    """Change PO status, refusing transitions not in TRANSITIONS."""
     if to not in TRANSITIONS.get(po.status, set()):
         raise IllegalTransitionError(f"PO {po.number}: {po.status} -> {to} is not allowed")
     po.status = to

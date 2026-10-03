@@ -1,7 +1,6 @@
-"""Bridges sales history and stored forecasts.
+"""Bridges sales history and stored forecasts; ingredient demand comes through recipes.
 
-Sold products are forecast directly; ingredient demand is derived through recipes. The daily run
-stores a 30-day horizon so the cash projection never runs short of sales forecast.
+We store 30 days ahead so the cash projection never runs out of sales forecast.
 """
 
 from __future__ import annotations
@@ -63,7 +62,7 @@ class _Recipe:
 def _compute(business_id: uuid.UUID, d: date, horizon: int, cal: Calendar, history: dict[uuid.UUID, dict[date, float]],
              products: dict[uuid.UUID, tuple[str, str]], units: dict[uuid.UUID, str],
              recipes: list[_Recipe]) -> tuple[list[dict[str, Any]], dict[str, str]]:
-    """The forecast rows and {item_id: method}. Pure CPU (statsmodels), so it runs in a worker thread."""
+    """Pure CPU (statsmodels), so it runs in a worker thread."""
     rows: list[dict[str, Any]] = []
     methods: dict[str, str] = {}
     product_fc: dict[uuid.UUID, list[tuple[date, float, float, float]]] = {}
@@ -77,7 +76,6 @@ def _compute(business_id: uuid.UUID, d: date, horizon: int, cal: Calendar, histo
                              low=Decimal(str(f.low)).quantize(Q), expected=Decimal(str(f.expected)).quantize(Q),
                              high=Decimal(str(f.high)).quantize(Q), method=used, generated_on=d,
                              confidence=0.8 if used == "holt_winters" else 0.6))
-    # Derived ingredient demand through recipes.
     ing: dict[uuid.UUID, dict[date, list[Decimal]]] = defaultdict(lambda: defaultdict(lambda: [Decimal(0)] * 3))
     for r in recipes:
         unit = units.get(r.ingredient_item_id)
@@ -99,10 +97,7 @@ def _compute(business_id: uuid.UUID, d: date, horizon: int, cal: Calendar, histo
 
 
 async def generate(business_id: uuid.UUID, d: date, horizon: int = HORIZON_DAYS) -> dict[str, str]:
-    """Forecast every product and derived ingredient from date d and store them. Returns {item_id: method}.
-
-    The fitting runs in a worker thread and outside the write lock: only the replace of the rows holds it.
-    """
+    """Forecast and store every product and ingredient from d. Fitting happens outside the write lock."""
     async with read_session() as s:
         business = await s.get(Business, business_id)
         assert business is not None
@@ -141,11 +136,7 @@ async def daily_demand(s: AsyncSession, business_id: uuid.UUID, generated_on: da
 
 async def forecast_errors(s: AsyncSession, business_id: uuid.UUID, item_ids: list[uuid.UUID],
                           today: date) -> dict[uuid.UUID, tuple[float | None, float | None]]:
-    """(yesterday's error, 7-day MAPE) per product, from one read of the week's sales and forecasts.
-
-    A day's forecast is the one made that morning, else the latest made before it; a day without any
-    sales records (a data gap) pauses the check for that day.
-    """
+    """(yesterday's error, 7-day MAPE) per product. Days with no sales records at all are skipped."""
     days = [today - timedelta(days=i) for i in range(1, 8)]
     sales = (await s.execute(select(Sale).where(Sale.business_id == business_id, Sale.date >= days[-1],
                                                 Sale.date < today))).scalars().all()

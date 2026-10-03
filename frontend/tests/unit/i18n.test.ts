@@ -1,9 +1,7 @@
 import ar from "../../src/i18n/ar.json";
 import en from "../../src/i18n/en.json";
 
-// The Arabic interface is complete. Every English key has an Arabic string, and every literal
-// key the code passes to t() exists. Plural suffixes differ by language (en: one/other; ar adds
-// zero/two/few/many), so they are compared on the base key.
+// Plural suffixes differ (ar adds zero/two/few/many), so keys are compared without them.
 const PLURAL = /_(zero|one|two|few|many|other)$/;
 
 function keys(obj: Record<string, unknown>, prefix = ""): Set<string> {
@@ -16,7 +14,6 @@ function keys(obj: Record<string, unknown>, prefix = ""): Set<string> {
   return out;
 }
 
-// Every source file's text, bundled by Vite at test time.
 const SOURCES = import.meta.glob("../../src/**/*.{ts,tsx}", {
   query: "?raw",
   import: "default",
@@ -40,7 +37,7 @@ describe("Arabic interface", () => {
     for (const text of Object.values(SOURCES)) {
       for (const m of text.matchAll(/\bt\(\s*"([a-z_]+(?:\.[a-z0-9_]+)+)"/g)) used.add(m[1]);
     }
-    expect(used.size).toBeGreaterThan(100); // the scan really read the pages
+    expect(used.size).toBeGreaterThan(100); // sanity check on the scan
     expect([...used].filter((k) => !enKeys.has(k)).sort()).toEqual([]);
   });
 

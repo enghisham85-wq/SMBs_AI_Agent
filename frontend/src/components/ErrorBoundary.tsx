@@ -2,12 +2,12 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 interface Props {
-  /** Changing this (the route) clears a caught error, so navigating away recovers without a reload. */
+  /** Usually the route. Changing it clears the error. */
   resetKey: string;
   children: ReactNode;
 }
 
-/** Keeps a crashing page (or a page chunk that failed to load) from blanking the whole dashboard. */
+/** So one broken page or chunk doesn't blank the whole app. */
 export class ErrorBoundary extends Component<Props, { error: unknown }> {
   state: { error: unknown } = { error: null };
 

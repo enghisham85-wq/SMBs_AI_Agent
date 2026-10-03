@@ -1,7 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { errorKind } from "../api/client";
 
-/** A failed load, worded by cause (signed out, no access, server, timeout, offline), with a retry. */
 export function QueryError({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   const { t } = useTranslation();
   return (

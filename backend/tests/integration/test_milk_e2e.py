@@ -1,10 +1,4 @@
-"""Milk order end to end: one order followed through all three agents, checking each of them after every step.
-
-1 forecast -> milk PO drafted     2 Cash-Flow budget check (milk is critical)     3 owner approves
-4 short delivery (36 of 40 L)     5 invoice for 40 L held by the three-way match
-6 owner confirms: corrected posting, payment updated, supplier score lowered
-7 incident logged and a rule proposed: wait for delivery confirmation before posting this supplier's invoices
-"""
+"""One milk order end to end through all three agents, checked after every step."""
 
 from __future__ import annotations
 
@@ -116,15 +110,15 @@ async def test_milk_end_to_end_across_three_agents(cafe: dict[str, Any]) -> None
     drafted = [e for e in await _events("po.drafted") if e.payload["po_id"] == str(po_id)]
     assert drafted and "cashflow" in await _consumed(drafted[0].id)
 
-    # 2. Cash-Flow checks the weekly budget and replies; the drafted order is a committed outflow.
+    # 2. Cash-Flow budget check. The draft already counts as committed.
     checks = [e for e in await _events("budget.check_result") if e.payload["po_id"] == str(po_id)]
     assert len(checks) == 1 and "stock" in await _consumed(checks[0].id)
-    assert checks[0].payload["recommendation"] == "proceed"  # milk is critical: the stockout outranks the budget
+    assert checks[0].payload["recommendation"] == "proceed"  # critical item, stockout beats budget
     assert po.notes["budget"]["status"] in ("ok", "proceed")
     assert any(a.inputs["po_id"] == str(po_id) for a in await _audit(bid, "committed_outflow_added"))
     assert f"po:{po_id}" in await _forecast_keys(bid)
 
-    # 3. The owner approves (40 L) in one tap; Accountant and Cash-Flow hear about the sent order.
+    # 3. Owner approves 40 L; Accountant and Cash-Flow hear about it.
     edits = {"lines": [{"item_id": str(milk.id), "qty": "40"}]}
     res = await approvals.resolve(str(req.id), "edit", await _owner(bid), "dashboard", edits=edits)
     assert res.status == "resolved"
@@ -146,7 +140,7 @@ async def test_milk_end_to_end_across_three_agents(cafe: dict[str, Any]) -> None
     assert score_after_delivery < score_start
     assert any(a.inputs["po_id"] == str(po_id) for a in await _audit(bid, "delivery_ready_for_match"))
 
-    # 5. The supplier invoices the full 40 L: the three-way match holds it.
+    # 5. Invoice for the full 40 L is held by the three-way match.
     files = {f["name"]: f for f in json.loads((cafe["samples"] / "files.json").read_text())}
     f = files["bi_dairy_full_qty"]
     sub = await submit(bid, (cafe["samples"] / f["file"]).read_bytes(), f["mime"], f["file"], "dashboard", None)
@@ -158,11 +152,11 @@ async def test_milk_end_to_end_across_three_agents(cafe: dict[str, Any]) -> None
     assert inv is not None and inv.status == "held" and inv.purchase_order_id == po_id
     held = [e for e in await _events("invoice.held") if e.payload["invoice_id"] == str(inv_id)]
     assert held and {"stock", "cashflow"} <= await _consumed(held[0].id)
-    assert score_after_hold < score_after_delivery  # Stock noted the supplier issue
+    assert score_after_hold < score_after_delivery
     keys = await _forecast_keys(bid)
     assert f"po:{po_id}" in keys and f"payable:{inv_id}" not in keys  # Cash-Flow keeps the order amount
 
-    # 6. The owner confirms: post what was delivered; Cash-Flow schedules the payment instead of the order.
+    # 6. Owner confirms. Post what arrived; Cash-Flow swaps the order for the payment.
     q = next(r for r in (await approvals_pending(bid)) if r.context.get("issue") == "three_way")
     assert (await approvals.resolve(str(q.id), "post_delivered", await _owner(bid), "dashboard")).status == "resolved"
     async with read_session() as s:
@@ -173,7 +167,7 @@ async def test_milk_end_to_end_across_three_agents(cafe: dict[str, Any]) -> None
     keys = await _forecast_keys(bid)
     assert f"payable:{inv_id}" in keys and f"po:{po_id}" not in keys  # counted once
 
-    # 7. The harness logged the incident and proposed a rule; approved, it holds the next undelivered invoice.
+    # 7. Incident logged and a rule proposed. Once approved it holds the next undelivered invoice.
     async with read_session() as s:
         inc = (await s.execute(select(Incident).where(Incident.type == "three_way_mismatch"))).scalar_one()
         rule = (await s.execute(select(LearnedRule).where(LearnedRule.source_incident_id == inc.id))).scalar_one()
@@ -200,7 +194,7 @@ async def test_edit_without_a_change_asks_the_owner_again(cafe: dict[str, Any]) 
     req = await _milk_request(bid, milk)
     po_id = uuid.UUID(req.context["po_id"])
 
-    # "Edit" sent back with nothing changed: the order is not sent, and the owner gets a fresh question.
+    # An "edit" with no changes doesn't send the order; the owner gets asked again.
     res = await approvals.resolve(str(req.id), "edit", await _owner(bid), "dashboard", edits={})
     assert res.status == "resolved"
     async with read_session() as s:

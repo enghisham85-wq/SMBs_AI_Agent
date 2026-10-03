@@ -21,8 +21,7 @@ export interface ForecastPoint {
   high: number | null;
 }
 
-// Two series on one axis: actual (solid, dark ink) and forecast (dashed, brand teal) with a light
-// range band. Identity never relies on colour alone: line style differs and a legend is shown.
+// Actual vs forecast differ by line style too, not only colour.
 const ACTUAL = "#334155";
 const FORECAST = "#0d9488";
 const BAND = "#99f6e4";

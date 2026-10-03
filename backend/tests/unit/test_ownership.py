@@ -1,17 +1,4 @@
-"""Ownership guard: each agent writes only its own tables; other agents change them
-through logged events handled in that agent's handlers.py.
-
-Two checks:
-- static: outside handlers.py, an agent module never creates (`Model(...)`), deletes (`delete(Model)`)
-  or bulk-updates (`update(Model)`) another agent's model. Reading another agent's records is allowed:
-  the Cash-Flow forecast, for example, reads invoices and orders, so imports alone cannot be the test.
-- runtime: while the milk end-to-end scenario runs, every flushed INSERT/UPDATE/DELETE on an owned
-  table is made by the owning agent (harness nodes act as their action's agent, event handlers as
-  their consuming agent).
-
-Shared master data (Supplier, SupplierAlias, Account, BankAccount, users, settings) and harness,
-event and audit tables are not owned by one agent.
-"""
+"""Each agent writes only its own tables; others go through events. Checked statically and at runtime."""
 
 from __future__ import annotations
 
@@ -62,7 +49,7 @@ SEED_FUNCTIONS = {"seed_books", "seed_opening_stock", "seed_cash_story"}
 
 
 def _writes(tree: ast.AST) -> list[tuple[str, int, str]]:
-    """(model name, line, how) for each create/delete/update of a model class, outside seed functions."""
+    """(model, line, how) for each create/delete/update outside seed functions."""
     out: list[tuple[str, int, str]] = []
 
     class V(ast.NodeVisitor):
@@ -129,6 +116,6 @@ async def test_runtime_writes_stay_with_the_owning_agent(flush_log: list[dict[st
     flush_log.clear()  # sample-data setup is not an agent write
     await milk.test_milk_end_to_end_across_three_agents(cafe)
     acted = [w for w in flush_log if w["agent"] is not None]
-    assert {w["agent"] for w in acted} == {"stock", "cashflow", "accountant"}  # the scenario exercised every agent
+    assert {w["agent"] for w in acted} == {"stock", "cashflow", "accountant"}
     wrong = [w for w in acted if w["agent"] != w["owner"]]
     assert not wrong, wrong

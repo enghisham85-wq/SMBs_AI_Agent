@@ -1,9 +1,4 @@
-"""Safety guard: no assistant can move money or hold bank credentials, and only
-actions classed `irreversible_external` may reach outside the system.
-
-Static checks over the source tree and the model metadata, so a future change that adds a payment
-call, a bank login field or an unguarded outbound send fails here.
-"""
+"""No assistant moves money or holds bank credentials; only irreversible_external actions go out."""
 
 from __future__ import annotations
 
@@ -18,7 +13,7 @@ from app.harness.action_spec import all_specs
 APP = Path(__file__).resolve().parents[2] / "app"
 SOURCES = {p: p.read_text(encoding="utf-8") for p in APP.rglob("*.py")}
 
-# Network clients, and where each is allowed: Claude (LLM client) and the owner's own Telegram chat.
+# Allowed network clients: the LLM client and the owner's Telegram chat.
 NETWORK_MODULES = {"httpx", "requests", "aiohttp", "urllib.request", "smtplib", "socket", "anthropic", "telegram",
                    "telegram.ext"}
 ALLOWED_NETWORK = {"anthropic": {"app/llm/client.py"}, "telegram": {"app/approvals/telegram_bot.py"},
@@ -78,16 +73,12 @@ def test_only_irreversible_external_actions_send_outside() -> None:
         sends = name.startswith("send_") or "sent_at" in source or "send_message" in source
         if sends:
             assert spec.risk_class == "irreversible_external", f"{name} sends outside but is {spec.risk_class}"
-    # The Telegram send itself lives only in the owner-facing notifier (the business's own users).
+    # Telegram sends only happen in the owner-facing notifier.
     senders = [_rel(p) for p, text in SOURCES.items() if ".send_message(" in text]
     assert senders == ["app/approvals/telegram_bot.py"]
 
 
 def test_assistants_only_recommend_payments() -> None:
-    """Payment plans and schedules are data for the owner; nothing marks a bill as paid by itself.
-
-    The one place a record becomes "paid" is a customer invoice whose payment already arrived in the
-    bank (money the customer moved, matched by the Accountant).
-    """
+    """Only a customer invoice whose payment already hit the bank can become "paid"."""
     marks = {_rel(p) for p, text in SOURCES.items() if re.search(r"\.status\s*=\s*\"paid\"", text)}
     assert marks <= {"app/agents/accountant/receivables.py"}

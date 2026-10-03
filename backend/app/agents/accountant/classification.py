@@ -52,7 +52,7 @@ class ClassifyContext:
     accounts: dict[str, Account]
     history: Counter[str] = field(default_factory=Counter)
     supplier_name: str | None = None
-    rule: Any = None  # the active classification rule for this supplier (a LearnedRule), if any
+    rule: Any = None  # the supplier's LearnedRule, if any
 
 
 def _keyword_guess(text: str) -> tuple[str, float]:
@@ -64,14 +64,13 @@ def _keyword_guess(text: str) -> tuple[str, float]:
 
 
 async def load_context(business_id: uuid.UUID, supplier_id: uuid.UUID | None) -> ClassifyContext:
-    """What classification needs from the database for one invoice's supplier; shared by all its lines."""
+    """DB lookups for one invoice's supplier, shared by all its lines."""
     rule = None
     if supplier_id is not None:
         rule = next((r for r in await rules.active_rules(business_id, "accountant", "classification")
                      if str(r.trigger.get("supplier_id")) == str(supplier_id)), None)
     async with read_session() as s:
         accts = {a.code: a for a in (await s.execute(select(Account).where(Account.business_id == business_id))).scalars()}
-        # Supplier history: accounts used on this supplier's posted non-stock lines.
         history: Counter[str] = Counter()
         if supplier_id is not None:
             for inv in (await s.execute(select(PayableInvoice).where(PayableInvoice.supplier_id == supplier_id,
@@ -87,20 +86,17 @@ async def classify(business_id: uuid.UUID, supplier_id: uuid.UUID | None, descri
                    ctx: ClassifyContext | None = None) -> Classification:
     if ctx is None:
         ctx = await load_context(business_id, supplier_id)
-    # 1. An active classification rule for this supplier.
     if ctx.rule is not None:
         await rules.mark_applied(ctx.rule.id)
         return Classification(ctx.rule.trigger["account_code"], 0.99, "rule", str(ctx.rule.id), ctx.rule.rule_text_en)
-    # 2. Supplier history.
     history = ctx.history
     if history:
         code, n = history.most_common(1)[0]
         if n >= 2 and n / sum(history.values()) >= 0.8:
             return Classification(code, 0.9, "history", rationale=f"used {n} times for this supplier")
-    # 3. Model (offline: keywords).
     guess_code, guess_conf = _keyword_guess(f"{ctx.supplier_name or ''} {description}")
     chart = "\n".join(f"{a.code} {a.name_en}" for a in ctx.accounts.values() if a.type == "expense")
-    # The chart of accounts is the same for every line of the business, so it goes first and is cached.
+    # same chart for every line, so it goes first and gets cached
     content = [text_block("Chart of accounts:\n" + chart, cache=True),
                text_block(json.dumps({"supplier": ctx.supplier_name, "description": description,
                                       "history": dict(history)}, ensure_ascii=False))]
@@ -119,7 +115,7 @@ async def classify(business_id: uuid.UUID, supplier_id: uuid.UUID | None, descri
 
 async def classify_many(business_id: uuid.UUID, supplier_id: uuid.UUID | None,
                         descriptions: list[str]) -> list[Classification]:
-    """Classify an invoice's lines: the shared lookups run once, the model calls a few at a time (in order)."""
+    """Classify an invoice's lines, a few model calls at a time."""
     if not descriptions:
         return []
     ctx = await load_context(business_id, supplier_id)
@@ -134,8 +130,7 @@ async def classify_many(business_id: uuid.UUID, supplier_id: uuid.UUID | None,
 
 async def record_correction(business_id: uuid.UUID, supplier_id: uuid.UUID | None, from_code: str | None, to_code: str,
                             user_id: uuid.UUID | None, source_ref: str) -> uuid.UUID | None:
-    """Store an owner override; at 3 identical corrections in 90 days open a `recurring_correction` incident
-    and propose a classification rule. Returns the incident id when one is opened."""
+    """Store an owner override. Three identical ones within 90 days open an incident and propose a rule."""
     today = clock.today()
     async with write_session() as s:
         accts = {a.code: a for a in (await s.execute(select(Account).where(Account.business_id == business_id))).scalars()}
@@ -154,11 +149,11 @@ async def record_correction(business_id: uuid.UUID, supplier_id: uuid.UUID | Non
         return None
     pair = {"supplier_id": str(supplier_id), "account_code": to_code}
     if await rules.recent_for_trigger(business_id, "classification", pair, ("active",)):
-        return None  # a rule already covers it
+        return None
     if await rules.recent_for_trigger(business_id, "classification", pair, ("proposed",)):
-        return None  # a proposal is pending
+        return None
     if await rules.recent_for_trigger(business_id, "classification", pair, ("rejected",), RECURRING_WINDOW_DAYS):
-        return None  # the owner rejected this recently
+        return None
     acct = accts[to_code]
     inc_id = await open_incident(
         business_id=business_id, agent="accountant", type="recurring_correction", detected_by="classification_corrections",

@@ -9,7 +9,7 @@ const RANK: Record<Role, number> = { staff: 0, manager: 1, owner: 2 };
 interface AuthValue {
   me: Me | null;
   loading: boolean;
-  /** Why /me failed when it was not a 401 (server down, offline, timeout); the app shows a retry for it. */
+  /** Non-401 failure of /me; the app offers a retry. */
   error: unknown;
   reload: () => void;
   can: (min: Role) => boolean;
@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     staleTime: 60_000,
   });
   const me = meQuery.data ?? null;
-  // A retry after a failed first load shows the loading text again rather than a dead error screen.
+  // So a retry shows "loading" again instead of the old error.
   const loading = meQuery.isLoading || (meQuery.isError && meQuery.isFetching && !me);
 
   useEffect(() => {
@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await api.post("/auth/logout");
     } catch (e) {
-      // An already-expired session is as good as a logout; anything else leaves the user signed in.
+      // Session already expired counts as logged out. Other errors keep the user signed in.
       if (!(e instanceof ApiError && e.status === 401)) throw e;
     }
     setCsrfToken(null);

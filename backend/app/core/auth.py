@@ -99,7 +99,7 @@ async def deny(user: CurrentUser, what: str, min_role: str) -> AppError:
 
 
 def require_role(min_role: str) -> Callable[..., Awaitable[CurrentUser]]:
-    """FastAPI dependency: the caller must have at least `min_role`; refusals are audited."""
+    """Dependency requiring at least `min_role`. Refusals are audited."""
 
     async def _dep(request: Request, user: CurrentUser = Depends(current_user)) -> CurrentUser:
         if not can(user.role, min_role):

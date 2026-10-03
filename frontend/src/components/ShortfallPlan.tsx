@@ -31,7 +31,7 @@ const RISK_STYLE: Record<string, string> = {
   high: "bg-bad-50 text-bad-700",
 };
 
-/** Ranked gap-closing actions; "Simulate" overlays the balance after that action on the chart. */
+/** "Simulate" draws the balance after an action on the chart. */
 export function ShortfallPlan({
   plan,
   simulating,

@@ -1,9 +1,4 @@
-"""Escalating payment reminders and promise tracking.
-
-Level 1 is polite, level 3 firm. Customers with a late-payment history get a friendly note before
-the due date and the next levels sooner. An open promise to pay pauses reminders until the
-promised date; a broken promise moves straight to the next level.
-"""
+"""Escalating payment reminders and promise tracking."""
 
 from __future__ import annotations
 
@@ -13,7 +8,7 @@ from datetime import date, timedelta
 from app.db.types import Money
 
 LATE_HISTORY = 0.3
-# Days relative to the due date when each level is scheduled.
+# days after the due date, per level
 SCHEDULE = {1: 1, 2: 8, 3: 22}
 SCHEDULE_LATE_HISTORY = {1: -3, 2: 5, 3: 15}
 MIN_GAP_DAYS = 5  # between two reminders to the same customer

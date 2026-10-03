@@ -32,7 +32,6 @@ const TONE: Record<Tone, string> = {
   bad: "border-bad-500",
 };
 
-/** The four numbers the owner checks first, each with its data freshness. */
 export function HealthStrip({ health }: { health: Health | undefined }) {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
@@ -43,7 +42,7 @@ export function HealthStrip({ health }: { health: Health | undefined }) {
       day: "numeric",
       month: "short",
     });
-  // A section missing from the payload renders as an empty tile instead of taking Home down.
+  // Missing section? Empty tile, don't take Home down.
   const stock: Partial<Health["stock"]> = health?.stock ?? {};
   const cash: Partial<Health["cash"]> = health?.cash ?? {};
   const books: Partial<Health["books"]> = health?.books ?? {};
@@ -118,7 +117,7 @@ function Tile(props: {
   asOf: DataAsOf | undefined;
   onPrefetch: (to: string) => void;
 }) {
-  // Hover, focus or touch comes a little before the click: start loading the chunk and data then.
+  // Start loading on hover/focus/touch, a little ahead of the click.
   const warm = () => props.onPrefetch(props.to);
   return (
     <Link

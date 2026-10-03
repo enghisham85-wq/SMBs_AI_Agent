@@ -1,8 +1,4 @@
-"""Independent second check.
-
-The verifier gets a fresh request built only from the VerificationPacket: action type, source
-inputs, proposed output and active rules. It never sees the primary agent's reasoning or messages.
-"""
+"""Independent second check. The verifier only sees the VerificationPacket, never the agent's reasoning."""
 
 from __future__ import annotations
 
@@ -32,7 +28,7 @@ def build_packet(
         "source_inputs": source_inputs,
         "proposed_output": proposed_output,
         "active_rules": active_rules or [],
-        # Deterministic findings the offline stand-in uses; the live verifier re-checks everything.
+        # for the offline stand-in; the live verifier re-checks everything
         "known_issues": known_issues or [],
     }
     leaked = FORBIDDEN_KEYS & set(proposed_output) | FORBIDDEN_KEYS & set(source_inputs)
@@ -71,7 +67,7 @@ async def verify_independently(packet: dict[str, Any]) -> VerifierVerdict:
     try:
         return await get_llm().parse("verifier", _PROMPT, content, VerifierVerdict, offline=lambda: _offline(packet))
     except (LLMRefusalError, LLMUnavailableError, MissingFixtureError) as exc:
-        # Unavailable review is not agreement: escalate to the owner.
+        # no review isn't agreement, so escalate
         return VerifierVerdict(
             agrees=False,
             issues=[VerifierIssue(field_or_aspect="verifier", problem=f"review unavailable: {exc}", severity="high")],

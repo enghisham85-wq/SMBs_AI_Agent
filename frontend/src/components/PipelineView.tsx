@@ -11,7 +11,6 @@ export interface ActionRow {
   incident_id: string | null;
 }
 
-// The harness lifecycle in order; each action shows how far it got.
 const STEPS = ["planned", "prechecked", "awaiting_approval", "executing", "verifying", "completed"] as const;
 const END_STYLE: Record<string, string> = {
   completed: "bg-good-50 text-good-700",
@@ -29,7 +28,6 @@ function reached(stage: string): number {
   return STEPS.indexOf(stage as (typeof STEPS)[number]);
 }
 
-/** Live node stages per action, fed by /harness/stream. */
 export function PipelineView({ actions, onSelect, selected }: { actions: ActionRow[]; onSelect: (id: string) => void; selected: string | null }) {
   const { t, i18n } = useTranslation();
   const time = (iso: string) =>

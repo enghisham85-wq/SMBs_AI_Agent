@@ -43,7 +43,7 @@ async def test_valid_csv_with_arabic_names_and_digits_imports_and_deducts_stock(
         milk = (await s.execute(select(Item).where(Item.business_id == bid, Item.name_en == "Milk"))).scalar_one()
         before = (await s.execute(select(StockLevel.quantity).where(StockLevel.item_id == milk.id))).scalar_one()
     body = _csv(["03/10/2026,لاتيه,١٠,٧٥٠,cash", "03/10/2026,Espresso,4,180,card"])
-    # 03/10/2026 is before START; it already has seeded sales, so use a fresh processed date instead:
+    # 03/10/2026 already has seeded sales, use a fresh processed date.
     body = _csv([f"{day.strftime('%d/%m/%Y')},لاتيه,١٠,٧٥٠,cash"])
     async with write_session() as s:  # make the day empty so the import is its only data
         for sale in (await s.execute(select(Sale).where(Sale.business_id == bid, Sale.date == day))).scalars():
@@ -85,7 +85,7 @@ async def test_same_file_twice_is_rejected(api: Any, cafe: dict[str, Any]) -> No
 async def test_manual_entry_for_gap_day_resolves_sales_gap_incident(api: Any, cafe: dict[str, Any]) -> None:
     bid = cafe["business_id"]
     gap_day = START
-    # Simulate a missing POS day: the feed produced nothing for START.
+    # No POS data for START.
     async with write_session() as s:
         s.add(Sale(business_id=bid, date=gap_day - timedelta(days=400), lines=[], amount_total=__import__(
             "app.db.types", fromlist=["Money"]).Money(0, "EGP"), payment_method="cash", source="manual"))

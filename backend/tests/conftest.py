@@ -1,4 +1,4 @@
-"""Shared fixtures: in-memory database, in-memory checkpointer, offline LLM, simulated clock."""
+"""Shared fixtures: database, checkpointer, offline LLM, simulated clock."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ os.environ.setdefault("LLM_MODE", "offline")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "")
 os.environ.setdefault("DEMO_MODE", "true")
 os.environ.setdefault("APP_ENV", "test")
-# A developer's backend/.env may point live calls at a gateway; tests assume the Anthropic defaults.
+# Ignore any gateway set in a local .env; tests expect the Anthropic defaults.
 os.environ.setdefault("LLM_PROVIDER", "anthropic")
 os.environ.setdefault("LLM_MODEL", "")
 
@@ -37,8 +37,8 @@ PASSWORD = "demo-pass-123"
 async def db(tmp_path: Any) -> AsyncIterator[None]:
     import app.models as models
 
-    # A real SQLite file, not :memory: — a shared in-memory connection lets one session's
-    # rollback undo another's uncommitted write, which hides real concurrency behaviour.
+    # Not :memory:. With a shared in-memory connection one session's rollback can undo
+    # another's write, which hides concurrency bugs.
     init_engine(f"sqlite+aiosqlite:///{(tmp_path / 'test.db').as_posix()}")
     async with get_engine().begin() as conn:
         await conn.run_sync(models.metadata.create_all)
@@ -80,7 +80,7 @@ async def business(db: None, clock_date: date) -> dict[str, Any]:
 
 
 class Api:
-    """httpx client against the ASGI app (no lifespan: fixtures already set up DB and runtime)."""
+    """httpx client on the ASGI app. No lifespan, the fixtures already did the setup."""
 
     def __init__(self) -> None:
         import httpx

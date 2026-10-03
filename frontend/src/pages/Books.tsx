@@ -102,7 +102,7 @@ function Inbox() {
             disabled={busy}
             onChange={(e) => {
               const file = e.target.files?.[0];
-              // Cleared so picking the same file again (a retry after a timeout) fires another change.
+              // Reset so picking the same file again still fires onChange.
               e.target.value = "";
               if (file) upload.mutate(file);
             }}
@@ -710,7 +710,6 @@ function Receivables() {
   );
 }
 
-/** One customer invoice: its lines, the payments matched to it, reminders sent or planned, and promises. */
 function ReceivableDetail({ id }: { id: string }) {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;

@@ -1,6 +1,6 @@
 import type { Money } from "../api/types";
 
-/** Format a Money value using its own number of decimals (EGP 2, OMR 3 ...), never a constant. */
+/** Uses the value's own decimals (EGP 2, OMR 3), never a fixed count. */
 export function formatMoney(m: Money | null | undefined, lang: string = "en"): string {
   if (!m) return "—";
   const value = m.amount_minor / 10 ** m.decimals;

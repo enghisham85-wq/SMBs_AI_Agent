@@ -1,9 +1,4 @@
-"""BusinessClock: the only source of "now".
-
-In demo mode the date is simulated and moved forward by the presenter; outside demo mode it is
-the real calendar date. The app runs one business per process, so the current clock state is
-kept in-process and mirrored in the `business_clock` table.
-"""
+"""The business clock, the only source of "now". Simulated in demo mode, real otherwise."""
 
 from __future__ import annotations
 
@@ -42,7 +37,7 @@ def today() -> date:
 
 
 def clock_now() -> datetime:
-    """Business-clock datetime: the simulated date with the current wall time of day."""
+    """Simulated date combined with the real time of day."""
     if is_simulated():
         return datetime.combine(today(), datetime.now().time().replace(microsecond=0))
     return datetime.now().replace(microsecond=0)
@@ -53,7 +48,6 @@ def start_of_business_day(d: date | None = None) -> datetime:
 
 
 async def load(business_id: uuid.UUID) -> None:
-    """Load the persisted clock for a business into the in-process state."""
     from app.db.engine import read_session
     from app.models.clock import BusinessClock
 
@@ -66,8 +60,7 @@ async def load(business_id: uuid.UUID) -> None:
 
 
 async def clear_stale_advance(business_id: uuid.UUID) -> bool:
-    """At startup no advance can be running, so a set `advancing` flag was left by a crash mid-advance;
-    clear it, or every later advance would be refused as busy. Returns whether a flag was cleared."""
+    """Clear an `advancing` flag left behind by a crash, or every later advance looks busy."""
     from app.db.engine import read_session, write_session
     from app.models.clock import BusinessClock
 
@@ -91,11 +84,7 @@ async def advance(
     days: int | None = None,
     to_date: date | None = None,
 ) -> list[date]:
-    """Move the simulated clock forward, running `per_day` once for every date in order.
-
-    Every date from `last_run_date + 1` up to the target is processed, so a jump never skips
-    scheduled work (forecast checks, reminders, approval timeouts ...).
-    """
+    """Move the simulated clock forward, running `per_day` for every date so nothing gets skipped."""
     from app.db.engine import write_session
     from app.models.clock import BusinessClock
 

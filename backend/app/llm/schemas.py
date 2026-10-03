@@ -1,5 +1,3 @@
-"""Structured output schemas for every LLM role."""
-
 from __future__ import annotations
 
 from datetime import date

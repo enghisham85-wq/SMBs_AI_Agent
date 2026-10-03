@@ -1,4 +1,4 @@
-"""FastAPI application: API, LangGraph runtime, daily scheduler and Telegram poller in one process."""
+"""FastAPI app. API, graph runtime, scheduler and Telegram bot all run in this one process."""
 
 from __future__ import annotations
 
@@ -32,7 +32,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_engine()
     await upgrade_head()
     await runtime.init()
-    # Graphs, action specs, daily steps and every agent's event handlers (agents/*/handlers.py).
     wiring.register_all()
     tasks: list[asyncio.Task[Any]] = []
     bid = await first_business_id()
@@ -75,7 +74,7 @@ def create_app() -> FastAPI:
             status_code=422,
         )
 
-    if get_settings().APP_ENV != "prod":  # Freshness guard: in dev and test, any figure served without data_as_of fails loudly
+    if get_settings().APP_ENV != "prod":
         from app.core.freshness import FreshnessCheck
 
         app.add_middleware(FreshnessCheck)
@@ -84,10 +83,9 @@ def create_app() -> FastAPI:
 
     from app.core.files import UploadLimit
 
-    # Added after FreshnessCheck so it wraps it (that check reads the uncompressed body). Starlette's
-    # default exclusions leave text/event-stream alone, so the SSE streams are not buffered.
+    # Must wrap FreshnessCheck, which reads the uncompressed body. SSE is excluded by default.
     app.add_middleware(GZipMiddleware, minimum_size=1000)
-    app.add_middleware(UploadLimit)  # outermost: refuses an oversized upload before anything reads it
+    app.add_middleware(UploadLimit)  # outermost
 
     from app.api import router as api_router
 

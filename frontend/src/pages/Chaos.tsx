@@ -54,9 +54,8 @@ interface LiveStep {
 }
 
 const STAGES = ["injected", "detected", "explained", "corrected", "rule_proposed"] as const;
-const LIMIT_SECONDS = 120; // a presenter can run any scenario end to end in under 2 minutes
+const LIMIT_SECONDS = 120; // every scenario should fit in 2 minutes on stage
 
-/** Chaos mode: inject each of the 8 faults and watch the agents detect, explain, correct and learn. */
 export function Chaos() {
   const { t, i18n } = useTranslation();
   const ar = i18n.language === "ar";
@@ -76,7 +75,6 @@ export function Chaos() {
     setLive((old) => [...old, { stage, at: (performance.now() - started.current) / 1000, text }]);
   }, []);
 
-  // The live timeline: stream messages that arrive while a scenario is running.
   const onEvent = useCallback(
     (event: string, data: any) => {
       if (!running) return;

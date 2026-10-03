@@ -54,7 +54,7 @@ async def test_oman_profile_uses_omr_three_decimals_and_scaled_prices(db: None) 
 
 
 async def test_currency_change_refused_once_financial_records_exist(api: Any) -> None:
-    await seed(start_date=START, history_days=2)  # has sales and bank lines
+    await seed(start_date=START, history_days=2)
     await api.login("owner", PASSWORDS["owner"])
     r = await api.client.patch("/api/v1/business", json={"currency": "USD"})
     assert r.status_code == 409

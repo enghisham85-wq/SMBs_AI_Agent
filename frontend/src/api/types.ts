@@ -1,5 +1,3 @@
-// Shapes returned by the backend REST API. Money always carries its own decimals.
-
 export interface Money {
   amount_minor: number;
   currency: string;

@@ -1,10 +1,7 @@
 """Self-calibration: each agent tracks its own error rate.
 
-When a metric breaks its threshold the agent is degraded: confidence thresholds go up, the
-auto-approve limit goes down, it falls back to a safer method, and the owner is told the
-suspected cause. Recovery is gradual: each consecutive healthy business day (metric within
-threshold) moves settings 25 % of the way back; 4 healthy days in a row fully restore them.
-An unhealthy day during recovery restarts the count from the current, partly restored values.
+A breached threshold degrades the agent (stricter confidence, lower auto-approve limit). Each healthy
+day then moves 25% of the way back, so four in a row fully restore it.
 """
 
 from __future__ import annotations
@@ -47,11 +44,7 @@ async def record(
     business_id: uuid.UUID, agent: str, metric: str, value: float, d: date, threshold: float,
     safe_method: str | None = None, *, cause: str | None = None, open_incident: bool = True,
 ) -> dict[str, object]:
-    """Record one daily value. Returns {"state": ok|degraded|recovering|restored, ...}.
-
-    On the day an agent degrades an incident is opened with the suspected cause (unless the caller
-    opens its own, `open_incident=False`).
-    """
+    """Record one daily value. Returns {"state": ok|degraded|recovering|restored, ...}."""
     async with write_session() as s:
         row = (await s.execute(select(AgentCalibration).where(
             AgentCalibration.business_id == business_id, AgentCalibration.agent == agent,
@@ -70,7 +63,7 @@ async def record(
             AgentCalibrationHistory.business_id == business_id, AgentCalibrationHistory.agent == agent,
             AgentCalibrationHistory.metric == metric, AgentCalibrationHistory.date == d))).scalars().first()
         if today_row is not None and (row.degraded or healthy):
-            # One step per business day: a second value the same day only updates the record.
+            # one step per business day; a repeat just updates today's value
             today_row.value = value
             return {"state": "degraded" if row.degraded else "ok", "value": value, "threshold": threshold,
                     "degraded": row.degraded, "high": row.high_confidence_threshold,
@@ -83,7 +76,7 @@ async def record(
                 state = "still_degraded"
             row.degraded = True
             row.healthy_streak = 0
-            # Restart from the current (possibly partly restored) values, no worse than degraded.
+            # restart from the partly restored values
             row.restore_progress = 0.0 if state == "degraded" else row.restore_progress
             row.method_override = safe_method
             _apply_progress(row)
@@ -138,7 +131,7 @@ async def _degraded_incident(business_id: uuid.UUID, agent: str, metric: str, va
 
 
 async def day_failure_rate(business_id: uuid.UUID, agent: str, d: date) -> tuple[float, int]:
-    """(share of the agent's finished actions that day that were escalated or rolled back, number finished)."""
+    """(share of the day's finished actions that escalated or rolled back, number finished)."""
     from datetime import datetime, time, timedelta
 
     from app.db.engine import read_session
@@ -161,7 +154,7 @@ MIN_ACTIONS = 5
 
 
 async def observe(business_id: uuid.UUID, agent: str, d: date) -> dict[str, object] | None:
-    """After each action: degrade the same day when the failure rate breaks its limit (recovery is daily)."""
+    """Degrade on the spot if the failure rate breaks its limit. Recovery only happens at day close."""
     from app.core import settings_store
     from app.db.engine import read_session
 
@@ -180,7 +173,6 @@ async def observe(business_id: uuid.UUID, agent: str, d: date) -> dict[str, obje
 
 
 async def close_day(business_id: uuid.UUID, d: date) -> dict[str, object]:
-    """Daily: record each agent's failure rate, which drives degradation and step-by-step recovery."""
     from app.core import settings_store
 
     threshold = float(await settings_store.get(business_id, "action_failure_threshold"))
@@ -195,7 +187,7 @@ async def close_day(business_id: uuid.UUID, d: date) -> dict[str, object]:
 
 
 async def _after_action(spec: object, state: dict[str, object]) -> None:
-    """FINALIZE hook: watch each agent's failure rate as actions finish."""
+    """FINALIZE hook."""
     from app.core import clock
 
     agent = getattr(spec, "agent", None)

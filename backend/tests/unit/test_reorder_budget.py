@@ -1,5 +1,4 @@
-"""Reorder planning against the weekly purchasing budget: only top-ups wait; an item that will run out is
-always drafted, so an over-budget order reaches the owner as a conflict instead of vanishing."""
+"""Reorder vs the weekly budget: top-ups wait, items about to run out are still drafted."""
 
 from __future__ import annotations
 
@@ -42,5 +41,5 @@ def test_no_budget_orders_everything() -> None:
 
 
 def test_first_warning_leaves_a_day_for_forecast_error() -> None:
-    # 2-day supplier: the first warning comes 4 days before the projected stockout (the target is at least 3).
+    # 2-day supplier, so the first warning lands 4 days out (target is 3+).
     assert reorder.trigger_window(2) - 1 == reorder.MIN_WARNING_DAYS + reorder.FORECAST_MARGIN_DAYS

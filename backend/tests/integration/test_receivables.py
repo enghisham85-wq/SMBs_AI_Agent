@@ -57,12 +57,12 @@ async def test_create_posts_balanced_entry_with_vat(api: Any, cafe: dict[str, An
     assert ar == rec.total.amount_minor
     listed = (await api.client.get("/api/v1/receivables?status=open")).json()["receivables"]
     assert any(x["id"] == data["id"] for x in listed)
-    # The Cash-Flow Agent picks the new invoice up from the shared records on its next forecast.
+    # Cash-Flow picks the invoice up on its next forecast.
     from app.agents.cashflow import graphs as cash_graphs
 
     await cash_graphs.step_cash_forecast(cafe["business_id"], clock.today())
     run = await cash_graphs.latest_run(cafe["business_id"], clock.today())
-    # The expected payment may be split across dates (on time / late); together they are the whole invoice.
+    # Payment may be split across dates (on time / late) but adds up to the invoice.
     parts = [f for f in run.flows if f["kind"] == "receivable" and f["ref"] == data["id"]]  # type: ignore[union-attr]
     assert parts and sum(f["amount_minor"] for f in parts) == rec.total.amount_minor
 

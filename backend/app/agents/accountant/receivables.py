@@ -1,5 +1,3 @@
-"""Customer (receivable) invoices."""
-
 from __future__ import annotations
 
 import uuid

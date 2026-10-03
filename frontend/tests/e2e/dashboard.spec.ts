@@ -1,7 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Home on a phone, one-tap decisions, freshness on every figure, live harness stages.
-// Runs against the sample cafe seeded by serve-backend.mjs (see playwright.config.ts).
+// Runs against the sample cafe seeded by serve-backend.mjs.
 const OWNER = { username: "owner", password: "owner-demo-2026" };
 
 async function login(page: Page) {
@@ -26,17 +25,16 @@ test.describe.configure({ mode: "serial" });
 test("home shows the health strip, decisions and alerts on a phone", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page);
-  await advanceDays(page, 2); // the agents produce orders, questions and alerts
+  await advanceDays(page, 2); // enough for some orders and alerts
   await page.reload();
   const strip = page.getByTestId("health-strip");
   await expect(strip).toBeVisible();
   await expect(strip.getByRole("link")).toHaveCount(4);
   await expect(page.getByTestId("decisions")).toBeVisible();
   await expect(page.getByRole("heading", { name: /alerts/i })).toBeVisible();
-  // Nothing wider than the phone screen.
+  // no horizontal scroll
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
-  // The chat panel is a drawer on mobile.
   await page.getByRole("button", { name: /^messages$/i }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
 });
@@ -74,7 +72,6 @@ test("every figure on Home, Stock, Cash and Books states its freshness", async (
     await expect(page.getByTestId("freshness").first()).toBeVisible();
     expect(await page.getByTestId("freshness").count(), path).toBeGreaterThanOrEqual(min);
   }
-  // Each health tile carries its own label.
   await page.goto("/");
   const tiles = page.getByTestId("health-strip").getByRole("link");
   for (let i = 0; i < 4; i++) await expect(tiles.nth(i).getByTestId("freshness")).toBeVisible();
@@ -89,7 +86,7 @@ test("the harness view shows live stages while an action runs", async ({ page })
     .locator("tbody tr")
     .count()
     .catch(() => 0);
-  await advanceDays(page, 1); // runs the daily graphs; each action streams its stages
+  await advanceDays(page, 1); // streams harness stages
   const rows = page.getByTestId("pipeline").locator("tbody tr");
   await expect.poll(async () => rows.count()).toBeGreaterThan(before);
   await expect(rows.first().getByRole("list", { name: /pipeline/i })).toBeVisible();

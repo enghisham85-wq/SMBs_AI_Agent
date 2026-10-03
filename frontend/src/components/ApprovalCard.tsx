@@ -7,7 +7,6 @@ import type { ApprovalRequest } from "../api/types";
 
 const URGENCY_STYLE = ["border-slate-200", "border-warn-500", "border-bad-500"];
 
-/** One owner request, answerable in one tap (or one short reply). */
 export function ApprovalCard({ request, compact = false }: { request: ApprovalRequest; compact?: boolean }) {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;

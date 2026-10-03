@@ -34,7 +34,7 @@ def _result(out: dict, errors: list) -> dict:
 
 
 def _mapping(raw: str | None) -> dict[str, str] | None:
-    """The optional column mapping form field: a JSON object of {field: column name}."""
+    """Parse the optional {field: column} JSON mapping."""
     if not raw:
         return None
     try:

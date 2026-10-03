@@ -1,8 +1,4 @@
-"""Weekly purchasing budget for the Stock Agent.
-
-Normal weeks allow the usual weekly supplier spending plus headroom; when the pessimistic forecast
-breaches the buffer the budget is tightened in proportion to the gap.
-"""
+"""Weekly purchasing budget for the Stock Agent, tightened when the pessimistic forecast dips below the buffer."""
 
 from __future__ import annotations
 
@@ -50,9 +46,7 @@ def compute(d: date, usual_weekly_minor: int, pessimistic_gap_minor: int, weeks_
 
 
 async def remaining(s: AsyncSession, business_id: uuid.UUID, d: date, exclude_po: uuid.UUID | None = None) -> int | None:
-    """What is left of this week's budget after orders drafted this week (None = no budget).
-
-    Cancelled, rejected and deferred (on hold) orders do not use the budget."""
+    """What's left of this week's budget (None = no budget). Cancelled, rejected and deferred orders don't count."""
     from app.models.cash import PurchasingBudget
     from app.models.purchasing import PurchaseOrder
 

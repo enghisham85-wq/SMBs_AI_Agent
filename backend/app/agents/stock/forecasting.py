@@ -1,11 +1,4 @@
-"""Demand forecasting.
-
-Primary: Holt-Winters with weekly seasonality on a calendar-adjusted series, times uplift factors
-for public holidays and Ramadan learned from history (weekends are captured by the weekly
-seasonality). Range = expected x (1 + P10/P90 of in-sample residual ratios).
-Safe fallback: the average of the last 4 same weekdays, range = their min/max.
-Calendar dates come only from the business's country profile.
-"""
+"""Demand forecasting: Holt-Winters plus holiday/Ramadan uplift, or a same-weekday average as the safe fallback."""
 
 from __future__ import annotations
 

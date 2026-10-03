@@ -25,8 +25,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const [chatOpen, setChatOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  // Tailwind's lg breakpoint. Exactly one ChatPanel exists (one /chat/stream connection): docked when
-  // wide, inside the drawer only while it is open on narrow screens.
+  // Tailwind's lg. Only one ChatPanel is ever mounted, so one /chat/stream connection.
   const wide = useMediaQuery("(min-width: 1024px)");
   const links = NAV.filter((n) => can(n.min) && (!n.demoOnly || me?.business.demo_mode));
   const run = (action: Promise<void>) => {

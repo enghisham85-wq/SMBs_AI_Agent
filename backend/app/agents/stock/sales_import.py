@@ -1,4 +1,4 @@
-"""Sales CSV import and manual daily entry — the real-data alternative to the demo feed."""
+"""Sales CSV import and manual daily entry, the real-data alternative to the demo feed."""
 
 from __future__ import annotations
 
@@ -102,7 +102,6 @@ async def file_already_imported(business_id: uuid.UUID, sha256: str) -> bool:
                                                       Sale.import_batch_id == f"csv:{sha256}").limit(1))).first() is not None
 
 
-# ------------------------------------------------------------------ import_sales action
 async def _execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]:
     async with read_session() as s:
         business = await s.get(Business, ctx.business_id)
@@ -117,7 +116,7 @@ async def _execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]
             continue
         seen.add(r["row_hash"])
         grouped.setdefault((r["date"], r["payment_method"]), []).append(r)
-    # Ids are assigned here, so the rows go in with one flush instead of one per sale under the write lock.
+    # set ids up front: one flush instead of one per sale under the write lock
     sales = [Sale(id=uuid.uuid4(), business_id=ctx.business_id, date=date.fromisoformat(d),
                   lines=[{"sold_item_id": r["item_id"], "qty": float(Decimal(r["qty"])), "amount_minor": r["amount_minor"]}
                          for r in rows],
@@ -150,7 +149,7 @@ async def _compensate(ctx: ActionContext, inputs: dict[str, Any], result: dict[s
 
 
 async def _finalize(ctx: ActionContext, inputs: dict[str, Any], outcome: str, result: dict[str, Any]) -> None:
-    """Dates the daily run already processed get their stock deducted now, closing any sales-gap incident."""
+    """Deduct stock now for dates the daily run already went past."""
     if outcome != "completed":
         return
     async with read_session() as s:

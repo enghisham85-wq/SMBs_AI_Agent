@@ -1,7 +1,6 @@
 """LangGraph runtime: checkpointer, graph registry, start / resume.
 
-Checkpoints live in their own SQLite file (CHECKPOINT_DB_PATH) so they never compete with
-business-data writes. Tests inject an InMemorySaver via `init(saver=...)`.
+Checkpoints get their own SQLite file so they don't contend with business-data writes.
 """
 
 from __future__ import annotations
@@ -84,7 +83,6 @@ async def _run(name: str, payload: Any, thread_id: str) -> dict[str, Any]:
 
 
 async def start(name: str, state: dict[str, Any], thread_id: str) -> dict[str, Any]:
-    """Run a graph on a new thread until it finishes or pauses for the owner."""
     return await _run(name, state, thread_id)
 
 

@@ -1,8 +1,4 @@
-"""Moves the business clock and runs each day's work.
-
-Demo mode: the presenter advances the simulated clock; every skipped date runs daily_run_graph
-in order. Real mode: a background loop runs the same graph once per real day.
-"""
+"""Advances the business clock and runs each day's work."""
 
 from __future__ import annotations
 
@@ -28,9 +24,9 @@ async def advance(business_id: uuid.UUID, *, days: int | None = None, to_date: d
     return await clock.advance(business_id, per_day, days=days, to_date=to_date)
 
 
-# A day's work normally takes seconds to minutes; past this it is treated as hung and retried.
+# treat a day as hung after this
 RUN_DAY_TIMEOUT_S = 30 * 60
-# The owner is told once a day once this many attempts in a row have failed (the loop retries hourly).
+# consecutive failures before we tell the owner
 ALERT_AFTER_FAILURES = 3
 
 
@@ -46,15 +42,12 @@ async def _report_stuck(business_id: uuid.UUID, today: date, failures: int) -> N
             text_en=f"Today's automatic checks have failed {failures} times in a row and will keep retrying every hour.",
             text_ar=f"فشلت المراجعات التلقائية لليوم {failures} مرات متتالية، وستتم إعادة المحاولة كل ساعة.",
             context={"date": today.isoformat(), "consecutive_failures": failures})
-    except Exception:  # reporting must never take the loop down
+    except Exception:  # never let reporting kill the loop
         log.exception("could not report the failing daily run")
 
 
 async def real_time_loop(business_id: uuid.UUID, interval_seconds: int = 3600) -> None:
-    """Outside demo mode: run the daily graph once for each real day not yet processed.
-
-    A failed day is retried on the next tick with a fresh graph thread, so all of its steps run again.
-    """
+    """Outside demo mode, run the daily graph once per real day. Failed days retry next tick."""
     failures = 0
     reported_for: date | None = None
     while True:

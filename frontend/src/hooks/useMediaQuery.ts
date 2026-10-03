@@ -1,6 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-/** Whether a CSS media query matches now; re-renders when it starts or stops matching. */
 export function useMediaQuery(query: string): boolean {
   const subscribe = useCallback(
     (onChange: () => void) => {

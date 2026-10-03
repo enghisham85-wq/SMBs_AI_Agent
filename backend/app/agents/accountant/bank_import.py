@@ -1,11 +1,4 @@
-"""Bank statement CSV import (statements only, never bank credentials).
-
-Columns (renameable through `mapping`): date, description, amount (signed) or debit/credit,
-balance, reference, currency. Lines already known for the account (same date, amount,
-description and reference) are skipped. Each statement date gets a closing-balance snapshot.
-After import the reconciliation runs, which publishes `customer_payment.received` for every
-receivable it finds paid.
-"""
+"""Bank statement CSV import (statements only, never bank credentials)."""
 
 from __future__ import annotations
 
@@ -133,7 +126,6 @@ async def prepare(business_id: uuid.UUID, data: bytes, account_id: uuid.UUID | N
     return inputs, parsed
 
 
-# ------------------------------------------------------------------ import_bank_statement action
 def _key(d: date, amount: int, description: str, ref: str | None) -> tuple[date, int, str, str]:
     return d, amount, description.strip().lower(), (ref or "").strip().lower()
 
@@ -175,7 +167,7 @@ async def _execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]
             s.add(t)
             created.append(t)
         await s.flush()
-        # A closing balance per statement date: the file's own balance column, else the running total.
+        # closing balance per date, from the file's balance column or else the running total
         snapshots: list[dict[str, Any]] = []
         given_by_day: dict[str, list[int]] = {}
         for r in inputs["rows"]:
@@ -189,7 +181,7 @@ async def _execute(ctx: ActionContext, inputs: dict[str, Any]) -> dict[str, Any]
             closing = given[-1] if given else await _balance_before(s, account_id, d + timedelta(days=1))
             snap = existing_snaps.get(as_of)
             if snap is None:
-                # Client-side id: no flush needed to report it (a later query autoflushes the row).
+                # set the id here so we don't need a flush to report it
                 snap = BankBalanceSnapshot(id=uuid.uuid4(), business_id=ctx.business_id, account_id=account_id,
                                            as_of=as_of, balance=Money(int(closing), acct.currency))
                 s.add(snap)
@@ -227,7 +219,6 @@ async def _compensate(ctx: ActionContext, inputs: dict[str, Any], result: dict[s
 
 
 async def _finalize(ctx: ActionContext, inputs: dict[str, Any], outcome: str, result: dict[str, Any]) -> None:
-    """Match the new lines straight away (a paid receivable publishes customer_payment.received)."""
     if outcome != "completed" or not result.get("imported"):
         return
     from app.agents.accountant.graphs import reconcile

@@ -1,11 +1,7 @@
-"""Routine orders: offer to stop asking about them, to save the owner effort.
+"""Routine orders: offer to stop asking about them.
 
-When the owner has approved the last few orders to a supplier exactly as drafted, the Stock Agent
-proposes a learned policy rule: "Approve routine orders from Golden Bakery up to EGP 1,500 without
-asking me". Only the owner can approve it. Once active, `send_po` goes ahead for that supplier
-within the limit, scaled by the Stock Agent's current calibration (a degraded agent asks again), after
-the independent check has agreed; anything larger, or any order a "require approval" rule covers, still
-waits for the owner. A rejected suggestion is not offered again.
+After a streak of unchanged approvals we propose a rule like "approve routine orders from Golden Bakery
+up to EGP 1,500 without asking me". Only the owner can turn it on; a rejected offer isn't repeated.
 """
 
 from __future__ import annotations
@@ -42,7 +38,7 @@ async def within_owner_rule(business_id: uuid.UUID, po: PurchaseOrder) -> uuid.U
 
 
 async def suggest_after_approval(spec: Any, state: dict[str, Any]) -> None:
-    """FINALIZE hook: after the owner approves an order unchanged, offer auto-approval once a streak forms."""
+    """FINALIZE hook: offer auto-approval once there's a streak of unchanged approvals."""
     answer = state.get("approval") or {}
     if (spec.name != "send_po" or state.get("outcome") != "completed" or answer.get("via") == "auto_approve"
             or answer.get("option_key") != "approve" or answer.get("timed_out")):

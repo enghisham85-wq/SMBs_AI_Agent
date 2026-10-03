@@ -1,9 +1,4 @@
-"""Cash-Flow Agent event handlers. Each runs as the Cash-Flow Agent.
-
-The forecast reads purchase orders and invoices directly, so a drafted, sent or invoiced order is
-already a committed outflow once saved; these handlers answer the budget check and refresh today's
-forecast when money moves.
-"""
+"""Cash-Flow Agent event handlers. Each runs as the Cash-Flow Agent."""
 
 from __future__ import annotations
 
@@ -29,7 +24,6 @@ def _bid(env: dict[str, Any]) -> uuid.UUID:
 
 
 def budget_decision(total_minor: int, remaining_before_minor: int | None, is_critical: bool) -> dict[str, Any]:
-    """Pure budget check for one drafted order."""
     if remaining_before_minor is None:
         return {"within_budget": True, "recommendation": "proceed", "conflict": False}
     if total_minor <= remaining_before_minor:
@@ -70,7 +64,7 @@ async def on_po_drafted(env: dict[str, Any]) -> None:
 
 
 async def _refresh_if_forecast_today(bid: uuid.UUID, reason: str) -> None:
-    """Re-run today's forecast (and plan) only if one was already made today; else the daily run covers it."""
+    """Only re-forecast if today's forecast already exists; otherwise the daily run covers it."""
     d = clock.today()
     async with read_session() as s:
         today_run = (await s.execute(select(CashForecastRun.id).where(CashForecastRun.business_id == bid,
@@ -87,12 +81,12 @@ async def on_po_approved_sent(env: dict[str, Any]) -> None:
 
 
 async def on_invoice_posted(env: dict[str, Any]) -> None:
-    """The invoice replaces the order's commitment (counted once) and its payment is scheduled."""
+    """The invoice replaces the order's commitment and its payment gets scheduled."""
     await _refresh_if_forecast_today(_bid(env), f"invoice {env['payload']['invoice_id']} posted")
 
 
 async def on_invoice_held(env: dict[str, Any]) -> None:
-    """A held invoice does not replace its order: the order amount keeps counting."""
+    """A held invoice doesn't replace its order, so the order amount keeps counting."""
     await _refresh_if_forecast_today(_bid(env), f"invoice {env['payload']['invoice_id']} held")
 
 

@@ -63,7 +63,7 @@ async def items_data(business_id: uuid.UUID, *, show_money: bool) -> dict[str, A
         demand_by_day = fc.get(item.id, {})
         cover = reorder.days_of_cover(qty, demand_by_day, today)
         avg = sum(demand_by_day.get(today + timedelta(days=i), Decimal(0)) for i in range(7)) / 7
-        # Without a forecast yet, expected use reads as zero; that says nothing about expiry.
+        # no forecast means zero expected use, which says nothing about expiry
         risk = waste.expiry_risk(item, qty, avg) if gen else None
         stockout = next((d for d, v in reorder.projection(qty, demand_by_day, {}, today, 30) if v < 0), None)
         status = "ok"
@@ -169,7 +169,7 @@ class CountIn(BaseModel):
 
 
 def _unique_runs(counts: list[CountLine]) -> list[list[CountLine]]:
-    """Split into consecutive runs with no repeated item, so a repeat sees the earlier adjustment."""
+    """Split into runs with no repeated item, so a repeat sees the earlier adjustment."""
     runs: list[list[CountLine]] = [[]]
     for c in counts:
         if any(x.item_id == c.item_id for x in runs[-1]):
@@ -194,8 +194,7 @@ async def record_counts(body: CountIn, user: CurrentUser = RequireManager) -> Re
         for c in run:
             calculated = levels.get(c.item_id, Decimal(0))
             lines.append((c, calculated, checks.count_variance(items[c.item_id], c.counted_qty, calculated, tolerance)))
-        # The count rows share one commit; each correction stays its own harness action (checked,
-        # audited and possibly sent for approval on its own), so those run line by line.
+        # Count rows commit together, but each correction is its own harness action.
         async with write_session() as s:
             s.add_all([StockCount(business_id=user.business_id, item_id=c.item_id, counted_qty=c.counted_qty,
                                   calculated_qty=calculated, variance=c.counted_qty - calculated, counted_by=user.id,
@@ -226,7 +225,7 @@ async def _lines_by_po(s: AsyncSession, po_ids: list[uuid.UUID]) -> dict[uuid.UU
 
 
 async def _pos_out(s: AsyncSession, pos: list[PurchaseOrder]) -> list[dict[str, Any]]:
-    """Orders with supplier, lines and deliveries, loaded with one query per table for the whole page."""
+    """Orders with supplier, lines and deliveries, one query per table."""
     if not pos:
         return []
     po_ids = [po.id for po in pos]
@@ -263,7 +262,7 @@ async def list_pos(status: str | None = None, user: CurrentUser = RequireStaff) 
             q = q.where(PurchaseOrder.status == status)
         rows = (await s.execute(q.order_by(PurchaseOrder.created_at.desc()).limit(100))).scalars().all()
         out = await _pos_out(s, list(rows))
-    if not can(user.role, "manager"):  # staff see what to expect, not prices
+    if not can(user.role, "manager"):
         for po in out:
             po.pop("total", None)
             for ln in po["lines"]:
@@ -285,7 +284,6 @@ async def patch_po(po_id: uuid.UUID, body: POPatch, user: CurrentUser = RequireM
     if po.status not in ("draft", "pending_approval", "on_hold"):
         raise AppError(409, "po_locked", message_en="This order can no longer be edited.", message_ar="لم يعد بالإمكان تعديل هذا الأمر.")
     await apply_po_edits(po_id, {"lines": body.lines})
-    # Re-run the draft checks on the edited order.
     pct = float(await settings_store.get(user.business_id, "price_change_pct"))
     found = []
     before = clock.today() + timedelta(days=1)
@@ -295,8 +293,7 @@ async def patch_po(po_id: uuid.UUID, body: POPatch, user: CurrentUser = RequireM
                                                exclude_po=po_id))
         item_ids = {ln.item_id for ln in lines}
         items = {i.id: i for i in (await s.execute(select(Item).where(Item.id.in_(item_ids)))).scalars()} if lines else {}
-        # Every price of this supplier for these items, newest first: the latest one and the
-        # price_history() window (the five newest before tomorrow) are both read from it.
+        # newest first; feeds both the current price and price_history()
         prices: dict[uuid.UUID, list[SupplierPrice]] = {}
         if lines:
             for p in (await s.execute(select(SupplierPrice).where(SupplierPrice.supplier_id == po.supplier_id,

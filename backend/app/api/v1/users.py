@@ -42,7 +42,7 @@ class UserIn(BaseModel):
 
 @router.post("/users", status_code=201)
 async def create_user(body: UserIn, user: CurrentUser = RequireOwner) -> Response:
-    # Hashed before taking the write lock and off the event loop: argon2 is deliberately slow.
+    # hash before taking the write lock; argon2 is slow
     password_hash = await asyncio.to_thread(hash_password, body.password)
     async with write_session() as s:
         exists = (await s.execute(select(User).where(User.business_id == user.business_id,

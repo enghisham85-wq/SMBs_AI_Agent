@@ -28,7 +28,7 @@ from app.models.tenancy import Business
 
 AR_DAYS = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"]
 
-# Weekly purchasing budget provider (the Cash-Flow Agent registers one). None = unlimited.
+# Cash-Flow registers this; None means unlimited
 BudgetProvider = Callable[[uuid.UUID, date], Awaitable[int | None]]
 BUDGET_PROVIDER: list[BudgetProvider] = []
 
@@ -53,7 +53,7 @@ async def _store_findings(bid: uuid.UUID, found: list[Any]) -> None:
             s.add(CheckResult(business_id=bid, check_name=c.name, passed=c.passed, details=jsonable(c.details)))
 
 
-# ============================================================= stock_update_graph
+# stock_update_graph
 async def su_apply(state: DayState) -> dict[str, Any]:
     bid, d = _ids(state)
     out = await run_action("apply_sales", {"date": d.isoformat()}, bid)
@@ -97,7 +97,7 @@ def build_stock_update() -> StateGraph[Any]:
     return g
 
 
-# ============================================================= forecast_check_graph
+# forecast_check_graph
 async def fc_evaluate(state: DayState) -> dict[str, Any]:
     """Compare yesterday's forecast with actual sales; switch unreliable items to the safer method."""
     bid, d = _ids(state)
@@ -174,7 +174,7 @@ def build_forecast_check() -> StateGraph[Any]:
     return g
 
 
-# ============================================================= reorder_graph
+# reorder_graph
 async def plan_proposals(bid: uuid.UUID, d: date, assume_missing: set[uuid.UUID] | None = None) -> list[reorder.Proposal]:
     """Reorder proposals for every purchased item. `assume_missing` = POs treated as not arriving."""
     assume_missing = assume_missing or set()
@@ -194,8 +194,7 @@ async def plan_proposals(bid: uuid.UUID, d: date, assume_missing: set[uuid.UUID]
                                   .order_by(SupplierPrice.valid_from))).scalars():
             prices[(p.supplier_id, p.item_id)] = p
         incoming: dict[uuid.UUID, dict[date, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
-        # Items already on an unsent order (draft / awaiting approval / approved / on hold) wait for the
-        # owner's answer; proposing them again would only create duplicate orders.
+        # items on an unsent order are waiting on the owner, proposing them again just duplicates orders
         awaiting_owner: set[uuid.UUID] = set()
         open_pos = (await s.execute(select(PurchaseOrder).where(PurchaseOrder.business_id == bid,
                                                                 PurchaseOrder.status.in_(OPEN_STATUSES)))).scalars().all()
@@ -243,7 +242,6 @@ async def ro_late(state: DayState) -> dict[str, Any]:
                                 "items": [(entry["items"][ln.item_id].name_en, entry["items"][ln.item_id].name_ar, ln.item_id)
                                           for ln in entry["lines"] if ln.item_id in entry["items"]]})
     for f in flagged:
-        # Recompute cover assuming this delivery has not arrived.
         props = await plan_proposals(bid, d, assume_missing={f["po_id"]})
         by_item = {p.item_id: p for p in props}
         runs_out = [(en, ar, by_item[iid].projected_stockout) for en, ar, iid in f["items"]
@@ -371,7 +369,7 @@ def build_reorder() -> StateGraph[Any]:
     return g
 
 
-# ============================================================= delivery_graph
+# delivery_graph
 class DeliveryState(TypedDict, total=False):
     business_id: str
     inputs: dict[str, Any]
@@ -421,7 +419,7 @@ def build_delivery() -> StateGraph[Any]:
     return g
 
 
-# ============================================================= daily steps
+# Daily steps
 async def _run(graph: str, bid: uuid.UUID, d: date) -> Any:
     from app.graphs import runtime
 

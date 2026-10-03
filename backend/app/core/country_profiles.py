@@ -1,8 +1,4 @@
-"""Configurable country profiles. Default: Egypt (EGP, VAT 14 %).
-
-Nothing country-specific is hard-coded elsewhere: forecasting, the demo feed and weekend logic
-call `calendar_for()` and the Business row (filled from a profile by `apply()`).
-"""
+"""Country profiles (currency, VAT, weekends, holidays). Defaults to Egypt."""
 
 from __future__ import annotations
 
@@ -53,7 +49,7 @@ class CountryProfile(BaseModel):
     special_holidays: list[str] = []
     # {"2026": {"add": [{"date": "2026-03-21", "name_en": ..., "name_ar": ...}], "remove": ["2026-03-20"]}}
     holiday_overrides: dict[str, dict[str, list[Any]]] = {}
-    # {"2026": {"start": "2026-02-18", "end": "2026-03-19"}} for local moon sighting
+    # local moon sighting, e.g. {"2026": {"start": "2026-02-18", "end": "2026-03-19"}}
     ramadan_overrides: dict[str, dict[str, str]] = {}
     money_defaults: dict[str, Decimal]
     seed_price_factor: Decimal
@@ -78,7 +74,7 @@ def available() -> list[CountryProfile]:
 
 
 def _orthodox_easter(year: int) -> date:
-    """Julian-calendar Easter (Meeus) converted to Gregorian (valid 1900-2099)."""
+    """Meeus' Julian Easter, shifted to Gregorian. Only valid for 1900-2099."""
     a, b, c = year % 4, year % 7, year % 19
     d = (19 * c + 15) % 30
     e = (2 * a + 4 * b - d + 34) % 7
@@ -102,7 +98,6 @@ def _hijri_to_date(hy: int, hm: int, hd: int) -> date | None:
 
 @lru_cache(maxsize=64)
 def holidays(code: str, year: int) -> dict[date, tuple[str, str]]:
-    """Public holidays for a year: {date: (name_en, name_ar)}."""
     p = load(code)
     out: dict[date, tuple[str, str]] = {}
     for h in p.fixed_holidays:
@@ -128,7 +123,6 @@ def holidays(code: str, year: int) -> dict[date, tuple[str, str]]:
 
 @lru_cache(maxsize=64)
 def ramadan(code: str, year: int) -> tuple[date, ...]:
-    """Ramadan days that fall in a Gregorian year."""
     p = load(code)
     ov = p.ramadan_overrides.get(str(year))
     days: list[date] = []
@@ -152,7 +146,7 @@ def ramadan(code: str, year: int) -> tuple[date, ...]:
 
 @dataclass(frozen=True)
 class Calendar:
-    """What forecasting, the demo feed and weekend logic ask about a date."""
+    """Weekend/holiday/Ramadan lookups for one business."""
 
     country: str
     weekend_days: tuple[int, ...]
@@ -179,11 +173,7 @@ def money_defaults(profile: CountryProfile) -> dict[str, Money]:
 
 
 def apply(business: Any, profile: CountryProfile, *, creating: bool, vat_override: Decimal | None = None) -> dict[str, Any]:
-    """Copy a profile into a Business row. Returns settings to store (minor units).
-
-    On creation the currency and money defaults are applied too; afterwards only the non-money
-    fields change, from the current business date forward (posted records are never rewritten).
-    """
+    """Copy a profile into a Business row (money fields only on creation). Returns settings to store."""
     business.country = profile.code
     business.vat_rate_percent = vat_override if (creating and vat_override is not None) else profile.vat_rate_percent
     business.vat_period = profile.vat_period

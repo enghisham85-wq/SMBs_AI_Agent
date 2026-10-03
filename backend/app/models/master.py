@@ -30,7 +30,7 @@ class Item(TenantMixin, Base):
     preferred_supplier_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("supplier.id"), nullable=True)
     is_critical: Mapped[bool] = mapped_column(Boolean, default=False)
     unit_cost: Mapped[Money] = money_col("unit_cost")
-    # Sold items: selling price per unit, used by the demo feed and margin reports.
+    # sold items only
     sale_price: Mapped[Money] = money_col("sale_price")
     margin_class: Mapped[str] = mapped_column(Enum("high", "normal", "low", native_enum=False), default="normal")
     forecast_method: Mapped[str] = mapped_column(
@@ -59,7 +59,6 @@ class Supplier(TenantMixin, Base):
     stated_lead_time_days: Mapped[int] = mapped_column(Integer, default=1)
     observed_lead_time_days: Mapped[float | None] = mapped_column(Float, nullable=True)
     payment_terms_days: Mapped[int] = mapped_column(Integer, default=30)
-    # Percent discount for paying within the discount window, if offered.
     early_payment_discount_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     early_payment_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reliability_score: Mapped[float] = mapped_column(Float, default=1.0)
@@ -83,6 +82,6 @@ class SupplierPrice(TenantMixin, Base):
     pack_size: Mapped[Decimal] = mapped_column(QTY, default=Decimal(1))
     unit: Mapped[str] = mapped_column(String(20))
     min_order_qty: Mapped[Decimal] = mapped_column(QTY, default=Decimal(1))
-    # Price per stock unit (`unit`).
+    # per `unit`
     price: Mapped[Money] = money_col("price")
     valid_from: Mapped[date] = mapped_column(Date)

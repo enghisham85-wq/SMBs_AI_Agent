@@ -1,23 +1,7 @@
 """The single path to the model.
 
-Modes (LLM_MODE):
-- live:    call the API.
-- record:  call the API and save the parsed output as a fixture keyed by request hash.
-- replay:  read the fixture; raise MissingFixtureError if absent (tests, offline demo).
-- offline: never call the API; use the caller's deterministic `offline` fallback. Clearly a
-           stand-in for development and demos without an API key.
-
-Providers (LLM_PROVIDER):
-- anthropic: model `claude-opus-5-5` through the Anthropic SDK, with structured output (Pydantic), an
-  effort level per role and server-side refusal fallback. Callers mark their stable prefix (a document,
-  the chart of accounts) with `cache=True`; a top-level marker would land on the unique per-request
-  text and never be read back.
-- openai_compatible: an OpenAI-style chat-completions gateway at LLM_BASE_URL (model LLM_MODEL). The
-  same blocks are sent as text/image/file parts in JSON mode, with the output schema in the system
-  prompt; the answer is validated against the Pydantic model and re-asked once if it doesn't fit. Cache markers and refusal
-  fallback have no equivalent there, and the gateway may ignore the effort level.
-
-Each call has a deadline; a timeout counts as the model being unavailable.
+LLM_MODE is live, record (save fixtures), replay (fixtures only) or offline (caller's fallback).
+LLM_PROVIDER is anthropic or openai_compatible (a chat-completions gateway at LLM_BASE_URL).
 """
 
 from __future__ import annotations
@@ -45,13 +29,11 @@ EFFORT: dict[str, str] = {
     "message": "medium",
     "incident": "medium",
 }
-# Thinking is always on (Claude Opus 5.5) and counts toward max_tokens, so leave room for it as well as
-# the reply. Each role sets its effort explicitly: the model's own default is "medium".
+# thinking counts toward max_tokens too
 MAX_TOKENS: dict[str, int] = {"classification": 4000}
 DEFAULT_MAX_TOKENS = 16000
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
-# Per-attempt HTTP timeout (the SDK default is 600 s) and an overall deadline per role that also covers
-# the SDK's retries. Every caller has a fallback, so a stuck call should give up rather than hang a node.
+# SDK default is 600s. Every caller has a fallback, so give up early rather than hang a node.
 REQUEST_TIMEOUT_S = 90.0
 REQUEST_TIMEOUT_S_BY_ROLE: dict[str, float] = {"extraction": 180.0}
 DEADLINE_S: dict[str, float] = {
@@ -67,7 +49,7 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class LLMRefusalError(RuntimeError):
-    """The model declined (stop_reason == "refusal"). Callers treat it as low confidence."""
+    """The model refused. Callers treat it as low confidence."""
 
 
 class MissingFixtureError(RuntimeError):
@@ -79,7 +61,7 @@ class LLMUnavailableError(RuntimeError):
 
 
 def text_block(text: str, *, cache: bool = False) -> dict[str, Any]:
-    """`cache=True` puts a prompt-cache breakpoint after this block: use it only at the end of a stable prefix."""
+    """Only pass cache=True on the last block of a stable prefix."""
     block: dict[str, Any] = {"type": "text", "text": text}
     if cache:
         block["cache_control"] = {"type": "ephemeral"}
@@ -87,7 +69,7 @@ def text_block(text: str, *, cache: bool = False) -> dict[str, Any]:
 
 
 def document_block(data: bytes, media_type: str, *, cache: bool = False) -> dict[str, Any]:
-    """The file stays raw bytes here; the client base64-encodes it off the event loop when sending."""
+    """Raw bytes for now; the client base64-encodes them off the event loop."""
     kind = "document" if media_type == "application/pdf" else "image"
     block: dict[str, Any] = {"type": kind, "source": {"type": "base64", "media_type": media_type, "data": data}}
     if cache:
@@ -104,19 +86,18 @@ def _content_for_hash(blocks: list[dict[str, Any]]) -> list[Any]:
             digest = hashlib.sha256(raw if isinstance(raw, bytes | bytearray) else str(raw).encode()).hexdigest()
             out.append({"type": b["type"], "sha256": digest})
         else:
-            # Cache markers change billing, not the answer, so they stay out of the fixture key.
+            # cache markers don't change the answer
             out.append({k: v for k, v in b.items() if k != "cache_control"})
     return out
 
 
 def active_model() -> str:
-    """The model id sent to the provider: LLM_MODEL when set, otherwise the Anthropic default."""
     return get_settings().LLM_MODEL or MODEL
 
 
 def request_hash(role: str, system: str, blocks: list[dict[str, Any]], schema_name: str) -> str:
     raw = json.dumps(
-        # The model and effort change the answer, so a recorded fixture only replays for the same pair.
+        # a fixture only replays for the same model and effort
         {"model": active_model(), "effort": EFFORT.get(role, "medium"), "role": role, "system": system,
          "content": _content_for_hash(blocks), "schema": schema_name},
         sort_keys=True,
@@ -130,7 +111,6 @@ def _has_raw_bytes(blocks: list[dict[str, Any]]) -> bool:
 
 
 def _wire_content(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The blocks as the API takes them: file bytes base64-encoded."""
     out: list[dict[str, Any]] = []
     for b in blocks:
         src = b.get("source")
@@ -141,7 +121,6 @@ def _wire_content(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _openai_parts(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Anthropic-style blocks (files already base64) as chat-completions content parts."""
     parts: list[dict[str, Any]] = []
     for b in blocks:
         src = b.get("source") or {}
@@ -158,7 +137,7 @@ def _openai_parts(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _json_text(text: str) -> str:
-    """The JSON in a reply, without a markdown fence some gateways wrap it in."""
+    """Strip the markdown fence some gateways wrap around the JSON."""
     text = text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1] if "\n" in text else ""
@@ -223,7 +202,7 @@ class LLMClient:
         if self.mode not in ("replay", "record"):
             return await self._call(role, system, content, output_model)
 
-        # Only fixtures need the key; hashing a large upload stays off the event loop.
+        # uploads can be big, hash off the loop
         key = await asyncio.to_thread(request_hash, role, system, content, output_model.__name__)
         fixture = self.fixtures_dir / f"{key}.json"
         if self.mode == "replay":
@@ -249,8 +228,7 @@ class LLMClient:
         from pydantic import ValidationError
 
         api = self._api()  # raises LLMUnavailableError when the gateway settings are incomplete
-        # The schema goes in the instructions with plain JSON mode: CodeCraft's json_schema mode fails (502) on
-        # schemas with anyOf/patterns, which most of ours have. The Pydantic check below enforces it instead.
+        # CodeCraft's json_schema mode 502s on anyOf/patterns, so send the schema in the prompt and validate here.
         schema = json.dumps(output_model.model_json_schema(), ensure_ascii=False)
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": f"{system}\n\nReply with only a JSON object that matches this JSON schema:\n{schema}"},
@@ -279,7 +257,7 @@ class LLMClient:
                     except ValidationError as exc:
                         if attempt:
                             raise LLMUnavailableError(f"answer did not match {output_model.__name__}") from exc
-                        # No server-side schema guarantee through a gateway: show the model its mistake once.
+                        # no server-side schema check on a gateway, so give it one retry
                         messages += [{"role": "assistant", "content": text},
                                      {"role": "user", "content": "That reply did not match the required JSON schema "
                                       f"({exc.error_count()} errors: {str(exc)[:1500]}). Reply again with only the "
@@ -348,6 +326,6 @@ def get_llm() -> LLMClient:
 
 
 def set_llm(client: LLMClient | None) -> None:
-    """Tests inject a fake client here."""
+    """For tests."""
     global _default
     _default = client

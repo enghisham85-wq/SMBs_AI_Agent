@@ -17,7 +17,7 @@ export default function App() {
   const { t } = useTranslation();
   const { me, loading, error, reload } = useAuth();
   if (loading) return <p className="p-6 text-ink-500">{t("app.loading")}</p>;
-  // Only a 401 means "logged out" (me is null then); any other failure must not look like a sign-out.
+  // Only a 401 means logged out. Other errors shouldn't look like a sign-out.
   if (!me && error)
     return (
       <div className="mx-auto max-w-md p-6">

@@ -1,9 +1,4 @@
-"""Accountant Agent event handlers. Each runs as the Accountant Agent.
-
-Orders and deliveries stay in the Stock Agent's tables; the Accountant reads them for the three-way
-match. These handlers note that they are available and keep a price context used when checking
-supplier invoices.
-"""
+"""Accountant Agent event handlers. Each runs as the Accountant Agent."""
 
 from __future__ import annotations
 
@@ -22,7 +17,7 @@ def _bid(env: dict[str, Any]) -> uuid.UUID:
 
 
 async def on_po_approved_sent(env: dict[str, Any]) -> None:
-    """An order was sent: it is now open for matching against the supplier's invoice."""
+    """An order went out, so it's open for matching against an invoice."""
     async with write_session() as s:
         add_audit(s, "po_open_for_matching", business_id=_bid(env), agent="accountant",
                   inputs={"po_id": env["payload"]["po_id"], "total": env["payload"]["total"]})
@@ -37,7 +32,7 @@ async def on_delivery_received(env: dict[str, Any]) -> None:
 
 
 async def on_price_changed(env: dict[str, Any]) -> None:
-    """Remember the latest agreed price per supplier and item (context for invoice price checks)."""
+    """Remember the latest agreed price per supplier and item."""
     bid = _bid(env)
     p = env["payload"]
     async with write_session() as s:

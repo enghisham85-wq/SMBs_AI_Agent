@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Own ports and database so the suite never touches a developer's running demo.
+// Own ports and DB so it never touches a running demo.
 const API_PORT = 8765;
 const WEB_PORT = 5175;
 const backendEnv = [
@@ -22,13 +22,12 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"]],
   use: { baseURL: `http://localhost:${WEB_PORT}`, trace: "retain-on-failure" },
-  // PW_CHANNEL=chrome (or msedge) uses an installed browser when Playwright's own cannot be downloaded.
+  // PW_CHANNEL=chrome|msedge if Playwright's browser can't be downloaded.
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"], channel: process.env.PW_CHANNEL || undefined } },
   ],
   webServer: [
     {
-      // A fresh sample cafe on a fixed start date, then the API.
       command: `node tests/e2e/serve-backend.mjs ${API_PORT} ${backendEnv.map((e) => JSON.stringify(e)).join(" ")}`,
       url: `http://localhost:${API_PORT}/api/v1/openapi.json`,
       timeout: 240_000,

@@ -1,7 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// The Books page — a sample invoice with its checks next to the original, and a customer invoice
-// created in the app with its detail (lines, payments, reminders).
 async function login(page: Page) {
   await page.goto("/");
   await page.getByLabel(/username/i).fill("owner");
@@ -39,7 +37,7 @@ test("a customer invoice is created with live totals and opens with its payments
   await page.getByPlaceholder("Customer").fill("Garden City Clinic");
   await page.getByPlaceholder("Description").first().fill("Coffee service");
   await page.getByPlaceholder("Price").first().fill("500");
-  await expect(page.getByText(/570\.00/).first()).toBeVisible(); // 500 + 14% VAT, computed live
+  await expect(page.getByText(/570\.00/).first()).toBeVisible(); // 500 + 14% VAT
   await page.getByRole("button", { name: "Create invoice" }).click();
   const row = page.getByRole("row", { name: /Garden City Clinic/ });
   await expect(row).toBeVisible();

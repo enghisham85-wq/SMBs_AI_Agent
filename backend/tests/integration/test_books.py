@@ -233,7 +233,6 @@ async def test_bank_lines_are_matched_automatically_with_source_and_the_rest_lis
 
 
 async def test_answering_a_question_does_not_classify_the_lines_again(cafe: dict[str, Any], monkeypatch: Any) -> None:
-    """Each owner answer re-validates the invoice; line classifications (model calls) are kept from the first pass."""
     from app.agents.accountant import checks
 
     classified: list[str] = []

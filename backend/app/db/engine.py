@@ -16,17 +16,16 @@ from app.config import get_settings
 
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
-# One process-wide lock: API requests, Telegram callbacks, event handlers and the daily run
-# never write at the same time, so SQLite never reports "database is locked".
+# Serialise all writes in the process so SQLite never says "database is locked".
 _write_lock: asyncio.Lock | None = None
 _lock_loop: asyncio.AbstractEventLoop | None = None
 _is_sqlite = True
-# Bumped after every commit; read-side caches key on it so any write invalidates them.
+# bumped on every commit so read caches can tell they're stale
 _write_generation = 0
 
 
 def _get_lock() -> asyncio.Lock:
-    """The write lock for the running event loop (tests run each case in a fresh loop)."""
+    """Per event loop, because tests get a fresh loop each time."""
     global _write_lock, _lock_loop
     loop = asyncio.get_running_loop()
     if _write_lock is None or _lock_loop is not loop:
@@ -47,7 +46,7 @@ def _install_sqlite_pragmas(engine: AsyncEngine, busy_timeout_ms: int, in_memory
 
 
 def init_engine(url: str | None = None) -> AsyncEngine:
-    """Create (or replace) the global engine. Tests call this with an in-memory URL."""
+    """Create or replace the global engine."""
     global _engine, _sessionmaker, _is_sqlite
     settings = get_settings()
     url = url or settings.DATABASE_URL
@@ -82,7 +81,6 @@ def sessionmaker() -> async_sessionmaker[AsyncSession]:
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency for read-only work."""
     async with sessionmaker()() as session:
         yield session
 
@@ -95,12 +93,7 @@ async def read_session() -> AsyncIterator[AsyncSession]:
 
 @asynccontextmanager
 async def write_session() -> AsyncIterator[AsyncSession]:
-    """The only way to commit. Holds the process-wide write lock for the whole transaction.
-
-    After the commit (and after the lock is released) pending outbox events are dispatched,
-    so event handlers can open their own write sessions without deadlocking. The caller waits
-    for those handlers; a commit that published nothing skips the outbox check.
-    """
+    """The only way to commit. Outbox events dispatch once the lock is released, so handlers can write too."""
     global _write_generation
     from app.core import events
 

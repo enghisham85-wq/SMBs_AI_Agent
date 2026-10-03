@@ -1,5 +1,3 @@
-"""Registers the Stock Agent: action specs, graphs, daily steps, seed data and Telegram handlers."""
-
 from __future__ import annotations
 
 import uuid
@@ -13,7 +11,7 @@ from app.agents.stock import action_specs, graphs
 from app.db.engine import read_session, write_session
 from app.models.finance_master import Sale
 
-# Opening stock in days of average use; milk is low so the demo shows a stockout warning within ~3 days.
+# Opening stock in days of use. Milk starts low so the demo hits a stockout warning early.
 OPENING_COVER_DAYS = {
     "Milk": Decimal("5.5"),
     "Coffee beans": Decimal("9"),
@@ -41,7 +39,7 @@ async def seed_opening_stock(business_id: uuid.UUID, start: date, ids: dict[str,
             res = await tracking.apply_sales(s, business_id, d)  # computes usage (and marks the sales applied)
             for item_id, qty in res.deducted.items():
                 usage[uuid.UUID(item_id)] = usage.get(uuid.UUID(item_id), Decimal(0)) + qty
-        # Undo those deductions: history is before the opening count.
+        # history predates the opening count, so undo those deductions
         from sqlalchemy import delete
 
         from app.models.stock_ops import StockLevel, StockMovement

@@ -5,7 +5,6 @@ import type { ApprovalRequest } from "../api/types";
 
 const URGENCY = ["", "border-slate-200", "border-warn-500", "border-bad-500"];
 
-/** Alerts, most urgent first; each is acknowledged with one tap. */
 export function AlertList({ alerts }: { alerts: ApprovalRequest[] }) {
   const { t, i18n } = useTranslation();
   const ar = i18n.language === "ar";

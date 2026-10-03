@@ -1,7 +1,4 @@
-"""Cash forecast runs, shortfall plans, purchasing budget and payment reminders.
-
-Written by the Cash-Flow Agent.
-"""
+"""Cash-Flow Agent tables: forecasts, shortfall plans, budgets and reminders."""
 
 from __future__ import annotations
 
@@ -36,19 +33,19 @@ class CashForecastRun(TenantMixin, Base):
     __tablename__ = "cash_forecast_run"
 
     generated_on: Mapped[date] = mapped_column(Date, index=True)
-    # Latest bank data behind the opening balance (end of that business day).
+    # end of the business day of the latest bank data used
     bank_data_as_of: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     low_confidence_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
-    # expected, or pessimistic when an inflow assumption looks unrealistic
+    # pessimistic when an inflow assumption looks unrealistic
     primary_scenario: Mapped[str] = mapped_column(Enum(*SCENARIOS, native_enum=False), default="expected")
     opening_balance: Mapped[Money] = money_col("opening_balance")
     lowest_balance: Mapped[Money] = money_col("lowest_balance")
     lowest_date: Mapped[date] = mapped_column(Date)
     buffer: Mapped[Money] = money_col("buffer")
     horizon_days: Mapped[int] = mapped_column(Integer, default=30)
-    # Itemised flows of the expected scenario: [{date, amount_minor, kind, ref, label}] (explains every figure)
+    # expected scenario, itemised: [{date, amount_minor, kind, ref, label}]
     flows: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
-    # Check outcomes: [{name, passed, details, reason_en}]
+    # [{name, passed, details, reason_en}]
     checks: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     action_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
 
@@ -78,7 +75,7 @@ class ShortfallPlan(TenantMixin, Base):
     lowest_balance: Mapped[Money] = money_col("lowest_balance")
     lowest_date: Mapped[date] = mapped_column(Date)
     days_to_act: Mapped[int] = mapped_column(Integer)
-    # Lowest balance if every non-financing action is taken together.
+    # if every non-financing action is taken together
     combined_lowest_balance: Mapped[Money] = money_col("combined_lowest_balance")
     status: Mapped[str] = mapped_column(
         Enum("proposed", "presented", "accepted", "dismissed", "superseded", native_enum=False), default="proposed"
@@ -95,14 +92,14 @@ class PlanAction(TenantMixin, Base):
     target_ref: Mapped[str | None] = mapped_column(String(80), nullable=True)
     description_en: Mapped[str] = mapped_column(String(300))
     description_ar: Mapped[str] = mapped_column(String(300))
-    impact: Mapped[Money] = money_col("impact")  # how much the lowest balance improves
+    impact: Mapped[Money] = money_col("impact")  # improvement to the lowest balance
     risk: Mapped[str] = mapped_column(Enum(*RISKS, native_enum=False))
     rank: Mapped[int] = mapped_column(Integer)
     simulated_lowest_balance: Mapped[Money] = money_col("simulated_lowest_balance")
     simulated_lowest_date: Mapped[date] = mapped_column(Date)
-    # Flow changes this action makes: [{key, move_to?, scale?}]; replayed by later forecasts once accepted.
+    # [{key, move_to?, scale?}], replayed by later forecasts once accepted
     adjustments: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
-    # Closing balance per day after the action: [{date, closing_minor}]
+    # [{date, closing_minor}] after the action
     simulated_series: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(Enum("proposed", "accepted", "declined", native_enum=False), default="proposed")
 
@@ -142,5 +139,5 @@ class PaymentPromise(TenantMixin, Base):
     promised_date: Mapped[date] = mapped_column(Date)
     amount: Mapped[Money] = money_col("amount")
     recorded_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
-    # kept | broken; None while the promised date has not passed
+    # kept | broken, or None until the promised date passes
     outcome: Mapped[str | None] = mapped_column(String(10), nullable=True)

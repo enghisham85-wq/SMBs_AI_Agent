@@ -13,23 +13,23 @@ import { prefetchRoute } from "./pages/registry";
 const queryClient: QueryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error) => {
-      // A 401 on any call means the session ended: re-check /me so the app falls back to the sign-in
-      // screen. Skipped while nobody is signed in, so the landing prefetch below cannot trigger it.
+      // Any 401 means the session ended, so re-check /me to get back to sign-in.
+      // Skipped while signed out, otherwise the landing prefetch would trigger it.
       if (errorKind(error) === "auth" && queryClient.getQueryData(["me"]))
         void queryClient.invalidateQueries({ queryKey: ["me"] });
     },
   }),
   defaultOptions: {
     queries: {
-      // One retry for a flaky network or server; a 4xx or a timeout would only fail again more slowly.
+      // One retry for flaky networks. 4xx and timeouts would just fail again, slower.
       retry: (failures, error) => failures < 1 && isTransient(error),
       refetchOnWindowFocus: false,
     },
   },
 });
 
-// Home's data and chunk load alongside /me instead of waiting for it. A 401 here is expected when signed
-// out: it is not retried, and Home refetches after sign-in because login invalidates every query.
+// Don't wait for /me to start loading Home. A 401 here is fine when signed out,
+// login invalidates everything anyway.
 if (window.location.pathname === "/") prefetchRoute(queryClient, "/");
 
 createRoot(document.getElementById("root")!).render(

@@ -22,8 +22,7 @@ from app.models.tenancy import Business
 
 router = APIRouter(tags=["business"])
 
-# A quantified group that itself contains a quantifier, e.g. (\d+)+ or (a|a*)*: on a non-matching
-# number it backtracks exponentially. Tax-id formats never need one.
+# Nested quantifiers like (\d+)+ backtrack exponentially. Tax-id formats never need them.
 _NESTED_QUANTIFIER = re.compile(r"\((?:\\.|[^()\\])*(?:[*+]|\{\d*,?\d*\})(?:\\.|[^()\\])*\)(?:[*+]|\{\d*,\d*\})")
 MAX_TAX_ID_PATTERN_LEN = 100
 
@@ -50,7 +49,7 @@ def _business_out(b: Business) -> dict[str, Any]:
 
 
 async def has_financial_records(business_id: Any) -> bool:
-    """Any Money-bearing record exists -> the currency is locked (there is no FX conversion)."""
+    """True once any money record exists, which locks the currency (no FX support)."""
     from app.db.types import Base
 
     money_tables = [t for t in Base.metadata.sorted_tables
@@ -58,7 +57,7 @@ async def has_financial_records(business_id: Any) -> bool:
                     and any(c.name.endswith("_currency") for c in t.columns) and "business_id" in t.columns]
     if not money_tables:
         return False
-    # One statement; SQLite stops at the first table with a row (each EXISTS is a business_id index probe).
+    # one query; SQLite stops at the first table that has a row
     async with read_session() as s:
         return bool((await s.execute(select(or_(*(exists().where(t.c.business_id == business_id)
                                                   for t in money_tables))))).scalar())
@@ -80,7 +79,7 @@ async def countries(user: CurrentUser = RequireManager) -> Response:
          "vat_rate_percent": p.vat_rate_percent, "vat_period": p.vat_period, "weekend_days": p.weekend_days}
         for p in country_profiles.available()
     ]})
-    # The profiles ship with the code; private because the route sits behind a login.
+    # static per deploy; private since it's behind a login
     resp.headers["Cache-Control"] = "private, max-age=3600"
     return resp
 
@@ -139,7 +138,7 @@ async def patch_business(body: BusinessPatch, user: CurrentUser = RequireOwner) 
                 raise AppError(422, "unknown_country", message_en=str(exc), message_ar="دولة غير معروفة.") from exc
             country_profiles.apply(b, profile, creating=False)
         if "currency" in changes and changes["currency"] != b.currency:
-            # Allowed only while no financial record exists, so only the buffer needs re-expressing.
+            # currency can only change before any money is recorded, so just the buffer needs converting
             buffer_value = b.min_cash_buffer.to_decimal()
             b.currency = changes["currency"]
             b.min_cash_buffer = Money.from_decimal(buffer_value, b.currency)
